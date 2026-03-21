@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { prisma } from '@/lib/db'
 import { getSessionUserId } from '@/lib/session'
 import { CollaboratorSection } from '@/components/CollaboratorSection'
+import { TeamSection } from '@/components/TeamSection'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -35,8 +36,8 @@ export default async function ProjectDashboard({ params }: PageProps) {
     notFound()
   }
 
-  // Fetch project collaborators and platform default templates
-  const [collaborators, templates] = await Promise.all([
+  // Fetch project collaborators, templates, and teams in parallel
+  const [collaborators, templates, teams] = await Promise.all([
     prisma.collaborator.findMany({
       where: { projectId: id, isActive: true },
       select: { id: true, name: true, description: true, phase: true },
@@ -46,6 +47,11 @@ export default async function ProjectDashboard({ params }: PageProps) {
       where: { isPlatformDefault: true, projectId: null },
       select: { id: true, name: true, description: true, phase: true },
       orderBy: { name: 'asc' },
+    }),
+    prisma.team.findMany({
+      where: { projectId: id },
+      select: { id: true, name: true, collaboratorOrder: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
     }),
   ])
 
@@ -73,15 +79,11 @@ export default async function ProjectDashboard({ params }: PageProps) {
           templates={templates}
         />
 
-        {/* Teams section — Task 8 */}
-        <section className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
-            Teams
-          </h2>
-          <p className="mt-2 text-sm text-zinc-400">
-            Organize collaborators into teams with defined workflows and pipelines.
-          </p>
-        </section>
+        <TeamSection
+          projectId={id}
+          teams={teams as { id: string; name: string; collaboratorOrder: { collaboratorIds: string[] } }[]}
+          collaborators={collaborators}
+        />
 
         {/* Tasks section — Task 12 */}
         <section className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
