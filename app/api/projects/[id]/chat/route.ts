@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyProjectAccess } from '@/lib/auth'
+import { callChat } from '@/lib/anthropic'
 
 interface RouteContext {
   params: Promise<{ id: string }>
@@ -66,12 +67,28 @@ export async function POST(request: NextRequest, context: RouteContext) {
     select: { id: true, content: true, sender: true, mode: true, createdAt: true },
   })
 
-  // Stub AI response — Task 13 will add real Anthropic API call
+  // Get user's Anthropic token for the API call
+  const user = await prisma.user.findUnique({
+    where: { id: access.userId },
+    select: { anthropicToken: true },
+  })
+
+  let aiContent: string
+  if (user?.anthropicToken) {
+    try {
+      aiContent = await callChat(user.anthropicToken, content)
+    } catch {
+      aiContent = 'Sorry, I encountered an error processing your message. Please try again.'
+    }
+  } else {
+    aiContent = 'Please connect your Anthropic account first to chat with AI.'
+  }
+
   const aiMessage = await prisma.chatMessage.create({
     data: {
       projectId: id,
       userId: access.userId,
-      content: `[Stub] I received your message: "${content.slice(0, 100)}${content.length > 100 ? '...' : ''}"`,
+      content: aiContent,
       sender: 'claude',
       mode: 'no_skill',
     },

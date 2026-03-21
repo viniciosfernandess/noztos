@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db'
+import { callAnthropic } from '@/lib/anthropic'
 
 // Team Pipeline Engine
 //
@@ -39,6 +40,7 @@ export async function startPipeline(taskId: string): Promise<PipelineResult> {
     where: { id: taskId },
     include: {
       team: true,
+      user: { select: { anthropicToken: true } },
     },
   })
 
@@ -52,6 +54,10 @@ export async function startPipeline(taskId: string): Promise<PipelineResult> {
 
   if (task.status !== 'pending' && task.status !== 'queue') {
     return { status: 'error', message: `Task is in ${task.status} status, cannot start` }
+  }
+
+  if (!task.user.anthropicToken) {
+    return { status: 'error', message: 'User has no Anthropic token. Connect your Anthropic account first.' }
   }
 
   const order = task.team.collaboratorOrder as CollaboratorOrder
@@ -83,21 +89,19 @@ export async function startPipeline(taskId: string): Promise<PipelineResult> {
   })
 
   // Run the first collaborator step
-  return advancePipeline(taskId, iteration.id, 0)
+  return advancePipeline(taskId, iteration.id, 0, task.user.anthropicToken)
 }
 
 /**
  * Advance the pipeline to the next collaborator.
- * Creates a TaskSkillLog entry for the current collaborator.
- *
- * In this version, the actual AI call is a stub — Task 13 (Task Execution Engine)
- * will plug in the Anthropic API call. For now, we create the log entry with
- * placeholder output and advance the pipeline.
+ * Calls the Anthropic API with the collaborator's skillMd as system prompt
+ * and the previous collaborator's output (or task instruction) as user message.
  */
 export async function advancePipeline(
   taskId: string,
   iterationId: string,
-  collaboratorIndex: number
+  collaboratorIndex: number,
+  encryptedToken: string
 ): Promise<PipelineResult> {
   const task = await prisma.task.findUnique({
     where: { id: taskId },
@@ -150,7 +154,41 @@ export async function advancePipeline(
     inputReceived = task.instruction
   }
 
-  // Create skill log entry (stub — Task 13 will add real AI execution)
+  const userMessage = inputReceived ?? task.instruction ?? task.name
+  const systemPrompt = collaborator.skillMd || `You are ${collaborator.name}. ${collaborator.phase === 'reviewer' ? 'Review the work and either approve or reject with specific feedback.' : 'Complete the assigned task thoroughly.'}`
+
+  // Call Anthropic API
+  let thoughts = ''
+  let conclusion = ''
+  let passedForward = ''
+  let approved: boolean | null = null
+
+  try {
+    const result = await callAnthropic({
+      encryptedToken,
+      systemPrompt,
+      userMessage,
+    })
+
+    thoughts = result.text
+    conclusion = result.text
+    passedForward = result.text
+
+    // For reviewers, check if the response indicates approval or rejection
+    if (collaborator.phase === 'reviewer') {
+      const lowerText = result.text.toLowerCase()
+      const hasReject = lowerText.includes('reject') || lowerText.includes('revision needed') || lowerText.includes('needs work')
+      const hasApprove = lowerText.includes('approve') || lowerText.includes('approved') || lowerText.includes('looks good')
+      approved = hasApprove && !hasReject
+    }
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : 'Unknown error'
+    thoughts = `Error calling Anthropic API: ${errorMsg}`
+    conclusion = thoughts
+    passedForward = inputReceived ?? ''
+  }
+
+  // Create skill log entry
   const skillLog = await prisma.taskSkillLog.create({
     data: {
       taskId,
@@ -158,10 +196,10 @@ export async function advancePipeline(
       collaboratorId: collaborator.id,
       collaboratorName: collaborator.name,
       inputReceived,
-      thoughts: `[Stub] ${collaborator.name} is processing...`,
-      conclusion: `[Stub] ${collaborator.name} completed their step.`,
-      passedForward: `[Output from ${collaborator.name}] ${inputReceived ?? task.instruction ?? ''}`,
-      approved: collaborator.phase === 'reviewer' ? true : null,
+      thoughts,
+      conclusion,
+      passedForward,
+      approved,
       finishedAt: new Date(),
     },
   })
@@ -174,8 +212,13 @@ export async function advancePipeline(
     },
   })
 
+  // If reviewer rejected, handle rejection
+  if (collaborator.phase === 'reviewer' && approved === false) {
+    return rejectPipeline(taskId, collaboratorId, conclusion)
+  }
+
   // Auto-advance to next collaborator
-  return advancePipeline(taskId, iterationId, collaboratorIndex + 1)
+  return advancePipeline(taskId, iterationId, collaboratorIndex + 1, encryptedToken)
 }
 
 /**
@@ -195,20 +238,6 @@ export async function rejectPipeline(
   if (!task || !task.team) {
     return { status: 'error', message: 'Task or team not found' }
   }
-
-  // Update the current skill log with rejection
-  await prisma.taskSkillLog.updateMany({
-    where: {
-      taskId,
-      collaboratorId: rejectedByCollaboratorId,
-      approved: null,
-    },
-    data: {
-      approved: false,
-      rejectionReason,
-      finishedAt: new Date(),
-    },
-  })
 
   // Count iterations for new iteration number
   const iterationCount = await prisma.taskIteration.count({
