@@ -2,12 +2,14 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { SkillEditor } from './SkillEditor'
 
 interface Collaborator {
   id: string
   name: string
   description: string
   phase: string
+  skillMd: string
 }
 
 interface Template {
@@ -27,6 +29,7 @@ export function CollaboratorSection({ projectId, collaborators, templates }: Col
   const router = useRouter()
   const [adding, setAdding] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [editingSkill, setEditingSkill] = useState<Collaborator | null>(null)
 
   async function addFromTemplate(templateId: string) {
     setAdding(true)
@@ -89,13 +92,21 @@ export function CollaboratorSection({ projectId, collaborators, templates }: Col
                   {c.description}
                 </p>
               </div>
-              <button
-                onClick={() => removeCollaborator(c.id)}
-                disabled={deleting === c.id}
-                className="text-xs text-zinc-400 transition-colors hover:text-red-500 disabled:opacity-50"
-              >
-                {deleting === c.id ? 'Removing...' : 'Remove'}
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setEditingSkill(c)}
+                  className="text-xs text-zinc-500 transition-colors hover:text-zinc-900 dark:hover:text-zinc-50"
+                >
+                  Edit Skill
+                </button>
+                <button
+                  onClick={() => removeCollaborator(c.id)}
+                  disabled={deleting === c.id}
+                  className="text-xs text-zinc-400 transition-colors hover:text-red-500 disabled:opacity-50"
+                >
+                  {deleting === c.id ? 'Removing...' : 'Remove'}
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -119,6 +130,20 @@ export function CollaboratorSection({ projectId, collaborators, templates }: Col
             ))}
           </div>
         </div>
+      )}
+
+      {editingSkill && (
+        <SkillEditor
+          projectId={projectId}
+          collaboratorId={editingSkill.id}
+          collaboratorName={editingSkill.name}
+          initialSkillMd={editingSkill.skillMd}
+          onClose={() => setEditingSkill(null)}
+          onSaved={() => {
+            setEditingSkill(null)
+            router.refresh()
+          }}
+        />
       )}
     </section>
   )

@@ -41,7 +41,7 @@ export default async function ProjectDashboard({ params }: PageProps) {
   const [collaborators, templates, teams, chatMessages] = await Promise.all([
     prisma.collaborator.findMany({
       where: { projectId: id, isActive: true },
-      select: { id: true, name: true, description: true, phase: true },
+      select: { id: true, name: true, description: true, phase: true, skillMd: true },
       orderBy: { createdAt: 'asc' },
     }),
     prisma.collaborator.findMany({
