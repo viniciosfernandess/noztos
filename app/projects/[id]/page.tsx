@@ -6,6 +6,7 @@ import { getSessionUserId } from '@/lib/session'
 import { CollaboratorSection } from '@/components/CollaboratorSection'
 import { TeamSection } from '@/components/TeamSection'
 import { ChatSection } from '@/components/ChatSection'
+import { TaskSection } from '@/components/TaskSection'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -38,7 +39,7 @@ export default async function ProjectDashboard({ params }: PageProps) {
   }
 
   // Fetch project data in parallel
-  const [collaborators, templates, teams, chatMessages] = await Promise.all([
+  const [collaborators, templates, teams, chatMessages, tasks] = await Promise.all([
     prisma.collaborator.findMany({
       where: { projectId: id, isActive: true },
       select: { id: true, name: true, description: true, phase: true, skillMd: true },
@@ -59,6 +60,20 @@ export default async function ProjectDashboard({ params }: PageProps) {
       select: { id: true, content: true, sender: true, createdAt: true },
       orderBy: { createdAt: 'asc' },
       take: 100,
+    }),
+    prisma.task.findMany({
+      where: { projectId: id },
+      select: {
+        id: true,
+        name: true,
+        instruction: true,
+        status: true,
+        executorType: true,
+        executorId: true,
+        pausedAtEmployee: true,
+        createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
     }),
   ])
 
@@ -92,15 +107,11 @@ export default async function ProjectDashboard({ params }: PageProps) {
           collaborators={collaborators}
         />
 
-        {/* Tasks section — Task 12 */}
-        <section className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
-            Tasks
-          </h2>
-          <p className="mt-2 text-sm text-zinc-400">
-            Work items assigned to teams. Create tasks to start getting things done.
-          </p>
-        </section>
+        <TaskSection
+          projectId={id}
+          tasks={tasks}
+          teams={teams}
+        />
 
         <ChatSection
           projectId={id}
