@@ -92,6 +92,14 @@ export default async function ProjectDashboard({ params }: PageProps) {
         {project.slackChannel && (
           <span className="text-sm text-zinc-400">{project.slackChannel}</span>
         )}
+        <div className="ml-auto">
+          <Link
+            href={`/projects/${id}/settings`}
+            className="text-sm text-zinc-500 transition-colors hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
+          >
+            Settings
+          </Link>
+        </div>
       </header>
 
       <main className="flex flex-1 w-full max-w-5xl mx-auto flex-col gap-6 px-6 py-8">
