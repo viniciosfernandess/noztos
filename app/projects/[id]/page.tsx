@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db'
 import { getSessionUserId } from '@/lib/session'
 import { CollaboratorSection } from '@/components/CollaboratorSection'
 import { TeamSection } from '@/components/TeamSection'
+import { ChatSection } from '@/components/ChatSection'
 
 interface PageProps {
   params: Promise<{ id: string }>
@@ -36,8 +37,8 @@ export default async function ProjectDashboard({ params }: PageProps) {
     notFound()
   }
 
-  // Fetch project collaborators, templates, and teams in parallel
-  const [collaborators, templates, teams] = await Promise.all([
+  // Fetch project data in parallel
+  const [collaborators, templates, teams, chatMessages] = await Promise.all([
     prisma.collaborator.findMany({
       where: { projectId: id, isActive: true },
       select: { id: true, name: true, description: true, phase: true },
@@ -52,6 +53,12 @@ export default async function ProjectDashboard({ params }: PageProps) {
       where: { projectId: id },
       select: { id: true, name: true, collaboratorOrder: true, createdAt: true },
       orderBy: { createdAt: 'asc' },
+    }),
+    prisma.chatMessage.findMany({
+      where: { projectId: id },
+      select: { id: true, content: true, sender: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+      take: 100,
     }),
   ])
 
@@ -95,15 +102,13 @@ export default async function ProjectDashboard({ params }: PageProps) {
           </p>
         </section>
 
-        {/* Chat section — Task 10 */}
-        <section className="rounded-xl border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
-            Chat
-          </h2>
-          <p className="mt-2 text-sm text-zinc-400">
-            Talk to your AI team. Give instructions, ask questions, review work.
-          </p>
-        </section>
+        <ChatSection
+          projectId={id}
+          initialMessages={chatMessages.map((m) => ({
+            ...m,
+            createdAt: m.createdAt.toISOString(),
+          }))}
+        />
       </main>
     </div>
   )
