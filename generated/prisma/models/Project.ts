@@ -31,6 +31,8 @@ export type ProjectMinAggregateOutputType = {
   repositoryPath: string | null
   slackChannel: string | null
   slackWebhook: string | null
+  queueStatus: string | null
+  lastActivityAt: Date | null
   createdAt: Date | null
 }
 
@@ -41,6 +43,8 @@ export type ProjectMaxAggregateOutputType = {
   repositoryPath: string | null
   slackChannel: string | null
   slackWebhook: string | null
+  queueStatus: string | null
+  lastActivityAt: Date | null
   createdAt: Date | null
 }
 
@@ -51,6 +55,8 @@ export type ProjectCountAggregateOutputType = {
   repositoryPath: number
   slackChannel: number
   slackWebhook: number
+  queueStatus: number
+  lastActivityAt: number
   createdAt: number
   _all: number
 }
@@ -63,6 +69,8 @@ export type ProjectMinAggregateInputType = {
   repositoryPath?: true
   slackChannel?: true
   slackWebhook?: true
+  queueStatus?: true
+  lastActivityAt?: true
   createdAt?: true
 }
 
@@ -73,6 +81,8 @@ export type ProjectMaxAggregateInputType = {
   repositoryPath?: true
   slackChannel?: true
   slackWebhook?: true
+  queueStatus?: true
+  lastActivityAt?: true
   createdAt?: true
 }
 
@@ -83,6 +93,8 @@ export type ProjectCountAggregateInputType = {
   repositoryPath?: true
   slackChannel?: true
   slackWebhook?: true
+  queueStatus?: true
+  lastActivityAt?: true
   createdAt?: true
   _all?: true
 }
@@ -166,6 +178,8 @@ export type ProjectGroupByOutputType = {
   repositoryPath: string | null
   slackChannel: string | null
   slackWebhook: string | null
+  queueStatus: string
+  lastActivityAt: Date | null
   createdAt: Date
   _count: ProjectCountAggregateOutputType | null
   _min: ProjectMinAggregateOutputType | null
@@ -197,6 +211,8 @@ export type ProjectWhereInput = {
   repositoryPath?: Prisma.StringNullableFilter<"Project"> | string | null
   slackChannel?: Prisma.StringNullableFilter<"Project"> | string | null
   slackWebhook?: Prisma.StringNullableFilter<"Project"> | string | null
+  queueStatus?: Prisma.StringFilter<"Project"> | string
+  lastActivityAt?: Prisma.DateTimeNullableFilter<"Project"> | Date | string | null
   createdAt?: Prisma.DateTimeFilter<"Project"> | Date | string
   user?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>
   repository?: Prisma.XOR<Prisma.RepositoryNullableScalarRelationFilter, Prisma.RepositoryWhereInput> | null
@@ -218,6 +234,8 @@ export type ProjectOrderByWithRelationInput = {
   repositoryPath?: Prisma.SortOrderInput | Prisma.SortOrder
   slackChannel?: Prisma.SortOrderInput | Prisma.SortOrder
   slackWebhook?: Prisma.SortOrderInput | Prisma.SortOrder
+  queueStatus?: Prisma.SortOrder
+  lastActivityAt?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   user?: Prisma.UserOrderByWithRelationInput
   repository?: Prisma.RepositoryOrderByWithRelationInput
@@ -242,6 +260,8 @@ export type ProjectWhereUniqueInput = Prisma.AtLeast<{
   repositoryPath?: Prisma.StringNullableFilter<"Project"> | string | null
   slackChannel?: Prisma.StringNullableFilter<"Project"> | string | null
   slackWebhook?: Prisma.StringNullableFilter<"Project"> | string | null
+  queueStatus?: Prisma.StringFilter<"Project"> | string
+  lastActivityAt?: Prisma.DateTimeNullableFilter<"Project"> | Date | string | null
   createdAt?: Prisma.DateTimeFilter<"Project"> | Date | string
   user?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>
   repository?: Prisma.XOR<Prisma.RepositoryNullableScalarRelationFilter, Prisma.RepositoryWhereInput> | null
@@ -263,6 +283,8 @@ export type ProjectOrderByWithAggregationInput = {
   repositoryPath?: Prisma.SortOrderInput | Prisma.SortOrder
   slackChannel?: Prisma.SortOrderInput | Prisma.SortOrder
   slackWebhook?: Prisma.SortOrderInput | Prisma.SortOrder
+  queueStatus?: Prisma.SortOrder
+  lastActivityAt?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   _count?: Prisma.ProjectCountOrderByAggregateInput
   _max?: Prisma.ProjectMaxOrderByAggregateInput
@@ -279,6 +301,8 @@ export type ProjectScalarWhereWithAggregatesInput = {
   repositoryPath?: Prisma.StringNullableWithAggregatesFilter<"Project"> | string | null
   slackChannel?: Prisma.StringNullableWithAggregatesFilter<"Project"> | string | null
   slackWebhook?: Prisma.StringNullableWithAggregatesFilter<"Project"> | string | null
+  queueStatus?: Prisma.StringWithAggregatesFilter<"Project"> | string
+  lastActivityAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Project"> | Date | string | null
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"Project"> | Date | string
 }
 
@@ -288,6 +312,8 @@ export type ProjectCreateInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
   user: Prisma.UserCreateNestedOneWithoutProjectsInput
   repository?: Prisma.RepositoryCreateNestedOneWithoutProjectInput
@@ -309,6 +335,8 @@ export type ProjectUncheckedCreateInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
   repository?: Prisma.RepositoryUncheckedCreateNestedOneWithoutProjectInput
   collaborators?: Prisma.CollaboratorUncheckedCreateNestedManyWithoutProjectInput
@@ -328,6 +356,8 @@ export type ProjectUpdateInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   user?: Prisma.UserUpdateOneRequiredWithoutProjectsNestedInput
   repository?: Prisma.RepositoryUpdateOneWithoutProjectNestedInput
@@ -349,6 +379,8 @@ export type ProjectUncheckedUpdateInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   repository?: Prisma.RepositoryUncheckedUpdateOneWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUncheckedUpdateManyWithoutProjectNestedInput
@@ -369,6 +401,8 @@ export type ProjectCreateManyInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
 }
 
@@ -378,6 +412,8 @@ export type ProjectUpdateManyMutationInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -388,6 +424,8 @@ export type ProjectUncheckedUpdateManyInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -408,6 +446,8 @@ export type ProjectCountOrderByAggregateInput = {
   repositoryPath?: Prisma.SortOrder
   slackChannel?: Prisma.SortOrder
   slackWebhook?: Prisma.SortOrder
+  queueStatus?: Prisma.SortOrder
+  lastActivityAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
 }
 
@@ -418,6 +458,8 @@ export type ProjectMaxOrderByAggregateInput = {
   repositoryPath?: Prisma.SortOrder
   slackChannel?: Prisma.SortOrder
   slackWebhook?: Prisma.SortOrder
+  queueStatus?: Prisma.SortOrder
+  lastActivityAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
 }
 
@@ -428,6 +470,8 @@ export type ProjectMinOrderByAggregateInput = {
   repositoryPath?: Prisma.SortOrder
   slackChannel?: Prisma.SortOrder
   slackWebhook?: Prisma.SortOrder
+  queueStatus?: Prisma.SortOrder
+  lastActivityAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
 }
 
@@ -481,6 +525,10 @@ export type ProjectUncheckedUpdateManyWithoutUserNestedInput = {
   update?: Prisma.ProjectUpdateWithWhereUniqueWithoutUserInput | Prisma.ProjectUpdateWithWhereUniqueWithoutUserInput[]
   updateMany?: Prisma.ProjectUpdateManyWithWhereWithoutUserInput | Prisma.ProjectUpdateManyWithWhereWithoutUserInput[]
   deleteMany?: Prisma.ProjectScalarWhereInput | Prisma.ProjectScalarWhereInput[]
+}
+
+export type NullableDateTimeFieldUpdateOperationsInput = {
+  set?: Date | string | null
 }
 
 export type ProjectCreateNestedOneWithoutRepositoryInput = {
@@ -631,6 +679,8 @@ export type ProjectCreateWithoutUserInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
   repository?: Prisma.RepositoryCreateNestedOneWithoutProjectInput
   collaborators?: Prisma.CollaboratorCreateNestedManyWithoutProjectInput
@@ -650,6 +700,8 @@ export type ProjectUncheckedCreateWithoutUserInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
   repository?: Prisma.RepositoryUncheckedCreateNestedOneWithoutProjectInput
   collaborators?: Prisma.CollaboratorUncheckedCreateNestedManyWithoutProjectInput
@@ -699,6 +751,8 @@ export type ProjectScalarWhereInput = {
   repositoryPath?: Prisma.StringNullableFilter<"Project"> | string | null
   slackChannel?: Prisma.StringNullableFilter<"Project"> | string | null
   slackWebhook?: Prisma.StringNullableFilter<"Project"> | string | null
+  queueStatus?: Prisma.StringFilter<"Project"> | string
+  lastActivityAt?: Prisma.DateTimeNullableFilter<"Project"> | Date | string | null
   createdAt?: Prisma.DateTimeFilter<"Project"> | Date | string
 }
 
@@ -708,6 +762,8 @@ export type ProjectCreateWithoutRepositoryInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
   user: Prisma.UserCreateNestedOneWithoutProjectsInput
   collaborators?: Prisma.CollaboratorCreateNestedManyWithoutProjectInput
@@ -728,6 +784,8 @@ export type ProjectUncheckedCreateWithoutRepositoryInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
   collaborators?: Prisma.CollaboratorUncheckedCreateNestedManyWithoutProjectInput
   teams?: Prisma.TeamUncheckedCreateNestedManyWithoutProjectInput
@@ -762,6 +820,8 @@ export type ProjectUpdateWithoutRepositoryInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   user?: Prisma.UserUpdateOneRequiredWithoutProjectsNestedInput
   collaborators?: Prisma.CollaboratorUpdateManyWithoutProjectNestedInput
@@ -782,6 +842,8 @@ export type ProjectUncheckedUpdateWithoutRepositoryInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   collaborators?: Prisma.CollaboratorUncheckedUpdateManyWithoutProjectNestedInput
   teams?: Prisma.TeamUncheckedUpdateManyWithoutProjectNestedInput
@@ -800,6 +862,8 @@ export type ProjectCreateWithoutCollaboratorsInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
   user: Prisma.UserCreateNestedOneWithoutProjectsInput
   repository?: Prisma.RepositoryCreateNestedOneWithoutProjectInput
@@ -820,6 +884,8 @@ export type ProjectUncheckedCreateWithoutCollaboratorsInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
   repository?: Prisma.RepositoryUncheckedCreateNestedOneWithoutProjectInput
   teams?: Prisma.TeamUncheckedCreateNestedManyWithoutProjectInput
@@ -854,6 +920,8 @@ export type ProjectUpdateWithoutCollaboratorsInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   user?: Prisma.UserUpdateOneRequiredWithoutProjectsNestedInput
   repository?: Prisma.RepositoryUpdateOneWithoutProjectNestedInput
@@ -874,6 +942,8 @@ export type ProjectUncheckedUpdateWithoutCollaboratorsInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   repository?: Prisma.RepositoryUncheckedUpdateOneWithoutProjectNestedInput
   teams?: Prisma.TeamUncheckedUpdateManyWithoutProjectNestedInput
@@ -892,6 +962,8 @@ export type ProjectCreateWithoutTeamsInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
   user: Prisma.UserCreateNestedOneWithoutProjectsInput
   repository?: Prisma.RepositoryCreateNestedOneWithoutProjectInput
@@ -912,6 +984,8 @@ export type ProjectUncheckedCreateWithoutTeamsInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
   repository?: Prisma.RepositoryUncheckedCreateNestedOneWithoutProjectInput
   collaborators?: Prisma.CollaboratorUncheckedCreateNestedManyWithoutProjectInput
@@ -946,6 +1020,8 @@ export type ProjectUpdateWithoutTeamsInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   user?: Prisma.UserUpdateOneRequiredWithoutProjectsNestedInput
   repository?: Prisma.RepositoryUpdateOneWithoutProjectNestedInput
@@ -966,6 +1042,8 @@ export type ProjectUncheckedUpdateWithoutTeamsInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   repository?: Prisma.RepositoryUncheckedUpdateOneWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUncheckedUpdateManyWithoutProjectNestedInput
@@ -984,6 +1062,8 @@ export type ProjectCreateWithoutChatSessionsInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
   user: Prisma.UserCreateNestedOneWithoutProjectsInput
   repository?: Prisma.RepositoryCreateNestedOneWithoutProjectInput
@@ -1004,6 +1084,8 @@ export type ProjectUncheckedCreateWithoutChatSessionsInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
   repository?: Prisma.RepositoryUncheckedCreateNestedOneWithoutProjectInput
   collaborators?: Prisma.CollaboratorUncheckedCreateNestedManyWithoutProjectInput
@@ -1038,6 +1120,8 @@ export type ProjectUpdateWithoutChatSessionsInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   user?: Prisma.UserUpdateOneRequiredWithoutProjectsNestedInput
   repository?: Prisma.RepositoryUpdateOneWithoutProjectNestedInput
@@ -1058,6 +1142,8 @@ export type ProjectUncheckedUpdateWithoutChatSessionsInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   repository?: Prisma.RepositoryUncheckedUpdateOneWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUncheckedUpdateManyWithoutProjectNestedInput
@@ -1076,6 +1162,8 @@ export type ProjectCreateWithoutChatMessagesInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
   user: Prisma.UserCreateNestedOneWithoutProjectsInput
   repository?: Prisma.RepositoryCreateNestedOneWithoutProjectInput
@@ -1096,6 +1184,8 @@ export type ProjectUncheckedCreateWithoutChatMessagesInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
   repository?: Prisma.RepositoryUncheckedCreateNestedOneWithoutProjectInput
   collaborators?: Prisma.CollaboratorUncheckedCreateNestedManyWithoutProjectInput
@@ -1130,6 +1220,8 @@ export type ProjectUpdateWithoutChatMessagesInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   user?: Prisma.UserUpdateOneRequiredWithoutProjectsNestedInput
   repository?: Prisma.RepositoryUpdateOneWithoutProjectNestedInput
@@ -1150,6 +1242,8 @@ export type ProjectUncheckedUpdateWithoutChatMessagesInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   repository?: Prisma.RepositoryUncheckedUpdateOneWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUncheckedUpdateManyWithoutProjectNestedInput
@@ -1168,6 +1262,8 @@ export type ProjectCreateWithoutTasksInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
   user: Prisma.UserCreateNestedOneWithoutProjectsInput
   repository?: Prisma.RepositoryCreateNestedOneWithoutProjectInput
@@ -1188,6 +1284,8 @@ export type ProjectUncheckedCreateWithoutTasksInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
   repository?: Prisma.RepositoryUncheckedCreateNestedOneWithoutProjectInput
   collaborators?: Prisma.CollaboratorUncheckedCreateNestedManyWithoutProjectInput
@@ -1222,6 +1320,8 @@ export type ProjectUpdateWithoutTasksInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   user?: Prisma.UserUpdateOneRequiredWithoutProjectsNestedInput
   repository?: Prisma.RepositoryUpdateOneWithoutProjectNestedInput
@@ -1242,6 +1342,8 @@ export type ProjectUncheckedUpdateWithoutTasksInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   repository?: Prisma.RepositoryUncheckedUpdateOneWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUncheckedUpdateManyWithoutProjectNestedInput
@@ -1260,6 +1362,8 @@ export type ProjectCreateWithoutSlackLogsInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
   user: Prisma.UserCreateNestedOneWithoutProjectsInput
   repository?: Prisma.RepositoryCreateNestedOneWithoutProjectInput
@@ -1280,6 +1384,8 @@ export type ProjectUncheckedCreateWithoutSlackLogsInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
   repository?: Prisma.RepositoryUncheckedCreateNestedOneWithoutProjectInput
   collaborators?: Prisma.CollaboratorUncheckedCreateNestedManyWithoutProjectInput
@@ -1314,6 +1420,8 @@ export type ProjectUpdateWithoutSlackLogsInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   user?: Prisma.UserUpdateOneRequiredWithoutProjectsNestedInput
   repository?: Prisma.RepositoryUpdateOneWithoutProjectNestedInput
@@ -1334,6 +1442,8 @@ export type ProjectUncheckedUpdateWithoutSlackLogsInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   repository?: Prisma.RepositoryUncheckedUpdateOneWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUncheckedUpdateManyWithoutProjectNestedInput
@@ -1352,6 +1462,8 @@ export type ProjectCreateWithoutResourceUsageInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
   user: Prisma.UserCreateNestedOneWithoutProjectsInput
   repository?: Prisma.RepositoryCreateNestedOneWithoutProjectInput
@@ -1372,6 +1484,8 @@ export type ProjectUncheckedCreateWithoutResourceUsageInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
   repository?: Prisma.RepositoryUncheckedCreateNestedOneWithoutProjectInput
   collaborators?: Prisma.CollaboratorUncheckedCreateNestedManyWithoutProjectInput
@@ -1406,6 +1520,8 @@ export type ProjectUpdateWithoutResourceUsageInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   user?: Prisma.UserUpdateOneRequiredWithoutProjectsNestedInput
   repository?: Prisma.RepositoryUpdateOneWithoutProjectNestedInput
@@ -1426,6 +1542,8 @@ export type ProjectUncheckedUpdateWithoutResourceUsageInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   repository?: Prisma.RepositoryUncheckedUpdateOneWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUncheckedUpdateManyWithoutProjectNestedInput
@@ -1444,6 +1562,8 @@ export type ProjectCreateWithoutTeamRunsInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
   user: Prisma.UserCreateNestedOneWithoutProjectsInput
   repository?: Prisma.RepositoryCreateNestedOneWithoutProjectInput
@@ -1464,6 +1584,8 @@ export type ProjectUncheckedCreateWithoutTeamRunsInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
   repository?: Prisma.RepositoryUncheckedCreateNestedOneWithoutProjectInput
   collaborators?: Prisma.CollaboratorUncheckedCreateNestedManyWithoutProjectInput
@@ -1498,6 +1620,8 @@ export type ProjectUpdateWithoutTeamRunsInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   user?: Prisma.UserUpdateOneRequiredWithoutProjectsNestedInput
   repository?: Prisma.RepositoryUpdateOneWithoutProjectNestedInput
@@ -1518,6 +1642,8 @@ export type ProjectUncheckedUpdateWithoutTeamRunsInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   repository?: Prisma.RepositoryUncheckedUpdateOneWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUncheckedUpdateManyWithoutProjectNestedInput
@@ -1536,6 +1662,8 @@ export type ProjectCreateWithoutBuildSessionsInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
   user: Prisma.UserCreateNestedOneWithoutProjectsInput
   repository?: Prisma.RepositoryCreateNestedOneWithoutProjectInput
@@ -1556,6 +1684,8 @@ export type ProjectUncheckedCreateWithoutBuildSessionsInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
   repository?: Prisma.RepositoryUncheckedCreateNestedOneWithoutProjectInput
   collaborators?: Prisma.CollaboratorUncheckedCreateNestedManyWithoutProjectInput
@@ -1590,6 +1720,8 @@ export type ProjectUpdateWithoutBuildSessionsInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   user?: Prisma.UserUpdateOneRequiredWithoutProjectsNestedInput
   repository?: Prisma.RepositoryUpdateOneWithoutProjectNestedInput
@@ -1610,6 +1742,8 @@ export type ProjectUncheckedUpdateWithoutBuildSessionsInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   repository?: Prisma.RepositoryUncheckedUpdateOneWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUncheckedUpdateManyWithoutProjectNestedInput
@@ -1628,6 +1762,8 @@ export type ProjectCreateManyUserInput = {
   repositoryPath?: string | null
   slackChannel?: string | null
   slackWebhook?: string | null
+  queueStatus?: string
+  lastActivityAt?: Date | string | null
   createdAt?: Date | string
 }
 
@@ -1637,6 +1773,8 @@ export type ProjectUpdateWithoutUserInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   repository?: Prisma.RepositoryUpdateOneWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUpdateManyWithoutProjectNestedInput
@@ -1656,6 +1794,8 @@ export type ProjectUncheckedUpdateWithoutUserInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   repository?: Prisma.RepositoryUncheckedUpdateOneWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUncheckedUpdateManyWithoutProjectNestedInput
@@ -1675,6 +1815,8 @@ export type ProjectUncheckedUpdateManyWithoutUserInput = {
   repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -1788,6 +1930,8 @@ export type ProjectSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs 
   repositoryPath?: boolean
   slackChannel?: boolean
   slackWebhook?: boolean
+  queueStatus?: boolean
+  lastActivityAt?: boolean
   createdAt?: boolean
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
   repository?: boolean | Prisma.Project$repositoryArgs<ExtArgs>
@@ -1810,6 +1954,8 @@ export type ProjectSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exten
   repositoryPath?: boolean
   slackChannel?: boolean
   slackWebhook?: boolean
+  queueStatus?: boolean
+  lastActivityAt?: boolean
   createdAt?: boolean
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["project"]>
@@ -1821,6 +1967,8 @@ export type ProjectSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exten
   repositoryPath?: boolean
   slackChannel?: boolean
   slackWebhook?: boolean
+  queueStatus?: boolean
+  lastActivityAt?: boolean
   createdAt?: boolean
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["project"]>
@@ -1832,10 +1980,12 @@ export type ProjectSelectScalar = {
   repositoryPath?: boolean
   slackChannel?: boolean
   slackWebhook?: boolean
+  queueStatus?: boolean
+  lastActivityAt?: boolean
   createdAt?: boolean
 }
 
-export type ProjectOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "userId" | "name" | "repositoryPath" | "slackChannel" | "slackWebhook" | "createdAt", ExtArgs["result"]["project"]>
+export type ProjectOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "userId" | "name" | "repositoryPath" | "slackChannel" | "slackWebhook" | "queueStatus" | "lastActivityAt" | "createdAt", ExtArgs["result"]["project"]>
 export type ProjectInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
   repository?: boolean | Prisma.Project$repositoryArgs<ExtArgs>
@@ -1879,6 +2029,8 @@ export type $ProjectPayload<ExtArgs extends runtime.Types.Extensions.InternalArg
     repositoryPath: string | null
     slackChannel: string | null
     slackWebhook: string | null
+    queueStatus: string
+    lastActivityAt: Date | null
     createdAt: Date
   }, ExtArgs["result"]["project"]>
   composites: {}
@@ -2320,6 +2472,8 @@ export interface ProjectFieldRefs {
   readonly repositoryPath: Prisma.FieldRef<"Project", 'String'>
   readonly slackChannel: Prisma.FieldRef<"Project", 'String'>
   readonly slackWebhook: Prisma.FieldRef<"Project", 'String'>
+  readonly queueStatus: Prisma.FieldRef<"Project", 'String'>
+  readonly lastActivityAt: Prisma.FieldRef<"Project", 'DateTime'>
   readonly createdAt: Prisma.FieldRef<"Project", 'DateTime'>
 }
     

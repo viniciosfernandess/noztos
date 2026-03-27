@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { ChatTabs } from './ChatTabs'
+import { ReportBadge } from './ChatReport'
+import type { ChatReport } from '@/lib/report-types'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -35,6 +37,7 @@ interface Message {
   sender: string
   mode: string
   activeSkillId: string | null
+  report: Record<string, unknown> | null
   createdAt: string
 }
 
@@ -239,6 +242,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams }: WorkPanelProps) 
 
       {/* Right: Mini map */}
       <MiniMap
+        projectId={projectId}
         activeMode={activeMode}
         activeEmployee={activeEmployee}
         activeTeam={activeTeam}
@@ -391,6 +395,12 @@ function FileTree({ projectId }: { projectId: string }) {
   const [renameValue, setRenameValue] = useState('')
   const [deleteModal, setDeleteModal] = useState<string | null>(null)
   const [noChatModal, setNoChatModal] = useState(false)
+  const [showChangesPanel, setShowChangesPanel] = useState(false)
+  const [reviewingFile, setReviewingFile] = useState<string | null>(null)
+  const [revertingAll, setRevertingAll] = useState(false)
+  const [acceptingAll, setAcceptingAll] = useState(false)
+  const [showReviewModal, setShowReviewModal] = useState(false)
+  const [reviewFilePath, setReviewFilePath] = useState<string | null>(null)
   const creatingRef = useRef<HTMLInputElement>(null)
 
   function fetchFiles() {
@@ -658,6 +668,152 @@ function FileTree({ projectId }: { projectId: string }) {
           <TreeNode node={tree} depth={0} selectedPath={selectedPath} onSelect={handleSelectFile} collapseKey={collapseKey} onContextMenu={handleContextMenu} onMove={handleMoveFile} />
         )}
       </div>
+
+      {/* Changes bar + review panel */}
+      {modifiedFiles.length > 0 && (
+        <div className="shrink-0 border-t border-white/15">
+          {/* Toggle bar */}
+          <button
+            onClick={() => setShowChangesPanel(!showChangesPanel)}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-white/5"
+          >
+            <svg className={`h-3 w-3 text-zinc-500 transition-transform ${showChangesPanel ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
+            </svg>
+            <span className="text-[11px] font-semibold text-amber-400">{modifiedFiles.length} change{modifiedFiles.length !== 1 ? 's' : ''}</span>
+            <div className="flex-1" />
+            {/* Accept all */}
+            <span
+              onClick={(e) => {
+                e.stopPropagation()
+                if (acceptingAll) return
+                setAcceptingAll(true)
+                Promise.all(modifiedFiles.map((f) =>
+                  fetch(`/api/projects/${projectId}/repository/files`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: f.path, action: 'accept' }),
+                  })
+                )).then(() => { fetchFiles(); setAcceptingAll(false); setShowChangesPanel(false) })
+                  .catch(() => setAcceptingAll(false))
+              }}
+              className="text-[10px] text-emerald-400 hover:text-emerald-300"
+            >
+              {acceptingAll ? 'Accepting...' : 'Accept All'}
+            </span>
+            <span className="text-zinc-600">·</span>
+            {/* Revert all */}
+            <span
+              onClick={(e) => {
+                e.stopPropagation()
+                if (revertingAll) return
+                setRevertingAll(true)
+                fetch(`/api/projects/${projectId}/repository/files/revert-all`, { method: 'POST' })
+                  .then(() => { fetchFiles(); setRevertingAll(false); setShowChangesPanel(false) })
+                  .catch(() => setRevertingAll(false))
+              }}
+              className="text-[10px] text-red-400 hover:text-red-300"
+            >
+              {revertingAll ? 'Reverting...' : 'Revert All'}
+            </span>
+          </button>
+
+          {/* Expanded panel — file list */}
+          {showChangesPanel && (
+            <div className="border-t border-white/10">
+              {/* Review all button */}
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowReviewModal(true); setReviewFilePath(null) }}
+                className="flex w-full items-center justify-center gap-1.5 border-b border-white/10 px-3 py-1.5 text-[10px] font-medium text-violet-400 hover:bg-violet-500/5"
+              >
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m5.231 13.888L8.25 21v-3.375C5.25 14.437 3 11.25 3 8.25 3 5.108 5.108 3 8.25 3h7.5C18.892 3 21 5.108 21 8.25c0 3-2.25 6.188-5.25 9.375z" />
+                </svg>
+                Review All Changes
+              </button>
+              {/* File list */}
+              <div className="max-h-44 overflow-y-auto px-1 py-1">
+                {modifiedFiles.map((f) => {
+                  const fileName = f.path.split('/').pop() ?? f.path
+                  return (
+                    <div
+                      key={f.id}
+                      className={`group flex items-center gap-2 rounded px-2 py-1.5 ${
+                        reviewingFile === f.id ? 'bg-white/10' : 'hover:bg-white/5'
+                      }`}
+                    >
+                      <span className={`text-[10px] font-mono font-bold ${f.isNew ? 'text-emerald-400' : 'text-amber-400'}`}>{f.isNew ? 'U' : 'M'}</span>
+                      <button
+                        onClick={() => { setReviewFilePath(f.path); setShowReviewModal(true) }}
+                        className="min-w-0 flex-1 text-left"
+                      >
+                        <p className="text-[10px] text-zinc-300 truncate">{fileName}</p>
+                        <p className="text-[8px] text-zinc-600 truncate">{f.path}</p>
+                      </button>
+                      {/* Accept */}
+                      <button
+                        onClick={() => {
+                          fetch(`/api/projects/${projectId}/repository/files`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ path: f.path, action: 'accept' }),
+                          }).then(() => fetchFiles())
+                        }}
+                        title="Accept change"
+                        className="hidden h-5 w-5 shrink-0 items-center justify-center rounded text-emerald-500 hover:bg-emerald-500/10 group-hover:flex"
+                      >
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                        </svg>
+                      </button>
+                      {/* Reject (revert) */}
+                      <button
+                        onClick={() => {
+                          fetch(`/api/projects/${projectId}/repository/files`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ path: f.path, action: 'revert' }),
+                          }).then(() => fetchFiles())
+                        }}
+                        title="Revert change"
+                        className="hidden h-5 w-5 shrink-0 items-center justify-center rounded text-red-400 hover:bg-red-500/10 group-hover:flex"
+                      >
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+                        </svg>
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Review diff modal */}
+      {showReviewModal && (
+        <ChangesReviewModal
+          projectId={projectId}
+          files={modifiedFiles}
+          initialFile={reviewFilePath}
+          onAccept={(path) => {
+            fetch(`/api/projects/${projectId}/repository/files`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ path, action: 'accept' }),
+            }).then(() => fetchFiles())
+          }}
+          onRevert={(path) => {
+            fetch(`/api/projects/${projectId}/repository/files`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ path, action: 'revert' }),
+            }).then(() => fetchFiles())
+          }}
+          onClose={() => { setShowReviewModal(false); setReviewFilePath(null) }}
+        />
+      )}
 
       {/* Right-click context menu */}
       {contextMenu && (
@@ -1098,6 +1254,7 @@ function ChatPanel({
   const [showToolbarMenu, setShowToolbarMenu] = useState(false)
   const [showContextPicker, setShowContextPicker] = useState(false)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
+  const [showReminderModal, setShowReminderModal] = useState(false)
   const [selectedModel, setSelectedModel] = useState<string>('sonnet')
   const [thinkingLevel, setThinkingLevel] = useState<string>('off')
   const [contextPercentage, setContextPercentage] = useState(0)
@@ -1266,6 +1423,7 @@ function ChatPanel({
       sender: 'user',
       mode: activeMode,
       activeSkillId: activeSkillId,
+      report: null,
       createdAt: new Date().toISOString(),
     }
     setMessages((prev) => [...prev, userMsg])
@@ -1317,6 +1475,7 @@ function ChatPanel({
                 sender: 'system',
                 mode: 'team',
                 activeSkillId: null,
+                report: null,
                 createdAt: new Date().toISOString(),
               }])
               return
@@ -1375,6 +1534,7 @@ function ChatPanel({
             sender: r.sender,
             mode: r.mode,
             activeSkillId: r.activeSkillId,
+            report: null,
             createdAt: new Date().toISOString(),
           }))
           setMessages((prev) => [...prev, ...newMsgs])
@@ -1426,6 +1586,9 @@ function ChatPanel({
                 </div>
               )}
               <p className="whitespace-pre-wrap">{msg.content}</p>
+              {msg.report && (
+                <ReportBadge report={msg.report as unknown as ChatReport} projectId={projectId} sessionId={sessionId} />
+              )}
             </div>
           </div>
         ))}
@@ -1711,6 +1874,18 @@ function ChatPanel({
             {/* Spacer */}
             <div className="flex-1" />
 
+            {/* Reminder button */}
+            <button
+              type="button"
+              onClick={() => setShowReminderModal(true)}
+              title="Create reminder"
+              className="flex h-6 w-6 items-center justify-center rounded text-amber-400 transition-colors hover:bg-amber-500/10 hover:text-amber-300"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+              </svg>
+            </button>
+
             {/* Context usage circle */}
             <div
               className="relative"
@@ -1795,10 +1970,10 @@ function ChatPanel({
 
         {/* Clear conversation confirmation */}
         {showClearConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-            <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
-              <h3 className="text-sm font-semibold text-zinc-800">Clear conversation?</h3>
-              <p className="mt-1 text-xs text-zinc-500">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+            <div className="w-full max-w-sm rounded-xl border border-white/10 p-6 shadow-xl" style={{ backgroundColor: '#1a1a22' }}>
+              <h3 className="text-sm font-semibold text-zinc-100">Clear conversation?</h3>
+              <p className="mt-1 text-xs text-zinc-400">
                 This will start a fresh conversation. The current chat history will be saved but no longer visible here.
               </p>
               <div className="mt-4 flex gap-2">
@@ -1810,13 +1985,21 @@ function ChatPanel({
                 </button>
                 <button
                   onClick={() => setShowClearConfirm(false)}
-                  className="flex h-8 flex-1 items-center justify-center rounded-lg text-xs text-zinc-500 hover:text-zinc-800"
+                  className="flex h-8 flex-1 items-center justify-center rounded-lg text-xs text-zinc-400 hover:text-zinc-200"
                 >
                   Cancel
                 </button>
               </div>
             </div>
           </div>
+        )}
+
+        {/* Reminder modal */}
+        {showReminderModal && (
+          <ReminderModal
+            projectId={projectId}
+            onClose={() => setShowReminderModal(false)}
+          />
         )}
       </div>
     </div>
@@ -1829,6 +2012,480 @@ interface ChatReplyRaw {
   sender: string
   mode: string
   activeSkillId: string | null
+}
+
+// ── Changes Review Modal ──────────────────────────────────────────────────
+
+// Diff chunk: a group of consecutive changed lines with context
+interface DiffChunk {
+  startLineOrig: number
+  startLineCurr: number
+  lines: { type: 'context' | 'added' | 'removed'; lineNumOrig?: number; lineNumCurr?: number; text: string }[]
+}
+
+function computeChunks(originalLines: string[], currentLines: string[], contextSize: number = 3): DiffChunk[] {
+  // Find changed line indices
+  const maxLen = Math.max(originalLines.length, currentLines.length)
+  const changedIndices: number[] = []
+  for (let i = 0; i < maxLen; i++) {
+    const o = i < originalLines.length ? originalLines[i] : undefined
+    const c = i < currentLines.length ? currentLines[i] : undefined
+    if (o !== c) changedIndices.push(i)
+  }
+
+  if (changedIndices.length === 0) return []
+
+  // Group into ranges with context
+  const ranges: { start: number; end: number }[] = []
+  let rangeStart = changedIndices[0]
+  let rangeEnd = changedIndices[0]
+
+  for (let i = 1; i < changedIndices.length; i++) {
+    if (changedIndices[i] <= rangeEnd + contextSize * 2 + 1) {
+      rangeEnd = changedIndices[i]
+    } else {
+      ranges.push({ start: rangeStart, end: rangeEnd })
+      rangeStart = changedIndices[i]
+      rangeEnd = changedIndices[i]
+    }
+  }
+  ranges.push({ start: rangeStart, end: rangeEnd })
+
+  // Build chunks
+  return ranges.map((range) => {
+    const chunkStart = Math.max(0, range.start - contextSize)
+    const chunkEnd = Math.min(maxLen - 1, range.end + contextSize)
+    const lines: DiffChunk['lines'] = []
+
+    for (let i = chunkStart; i <= chunkEnd; i++) {
+      const origLine = i < originalLines.length ? originalLines[i] : undefined
+      const currLine = i < currentLines.length ? currentLines[i] : undefined
+
+      if (origLine === currLine) {
+        lines.push({ type: 'context', lineNumOrig: i + 1, lineNumCurr: i + 1, text: origLine ?? '' })
+      } else {
+        if (origLine !== undefined) {
+          lines.push({ type: 'removed', lineNumOrig: i + 1, text: origLine })
+        }
+        if (currLine !== undefined) {
+          lines.push({ type: 'added', lineNumCurr: i + 1, text: currLine })
+        }
+      }
+    }
+
+    return { startLineOrig: chunkStart + 1, startLineCurr: chunkStart + 1, lines }
+  })
+}
+
+interface ReviewFileInfo {
+  path: string
+  type: 'modified' | 'renamed' | 'new' | 'deleted'
+  oldPath?: string // for renames
+  isNew: boolean
+}
+
+function ChangesReviewModal({
+  projectId,
+  files,
+  initialFile,
+  onAccept,
+  onRevert,
+  onClose,
+}: {
+  projectId: string
+  files: FileEntry[]
+  initialFile: string | null
+  onAccept: (path: string) => void
+  onRevert: (path: string) => void
+  onClose: () => void
+}) {
+  const [reviewFiles, setReviewFiles] = useState<ReviewFileInfo[]>([])
+  const [activeFile, setActiveFile] = useState<string | null>(initialFile)
+  const [diffData, setDiffData] = useState<{ original: string; current: string } | null>(null)
+  const [loadingDiff, setLoadingDiff] = useState(false)
+
+  // Detect renames: new file with same content as a deleted original
+  useEffect(() => {
+    async function detectRenames() {
+      const fileDetails = await Promise.all(
+        files.map(async (f) => {
+          try {
+            const res = await fetch(`/api/projects/${projectId}/repository/files/${encodeURIComponent(f.path)}`)
+            const data = await res.json()
+            return { ...f, content: data.content ?? '', originalContent: data.originalContent ?? '' }
+          } catch {
+            return { ...f, content: '', originalContent: '' }
+          }
+        })
+      )
+
+      const result: ReviewFileInfo[] = []
+      const matched = new Set<string>()
+
+      // ── Detect renames/moves ──
+      // Strategy: compare every pair of modified files.
+      // If file A's content === file B's originalContent (or vice versa),
+      // and they have different paths, one was moved to the other.
+      // Also: if content === originalContent but path changed (move without edit),
+      // we detect by checking if two files share identical content and one is "new".
+
+      // Case 1: New file (empty originalContent) with content matching another file's originalContent
+      const newFiles = fileDetails.filter((f) => f.originalContent === '' && f.isNew)
+      const existingFiles = fileDetails.filter((f) => f.originalContent !== '')
+
+      for (const nf of newFiles) {
+        if (matched.has(nf.path)) continue
+        const match = existingFiles.find(
+          (ef) => !matched.has(ef.path) && ef.originalContent === nf.content
+        )
+        if (match) {
+          // nf is the new location, match is the old location
+          result.push({ path: nf.path, type: 'renamed', oldPath: match.path, isNew: false })
+          matched.add(nf.path)
+          matched.add(match.path)
+          continue
+        }
+      }
+
+      // Case 2: Two modified files where content is identical but paths differ
+      // (file was moved: old path has originalContent restored or different, new path has the content)
+      for (let i = 0; i < fileDetails.length; i++) {
+        const a = fileDetails[i]
+        if (matched.has(a.path)) continue
+        for (let j = i + 1; j < fileDetails.length; j++) {
+          const b = fileDetails[j]
+          if (matched.has(b.path)) continue
+          // Same content, different paths, and one of them has content === the other's original
+          if (a.content === b.originalContent && a.originalContent === '' && a.path !== b.path) {
+            result.push({ path: a.path, type: 'renamed', oldPath: b.path, isNew: false })
+            matched.add(a.path)
+            matched.add(b.path)
+          } else if (b.content === a.originalContent && b.originalContent === '' && a.path !== b.path) {
+            result.push({ path: b.path, type: 'renamed', oldPath: a.path, isNew: false })
+            matched.add(a.path)
+            matched.add(b.path)
+          }
+          // Both modified, same content in both, different originalContent (moved + both tracked)
+          else if (a.content === b.content && a.content !== a.originalContent && b.content !== b.originalContent && a.path !== b.path) {
+            // The one whose originalContent matches the shared content is the "old" location
+            if (a.originalContent === a.content) {
+              result.push({ path: b.path, type: 'renamed', oldPath: a.path, isNew: false })
+            } else {
+              result.push({ path: a.path, type: 'renamed', oldPath: b.path, isNew: false })
+            }
+            matched.add(a.path)
+            matched.add(b.path)
+          }
+        }
+      }
+
+      // Add remaining unmatched files
+      for (const f of fileDetails) {
+        if (matched.has(f.path)) continue
+        if (f.content === f.originalContent) {
+          // No actual content change — skip (shouldn't be isModified, but just in case)
+          continue
+        }
+        if (f.isNew && f.originalContent === '') {
+          result.push({ path: f.path, type: 'new', isNew: true })
+        } else {
+          result.push({ path: f.path, type: 'modified', isNew: false })
+        }
+      }
+
+      setReviewFiles(result)
+      if (!initialFile && result.length > 0) setActiveFile(result[0].path)
+    }
+    detectRenames()
+  }, [files, projectId, initialFile])
+
+  // Load diff for active file
+  useEffect(() => {
+    if (!activeFile) return
+    setLoadingDiff(true)
+    fetch(`/api/projects/${projectId}/repository/files/${encodeURIComponent(activeFile)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setDiffData({ original: data.originalContent ?? '', current: data.content ?? '' })
+        setLoadingDiff(false)
+      })
+      .catch(() => setLoadingDiff(false))
+  }, [activeFile, projectId])
+
+  const activeInfo = reviewFiles.find((f) => f.path === activeFile)
+  const originalLines = diffData?.original.split('\n') ?? []
+  const currentLines = diffData?.current.split('\n') ?? []
+  const isRenamed = activeInfo?.type === 'renamed'
+  const isSameContent = diffData?.original === diffData?.current
+  const chunks = diffData && !isSameContent ? computeChunks(originalLines, currentLines) : []
+
+  // Stats
+  const addedCount = chunks.reduce((sum, c) => sum + c.lines.filter((l) => l.type === 'added').length, 0)
+  const removedCount = chunks.reduce((sum, c) => sum + c.lines.filter((l) => l.type === 'removed').length, 0)
+
+  function handleAction(action: 'accept' | 'revert') {
+    if (!activeFile) return
+    if (action === 'accept') onAccept(activeFile)
+    else onRevert(activeFile)
+    const remaining = reviewFiles.filter((f) => f.path !== activeFile)
+    if (remaining.length > 0) {
+      setActiveFile(remaining[0].path)
+      setReviewFiles(remaining)
+    } else {
+      onClose()
+    }
+  }
+
+  const TYPE_LABELS: Record<string, { badge: string; color: string }> = {
+    modified: { badge: 'M', color: 'text-amber-400' },
+    renamed: { badge: 'R', color: 'text-blue-400' },
+    new: { badge: 'U', color: 'text-emerald-400' },
+    deleted: { badge: 'D', color: 'text-red-400' },
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
+      <div
+        className="flex h-[85vh] w-[90vw] max-w-6xl flex-col overflow-hidden rounded-2xl border border-white/10 shadow-2xl"
+        style={{ backgroundColor: '#1a1a22' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 py-3" style={{ backgroundColor: '#15151c' }}>
+          <div className="flex items-center gap-3">
+            <h2 className="text-sm font-semibold text-zinc-100">Review Changes</h2>
+            <span className="rounded bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-400">{reviewFiles.length} file{reviewFiles.length !== 1 ? 's' : ''}</span>
+          </div>
+          <button onClick={onClose} className="flex h-7 w-7 items-center justify-center rounded-lg text-zinc-500 hover:bg-white/5 hover:text-zinc-300">
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="flex flex-1 overflow-hidden">
+          {/* File sidebar */}
+          <div className="w-56 shrink-0 overflow-y-auto border-r border-white/10" style={{ backgroundColor: '#15151c' }}>
+            {reviewFiles.map((f) => {
+              const name = f.path.split('/').pop() ?? f.path
+              const isActive = activeFile === f.path
+              const label = TYPE_LABELS[f.type] ?? TYPE_LABELS.modified
+              return (
+                <button
+                  key={f.path}
+                  onClick={() => setActiveFile(f.path)}
+                  className={`flex w-full items-center gap-2 px-3 py-2 text-left transition-all ${
+                    isActive ? 'bg-white/10 border-l-2 border-violet-500' : 'hover:bg-white/5 border-l-2 border-transparent'
+                  }`}
+                >
+                  <span className={`text-[10px] font-mono font-bold ${label.color}`}>{label.badge}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className={`text-[11px] truncate ${isActive ? 'text-zinc-200' : 'text-zinc-400'}`}>{name}</p>
+                    {f.type === 'renamed' && f.oldPath && (
+                      <p className="text-[8px] text-blue-400 truncate">{f.oldPath.split('/').slice(0, -1).join('/')} →</p>
+                    )}
+                    <p className="text-[8px] text-zinc-600 truncate">{f.path}</p>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Diff view */}
+          <div className="flex flex-1 flex-col overflow-hidden">
+            {/* Diff header */}
+            {activeFile && activeInfo && (
+              <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-2" style={{ backgroundColor: '#1e1e28' }}>
+                <div className="flex items-center gap-3">
+                  {isRenamed && activeInfo.oldPath ? (
+                    <span className="text-[11px] text-blue-400">
+                      {activeInfo.oldPath} → {activeFile}
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-zinc-400">{activeFile}</span>
+                  )}
+                  {!isSameContent && (
+                    <div className="flex items-center gap-1.5">
+                      {addedCount > 0 && <span className="text-[10px] text-emerald-400">+{addedCount}</span>}
+                      {removedCount > 0 && <span className="text-[10px] text-red-400">-{removedCount}</span>}
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => handleAction('accept')} className="flex h-7 items-center gap-1 rounded-lg bg-emerald-500/10 px-2.5 text-[10px] font-medium text-emerald-400 hover:bg-emerald-500/20">
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                    Accept
+                  </button>
+                  <button onClick={() => handleAction('revert')} className="flex h-7 items-center gap-1 rounded-lg bg-red-500/10 px-2.5 text-[10px] font-medium text-red-400 hover:bg-red-500/20">
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg>
+                    Revert
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Diff content */}
+            <div className="flex-1 overflow-auto">
+              {loadingDiff ? (
+                <div className="flex h-full items-center justify-center">
+                  <p className="text-xs text-zinc-500">Loading diff...</p>
+                </div>
+              ) : !diffData ? (
+                <div className="flex h-full items-center justify-center">
+                  <p className="text-xs text-zinc-500">Select a file to review</p>
+                </div>
+              ) : isRenamed && isSameContent ? (
+                /* Renamed file — no content changes */
+                <div className="flex h-full flex-col items-center justify-center gap-3">
+                  <svg className="h-8 w-8 text-blue-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+                  </svg>
+                  <div className="text-center">
+                    <p className="text-sm font-medium text-blue-300">File Renamed</p>
+                    <p className="mt-1 text-[11px] text-zinc-500">{activeInfo?.oldPath}</p>
+                    <p className="text-[11px] text-zinc-400">↓</p>
+                    <p className="text-[11px] text-blue-400">{activeFile}</p>
+                    <p className="mt-2 text-[10px] text-zinc-600">No content changes</p>
+                  </div>
+                </div>
+              ) : isSameContent ? (
+                <div className="flex h-full items-center justify-center">
+                  <p className="text-xs text-zinc-500">No content changes</p>
+                </div>
+              ) : (
+                /* Chunk-based unified diff */
+                <div className="font-mono text-[11px]">
+                  {chunks.map((chunk, ci) => (
+                    <div key={ci} className={ci > 0 ? 'border-t border-dashed border-white/10 mt-1 pt-1' : ''}>
+                      {/* Chunk header */}
+                      <div className="sticky top-0 z-10 flex items-center gap-2 px-3 py-1" style={{ backgroundColor: '#1e1e28' }}>
+                        <span className="text-[9px] text-zinc-600">@@ Line {chunk.startLineOrig} @@</span>
+                      </div>
+                      {/* Lines */}
+                      {chunk.lines.map((line, li) => (
+                        <div
+                          key={li}
+                          className={`flex ${
+                            line.type === 'removed' ? 'bg-red-500/10' :
+                            line.type === 'added' ? 'bg-emerald-500/10' : ''
+                          }`}
+                        >
+                          <span className={`w-10 shrink-0 select-none pr-2 text-right ${
+                            line.type === 'removed' ? 'text-red-400/60' :
+                            line.type === 'added' ? 'text-emerald-400/60' : 'text-zinc-600'
+                          }`}>
+                            {line.lineNumOrig ?? ''}
+                          </span>
+                          <span className={`w-10 shrink-0 select-none pr-2 text-right ${
+                            line.type === 'removed' ? 'text-red-400/60' :
+                            line.type === 'added' ? 'text-emerald-400/60' : 'text-zinc-600'
+                          }`}>
+                            {line.lineNumCurr ?? ''}
+                          </span>
+                          <span className={`w-4 shrink-0 text-center ${
+                            line.type === 'removed' ? 'text-red-400' :
+                            line.type === 'added' ? 'text-emerald-400' : 'text-zinc-700'
+                          }`}>
+                            {line.type === 'removed' ? '-' : line.type === 'added' ? '+' : ' '}
+                          </span>
+                          <span className={`whitespace-pre px-2 ${
+                            line.type === 'removed' ? 'text-red-300' :
+                            line.type === 'added' ? 'text-emerald-300' : 'text-zinc-500'
+                          }`}>
+                            {line.text || ' '}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Reminder Modal ────────────────────────────────────────────────────────
+
+function ReminderModal({ projectId, onClose }: { projectId: string; onClose: () => void }) {
+  const [text, setText] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [created, setCreated] = useState(false)
+
+  async function handleCreate() {
+    if (!text.trim() || creating) return
+    setCreating(true)
+    try {
+      const res = await fetch(`/api/projects/${projectId}/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: text.trim().length > 80 ? text.trim().slice(0, 80) + '...' : text.trim(),
+          instruction: text.trim(),
+          context: { source: 'reminder' },
+        }),
+      })
+      if (res.ok) {
+        setCreated(true)
+        setTimeout(onClose, 1200)
+      }
+    } catch { /* ignore */ }
+    setCreating(false)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+      <div
+        className="w-full max-w-sm overflow-hidden rounded-xl border border-white/10 shadow-xl"
+        style={{ backgroundColor: '#1a1a22' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-white/10 px-5 py-3" style={{ backgroundColor: '#15151c' }}>
+          <h3 className="text-sm font-semibold text-zinc-100">Create Reminder</h3>
+          <p className="text-[11px] text-zinc-500">A simple note — goes to Pending in Tasks.</p>
+        </div>
+        <div className="p-5">
+          {created ? (
+            <div className="flex items-center gap-2 text-sm text-emerald-400">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+              </svg>
+              Reminder created — find it in Tasks.
+            </div>
+          ) : (
+            <>
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="What do you want to remember?"
+                rows={3}
+                autoFocus
+                className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:border-violet-500/50 focus:outline-none"
+              />
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={handleCreate}
+                  disabled={!text.trim() || creating}
+                  className="flex h-8 flex-1 items-center justify-center rounded-lg bg-violet-600 text-xs font-medium text-white transition-colors hover:bg-violet-500 disabled:opacity-30"
+                >
+                  {creating ? 'Creating...' : 'Create'}
+                </button>
+                <button
+                  onClick={onClose}
+                  className="flex h-8 items-center justify-center rounded-lg px-4 text-xs text-zinc-400 hover:text-zinc-200"
+                >
+                  Cancel
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ── Mini Map (right panel) ─────────────────────────────────────────────────
@@ -1847,6 +2504,7 @@ interface EtapaState {
 }
 
 function MiniMap({
+  projectId,
   activeMode,
   activeEmployee,
   activeTeam,
@@ -1855,6 +2513,7 @@ function MiniMap({
   teamRunState,
   teamRunActive,
 }: {
+  projectId: string
   activeMode: ChatMode
   activeEmployee?: HiredEmployee
   activeTeam?: TeamInfo
@@ -1863,6 +2522,48 @@ function MiniMap({
   teamRunState: unknown
   teamRunActive: boolean
 }) {
+  // Poll for running task
+  const [runningTask, setRunningTask] = useState<{ id: string; name: string; executorType: string; pausedAtEmployee: string | null; accumulatedContext: { model?: string; intent?: string } } | null>(null)
+  const [taskLogs, setTaskLogs] = useState<{ id: string; collaboratorName: string; conclusion: string | null; approved: boolean | null; finishedAt: string | null }[]>([])
+  const [taskBuildLogs, setTaskBuildLogs] = useState<{ filesTouched: { path: string }[] }[]>([])
+  const [lastCompletedTask, setLastCompletedTask] = useState<{ name: string; completedAt: string; intent?: string } | null>(null)
+  const [showLastTask, setShowLastTask] = useState(true)
+
+  useEffect(() => {
+    // Fetch last completed task
+    fetch(`/api/projects/${projectId}/tasks?status=completed&limit=1`)
+      .then((r) => r.json())
+      .then((data) => {
+        const tasks = data.tasks ?? data ?? []
+        if (tasks.length > 0) {
+          const t = tasks[0]
+          setLastCompletedTask({
+            name: t.name,
+            completedAt: t.updatedAt ?? t.createdAt,
+            intent: t.accumulatedContext?.intent,
+          })
+        }
+      })
+      .catch(() => {})
+  }, [projectId])
+
+  useEffect(() => {
+    function pollTask() {
+      fetch(`/api/projects/${projectId}/tasks/running`)
+        .then((r) => r.json())
+        .then((data) => {
+          setRunningTask(data.task ?? null)
+          setTaskLogs(data.logs ?? [])
+          setTaskBuildLogs(data.buildLogs ?? [])
+        })
+        .catch(() => {})
+    }
+    pollTask()
+    const interval = setInterval(pollTask, 4000)
+    return () => clearInterval(interval)
+  }, [projectId])
+
+  const hasRunningTask = !!runningTask
   function getColor(name: string): string {
     const emp = hiredEmployees.find((e) => e.name === name)
     if (emp) return emp.color
@@ -1931,100 +2632,235 @@ function MiniMap({
     recreated: 'bg-amber-500',
   }
 
+  const TASK_EMP_COLORS: Record<string, string> = {
+    CEO: 'from-violet-500 to-purple-600',
+    Architect: 'from-blue-500 to-cyan-600',
+    Designer: 'from-pink-500 to-rose-600',
+    Security: 'from-red-500 to-orange-600',
+    Builder: 'from-red-600 to-red-700',
+    Claude: 'from-zinc-500 to-zinc-600',
+  }
+
+  const TASK_INTENT: Record<string, { label: string; color: string }> = {
+    build: { label: 'Build', color: 'text-emerald-400' },
+    analyze_fix: { label: 'Analyze & Fix', color: 'text-amber-400' },
+    conversation: { label: 'Review & Discuss', color: 'text-sky-400' },
+  }
+
+  const taskFiles = taskBuildLogs.flatMap((b) => b.filesTouched)
+  const taskIntent = runningTask ? TASK_INTENT[runningTask.accumulatedContext?.intent ?? ''] : null
+
   return (
     <div className="flex w-72 shrink-0 flex-col border-l border-white/15" style={{ backgroundColor: '#1a1a22' }}>
-      <div className="border-b border-white/15 px-3 py-2">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">
-          {activeMode === 'team' ? 'Pipeline' : activeMode === 'skill' ? 'Active' : 'Status'}
-        </span>
-      </div>
-      <div className="flex-1 overflow-y-auto py-2">
-        {/* No skill */}
-        {activeMode === 'no_skill' && (
-          <div className="flex h-full items-center justify-center">
-            <p className="px-3 text-center text-xs text-zinc-400">Select an employee or team with /</p>
-          </div>
-        )}
+      {/* ── Chat section (top) ── */}
+      <div className={`flex flex-col ${hasRunningTask ? 'h-1/2 border-b border-white/15' : 'flex-1'}`}>
+        <div className="border-b border-white/15 px-3 py-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">
+            {activeMode === 'team' ? 'Pipeline' : activeMode === 'skill' ? 'Active' : 'Status'}
+          </span>
+        </div>
+        <div className="flex-1 overflow-y-auto py-2">
+          {/* No skill */}
+          {activeMode === 'no_skill' && (
+            <div className="flex h-full items-center justify-center">
+              <p className="px-3 text-center text-xs text-zinc-400">Select an employee or team with /</p>
+            </div>
+          )}
 
-        {/* Skill mode */}
-        {activeMode === 'skill' && activeEmployee && (
-          <div className="px-3 py-2">
-            <div className={`rounded-lg bg-gradient-to-br ${activeEmployee.color} px-3 py-3 shadow-sm`}>
-              <p className="text-xs font-bold text-white">{activeEmployee.name}</p>
-              <p className="text-[9px] text-white/60">{activeEmployee.role}</p>
+          {/* Skill mode */}
+          {activeMode === 'skill' && activeEmployee && (
+            <div className="px-3 py-2">
+              <div className={`rounded-lg bg-gradient-to-br ${activeEmployee.color} px-3 py-3 shadow-sm`}>
+                <p className="text-xs font-bold text-white">{activeEmployee.name}</p>
+                <p className="text-[9px] text-white/60">{activeEmployee.role}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Team mode — etapas with sub-pipelines */}
+          {activeMode === 'team' && etapasState.length > 0 && (
+            <div className="px-2 py-2 space-y-3">
+              {isDone && (
+                <div className="mx-1 flex items-center gap-1.5 rounded-md bg-emerald-500/10 px-2 py-1.5">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                  <p className="text-[10px] font-medium text-emerald-400">All stages complete</p>
+                </div>
+              )}
+              {etapasState.map((etapa, ei) => (
+                <div key={ei} className={`rounded-lg border px-2 py-2 ${
+                  etapa.status === 'active' ? 'border-blue-500/30 bg-blue-500/[0.06]' :
+                  etapa.status === 'done' ? 'border-emerald-500/20 bg-emerald-500/[0.04]' :
+                  'border-white/10 bg-white/[0.02]'
+                }`}>
+                  <div className="mb-1.5 flex items-center gap-1.5">
+                    <span className={`flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-bold ${
+                      etapa.status === 'done' ? 'bg-emerald-500 text-white' :
+                      etapa.status === 'active' ? 'bg-blue-500 text-white' :
+                      'bg-zinc-700 text-zinc-400'
+                    }`}>
+                      {etapa.status === 'done' ? '✓' : ei + 1}
+                    </span>
+                    <p className="text-[10px] font-semibold text-zinc-300 truncate">{etapa.name}</p>
+                  </div>
+                  <div className="space-y-0.5 pl-1">
+                    {etapa.members.map((member, mi) => (
+                      <div key={`${member.name}-${mi}`} className="flex items-center gap-1.5">
+                        <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${statusDot[member.status]}`} />
+                        <div className={`flex-1 rounded bg-gradient-to-br ${getColor(member.name)} px-1.5 py-0.5 ${
+                          member.status === 'pending' ? 'opacity-25' : member.status === 'active' ? 'shadow-sm ring-1 ring-blue-400/40' : ''
+                        }`}>
+                          <p className="text-[8px] font-semibold text-white">{member.name}</p>
+                          {member.status === 'recreated' && member.redirectedTo && (
+                            <p className="text-[7px] text-amber-200">rejected → {member.redirectedTo}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Team mode — waiting for plan */}
+          {activeMode === 'team' && !hasPlan && (activeTeam || teamRunActive) && (
+            <div className="px-3 py-2 space-y-1">
+              <div className="mb-2 flex items-center gap-1.5">
+                {teamRunActive && <span className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />}
+                <p className="text-[10px] text-zinc-400">{teamRunActive ? 'Team is working...' : 'Waiting for message...'}</p>
+              </div>
+              {(activeTeam?.order ?? []).filter((id) => id !== 'builder').map((id) => {
+                const emp = hiredEmployees.find((e) => e.id === id)
+                const name = emp?.name ?? id
+                return (
+                  <div key={id} className={`rounded-md bg-gradient-to-br ${getColor(name)} px-2 py-1 opacity-25`}>
+                    <p className="text-[9px] font-semibold text-white">{name}</p>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Task section (bottom — only when task is running) ── */}
+      {hasRunningTask && runningTask && (
+        <div className="flex h-1/2 flex-col">
+          <div className="flex items-center justify-between border-b border-white/15 px-3 py-2">
+            <div className="flex items-center gap-1.5">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">Task Running</span>
+            </div>
+            <a href="#" onClick={(e) => { e.preventDefault(); window.location.hash = '' }} className="text-[9px] text-violet-400 hover:text-violet-300">
+              Expand →
+            </a>
+          </div>
+
+          {/* Task info bar */}
+          <div className="border-b border-white/10 px-3 py-2" style={{ backgroundColor: '#15151c' }}>
+            <p className="text-[10px] font-medium text-zinc-200 truncate">{runningTask.name}</p>
+            <div className="mt-0.5 flex items-center gap-1.5">
+              {taskIntent && <span className={`text-[8px] font-medium ${taskIntent.color}`}>{taskIntent.label}</span>}
+              <span className="text-[8px] text-zinc-600">{runningTask.accumulatedContext?.model ?? 'sonnet'}</span>
             </div>
           </div>
-        )}
 
-        {/* Team mode — etapas with sub-pipelines */}
-        {activeMode === 'team' && etapasState.length > 0 && (
-          <div className="px-2 py-2 space-y-3">
-            {isDone && (
-              <div className="mx-1 flex items-center gap-1.5 rounded-md bg-emerald-50 px-2 py-1.5">
-                <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                <p className="text-[10px] font-medium text-emerald-700">All stages complete</p>
+          {/* Task live logs (compact) */}
+          <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1.5">
+            {taskLogs.length === 0 && (
+              <div className="flex items-center gap-1.5 py-2">
+                <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-500" />
+                <span className="text-[9px] text-zinc-500">Starting...</span>
               </div>
             )}
-            {etapasState.map((etapa, ei) => (
-              <div key={ei} className={`rounded-lg border px-2 py-2 ${
-                etapa.status === 'active' ? 'border-blue-300 bg-blue-50/30' :
-                etapa.status === 'done' ? 'border-emerald-200 bg-emerald-50/20' :
-                'border-zinc-200 bg-zinc-50/50'
-              }`}>
-                {/* Etapa header */}
-                <div className="mb-1.5 flex items-center gap-1.5">
-                  <span className={`flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-bold ${
-                    etapa.status === 'done' ? 'bg-emerald-500 text-white' :
-                    etapa.status === 'active' ? 'bg-blue-500 text-white' :
-                    'bg-zinc-300 text-zinc-600'
-                  }`}>
-                    {etapa.status === 'done' ? '✓' : ei + 1}
-                  </span>
-                  <p className="text-[10px] font-semibold text-zinc-700 truncate">{etapa.name}</p>
-                </div>
-
-                {/* Members pipeline */}
-                <div className="space-y-0.5 pl-1">
-                  {etapa.members.map((member, mi) => (
-                    <div key={`${member.name}-${mi}`} className="flex items-center gap-1.5">
-                      <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${statusDot[member.status]}`} />
-                      <div className={`flex-1 rounded bg-gradient-to-br ${getColor(member.name)} px-1.5 py-0.5 ${
-                        member.status === 'pending' ? 'opacity-25' : member.status === 'active' ? 'shadow-sm ring-1 ring-blue-400/40' : ''
-                      }`}>
-                        <p className="text-[8px] font-semibold text-white">{member.name}</p>
-                        {member.status === 'recreated' && member.redirectedTo && (
-                          <p className="text-[7px] text-amber-200">rejected → {member.redirectedTo}</p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Team mode — waiting for plan */}
-        {activeMode === 'team' && !hasPlan && (activeTeam || teamRunActive) && (
-          <div className="px-3 py-2 space-y-1">
-            <div className="mb-2 flex items-center gap-1.5">
-              {teamRunActive && <span className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />}
-              <p className="text-[10px] text-zinc-400">{teamRunActive ? 'Team is working...' : 'Waiting for message...'}</p>
-            </div>
-            {(activeTeam?.order ?? []).filter((id) => id !== 'builder').map((id) => {
-              const emp = hiredEmployees.find((e) => e.id === id)
-              const name = emp?.name ?? id
+            {taskLogs.map((log) => {
+              const empColor = TASK_EMP_COLORS[log.collaboratorName] ?? 'from-zinc-500 to-zinc-600'
+              const isActive = !log.finishedAt
               return (
-                <div key={id} className={`rounded-md bg-gradient-to-br ${getColor(name)} px-2 py-1 opacity-25`}>
-                  <p className="text-[9px] font-semibold text-white">{name}</p>
+                <div key={log.id} className={`rounded-md border p-2 ${
+                  isActive ? 'border-violet-500/30 bg-violet-500/[0.06]' : 'border-white/5 bg-white/[0.02]'
+                }`}>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`rounded bg-gradient-to-br ${empColor} px-1 py-0.5 text-[7px] font-bold text-white`}>
+                      {log.collaboratorName}
+                    </span>
+                    {isActive && <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-violet-500" />}
+                    {!isActive && log.approved === true && (
+                      <svg className="h-2.5 w-2.5 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                    )}
+                    {!isActive && log.approved === false && (
+                      <span className="text-[7px] font-medium text-red-400">REJ</span>
+                    )}
+                    {!isActive && log.approved === null && (
+                      <svg className="h-2.5 w-2.5 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
+                    )}
+                  </div>
+                  {log.conclusion && (
+                    <p className="mt-0.5 text-[8px] leading-relaxed text-zinc-500 line-clamp-2">{log.conclusion}</p>
+                  )}
                 </div>
               )
             })}
+
+            {/* Files */}
+            {taskFiles.length > 0 && (
+              <div className="rounded-md border border-white/5 bg-white/[0.02] p-2">
+                <p className="text-[7px] font-semibold uppercase text-zinc-600 mb-0.5">Files</p>
+                {taskFiles.slice(0, 5).map((f, i) => (
+                  <p key={i} className="text-[8px] text-zinc-500 truncate">{f.path}</p>
+                ))}
+                {taskFiles.length > 5 && <p className="text-[8px] text-zinc-600">+{taskFiles.length - 5} more</p>}
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Last completed task bar (only when no task running) */}
+      {!hasRunningTask && showLastTask && lastCompletedTask && (
+        <div className="shrink-0 border-t border-white/10 px-3 py-2.5" style={{ backgroundColor: '#15151c' }}>
+          <div className="flex items-center gap-2">
+            <svg className="h-3 w-3 shrink-0 text-emerald-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+            </svg>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-medium text-zinc-300 truncate">{lastCompletedTask.name}</p>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="text-[9px] text-zinc-500">{getTimeAgoMini(lastCompletedTask.completedAt)}</span>
+                {lastCompletedTask.intent && (
+                  <span className={`text-[8px] font-medium ${
+                    lastCompletedTask.intent === 'build' ? 'text-emerald-400' :
+                    lastCompletedTask.intent === 'analyze_fix' ? 'text-amber-400' : 'text-sky-400'
+                  }`}>
+                    {lastCompletedTask.intent === 'build' ? 'Build' : lastCompletedTask.intent === 'analyze_fix' ? 'Analyze' : 'Review'}
+                  </span>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={() => setShowLastTask(false)}
+              className="shrink-0 text-zinc-600 hover:text-zinc-400"
+            >
+              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
+}
+
+function getTimeAgoMini(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  return `${days}d ago`
 }
 
 // ── Context Picker ─────────────────────────────────────────────────────────

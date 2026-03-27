@@ -71,6 +71,9 @@ model Project {
   repositoryPath String?
   slackChannel   String?
   slackWebhook   String?
+  // Queue control: "running" | "paused" — controls task queue execution
+  queueStatus    String   @default("paused")
+  lastActivityAt DateTime?
   createdAt      DateTime @default(now())
 
   user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -103,6 +106,10 @@ model Repository {
   githubBranch    String    @default("main")
   lastSyncedSha   String?
   lastSyncedAt    DateTime?
+  // Repo lock: "task" | "chat" | null — prevents concurrent writes
+  lockedBy        String?
+  lockedByTaskId  String?
+  lockedAt        DateTime?
   createdAt       DateTime  @default(now())
 
   project Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -235,6 +242,8 @@ model ChatMessage {
   activeSkillId String?
   // "no_skill" | "skill" | "team"
   mode          String   @default("no_skill")
+  // Structured report attached to conclusion messages (JSON)
+  report        Json?
   createdAt     DateTime @default(now())
 
   project Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -268,7 +277,11 @@ model Task {
   status             TaskStatus   @default(pending)
   isRecurring        Boolean      @default(false)
   recurrenceConfig   Json?
-  scheduledAt        DateTime?
+  scheduledAt          DateTime?
+  originalScheduledAt  DateTime?
+  rescheduledReason    String?
+  rescheduledCount     Int       @default(0)
+  queuePosition        Int?
   pausedAt           DateTime?
   pausedAtIteration  Int?
   pausedAtEmployee   String?

@@ -6,29 +6,53 @@ interface RouteContext {
   params: Promise<{ id: string }>
 }
 
-export async function GET(_request: NextRequest, context: RouteContext) {
+export async function GET(request: NextRequest, context: RouteContext) {
   const { id } = await context.params
   const access = await verifyProjectAccess(id)
   if ('error' in access) {
     return NextResponse.json({ error: access.error }, { status: access.status })
   }
 
-  const tasks = await prisma.task.findMany({
-    where: { projectId: id },
-    select: {
-      id: true,
-      name: true,
-      instruction: true,
-      status: true,
-      executorType: true,
-      executorId: true,
-      pausedAtEmployee: true,
-      createdAt: true,
-    },
-    orderBy: { createdAt: 'desc' },
-  })
+  // Optional filters
+  const statusFilter = request.nextUrl.searchParams.get('status')
+  const limitParam = request.nextUrl.searchParams.get('limit')
+  const take = limitParam ? parseInt(limitParam) : undefined
 
-  return NextResponse.json(tasks)
+  const where: Record<string, unknown> = { projectId: id }
+  if (statusFilter) where.status = statusFilter
+
+  const [tasks, teams] = await Promise.all([
+    prisma.task.findMany({
+      where,
+      ...(take ? { take } : {}),
+      select: {
+        id: true,
+        name: true,
+        instruction: true,
+        status: true,
+        executorType: true,
+        executorId: true,
+        context: true,
+        accumulatedContext: true,
+        queuePosition: true,
+        pausedAtEmployee: true,
+        scheduledAt: true,
+        originalScheduledAt: true,
+        rescheduledReason: true,
+        rescheduledCount: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.team.findMany({
+      where: { projectId: id },
+      select: { id: true, name: true, hasBuilder: true },
+      orderBy: { createdAt: 'desc' },
+    }),
+  ])
+
+  return NextResponse.json({ tasks, teams })
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -38,7 +62,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: access.error }, { status: access.status })
   }
 
-  let body: { name?: string; instruction?: string; teamId?: string }
+  let body: { name?: string; instruction?: string; teamId?: string; context?: Record<string, unknown> }
   try {
     body = await request.json()
   } catch {
@@ -68,6 +92,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       instruction: body.instruction?.trim() || null,
       executorType: body.teamId ? 'team' : 'no_skill',
       executorId: body.teamId || null,
+      context: body.context ? JSON.parse(JSON.stringify(body.context)) : undefined,
     },
     select: {
       id: true,

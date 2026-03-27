@@ -41,6 +41,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       sender: true,
       mode: true,
       activeSkillId: true,
+      report: true,
       createdAt: true,
     },
     orderBy: { createdAt: 'asc' },

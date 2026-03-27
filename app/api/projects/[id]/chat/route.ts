@@ -23,6 +23,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       sender: true,
       mode: true,
       activeSkillId: true,
+      report: true,
       createdAt: true,
     },
     orderBy: { createdAt: 'asc' },
@@ -96,7 +97,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         mode: 'team',
         activeSkillId: body.activeSkillId ?? null,
       },
-      select: { id: true, content: true, sender: true, mode: true, activeSkillId: true, createdAt: true },
+      select: { id: true, content: true, sender: true, mode: true, activeSkillId: true, report: true, createdAt: true },
     })
 
     // Fire and forget — process in background

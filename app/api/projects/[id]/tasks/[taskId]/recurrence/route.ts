@@ -58,7 +58,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     where: { id: taskId },
     data: {
       isRecurring,
-      recurrenceConfig: isRecurring ? body.recurrenceConfig ?? null : null,
+      recurrenceConfig: isRecurring ? (body.recurrenceConfig ?? undefined) : undefined,
     },
     select: {
       id: true,

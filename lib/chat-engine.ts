@@ -2,11 +2,13 @@ import { prisma } from '@/lib/db'
 import { callAnthropic, callAnthropicWithTools, MODELS } from '@/lib/anthropic'
 import { createBuildSession, endBuildSession, REPO_TOOLS, executeTool } from '@/lib/tools'
 import type { ContentBlock, ToolCallMessage } from '@/lib/anthropic'
+import type { ChatReport, ReportEtapa, ReportStep, ReportBuildDetails, ReportToolCall } from '@/lib/report-types'
+import { getRepoLockStatus, getLockerTaskName, acquireRepoLock, releaseRepoLock, touchProjectActivity } from '@/lib/repo-lock'
 
-// ── Build Confirmation Rule (injected into ALL prompts) ────────────────────
+// ── Rules (injected into ALL prompts) ──────────────────────────────────────
 
 const BUILD_RULE = `
-CRITICAL RULE — NEVER VIOLATE THIS:
+CRITICAL RULE — BUILD CONFIRMATION (NEVER VIOLATE):
 You must NEVER write code, edit files, create files, build, implement, or execute anything without EXPLICIT confirmation from the user. This means TWO things must happen:
 
 1. The user must explicitly say YES to building (e.g. "yes build it", "go ahead", "do it")
@@ -18,7 +20,44 @@ If the user asks you to build, create, implement, code, or make something:
 - NEVER assume. NEVER start building without both confirmations.
 - Even if the user says "just do it" — still confirm WHO (you directly, or a specific employee/team).
 
-This rule applies at ALL times, in ALL modes, with ALL skills. No exceptions.`
+This rule applies at ALL times, in ALL modes, with ALL skills. No exceptions.
+
+REPOSITORY LOCK:
+The repository can only be modified by one source at a time. If a task is currently running and using the repository, you CANNOT start a build. The system will block it automatically, but you should be aware:
+- If the user asks to build and a task is running, explain that the repository is locked by a running task.
+- Offer to create a task for what they want instead — it will go to Pending for them to manage.
+- They can also pause the running task from the Tasks tab to free the repository.`
+
+const TASK_RULE = `
+TASK CREATION AWARENESS:
+You can suggest creating tasks for later execution. Tasks go to a queue where the user configures them and schedules when they run.
+
+WHEN TO SUGGEST A TASK:
+- When you would offer to build something, ALSO offer: "Want me to build this now, or create a task to handle it later?"
+- During discussions where you identify actionable work (bugs to fix, features to add, refactors needed), you can proactively suggest: "This could be a good task for later — want me to create it?"
+- You do NOT need to suggest tasks for every message. Only when there's a clear, actionable item.
+
+WHEN THE USER ASKS TO CREATE A TASK:
+- If the conversation context makes it clear what the task is about, create it immediately using [CREATE_TASK: task name here]. No need to ask for clarification.
+- If you're unsure what the task should be about (the request seems unrelated to the conversation), ask: "What should this task be about?" Then create it based on their answer.
+- If the user asks to create a task but the request has NOTHING to do with code or development (e.g. "remind me to buy groceries"), offer a reminder instead: [CREATE_REMINDER: reminder text here]
+
+WHEN THE USER ASKS TO CREATE A REMINDER:
+- If the user explicitly says "reminder" / "lembrete", create it with [CREATE_REMINDER: reminder text].
+- BUT if the reminder seems to be about code/development work that has context in the conversation, ask: "This sounds like it could be a task with full context — want me to create it as a task instead, or keep it as a simple reminder?"
+- If they confirm task → [CREATE_TASK: name]. If they confirm reminder → [CREATE_REMINDER: text].
+
+TASKS vs REMINDERS:
+- TASK = actionable development work. Carries full conversation context (summary + recent messages). Goes to the task queue for an employee/team to execute.
+- REMINDER = lightweight note. Just the text, no heavy context. A simple note in the pending list.
+- Never confuse them. Tasks are for building/coding. Reminders are for everything else.
+
+IMPORTANT:
+- NEVER create a task or reminder without the user's explicit request or confirmation of your suggestion.
+- Task/reminder creation and build confirmation are SEPARATE flows. Never mix them.
+- When creating a task, use exactly this format in your response: [CREATE_TASK: descriptive task name]
+- When creating a reminder, use exactly this format: [CREATE_REMINDER: reminder text]
+- After the tag, briefly confirm what was created.`
 
 // ── Skills ─────────────────────────────────────────────────────────────────
 
@@ -109,6 +148,122 @@ interface EtapaState {
   status: 'pending' | 'active' | 'done'
 }
 
+const ALL_RULES = `${BUILD_RULE}\n\n${TASK_RULE}`
+
+// ── Task/Reminder detection from Claude's response ────────────────────────
+
+const TASK_TAG_REGEX = /\[CREATE_TASK:\s*(.+?)\]/i
+const REMINDER_TAG_REGEX = /\[CREATE_REMINDER:\s*(.+?)\]/i
+
+/**
+ * Detect if Claude's response contains a task or reminder creation tag.
+ * If found, create the task/reminder and return the cleaned response.
+ */
+async function detectAndCreateTask(
+  response: string,
+  req: ChatRequest,
+): Promise<{ cleanedResponse: string; created: 'task' | 'reminder' | null }> {
+  const taskMatch = response.match(TASK_TAG_REGEX)
+  if (taskMatch) {
+    const taskName = taskMatch[1].trim()
+    const context = await gatherChatContext(req)
+    await prisma.task.create({
+      data: {
+        projectId: req.projectId,
+        userId: req.userId,
+        name: taskName.length > 80 ? taskName.slice(0, 80) + '...' : taskName,
+        status: 'pending',
+        context: JSON.parse(JSON.stringify({
+          source: 'chat_suggested',
+          conversationSummary: context,
+        })),
+      },
+    })
+    const cleaned = response.replace(TASK_TAG_REGEX, '').trim()
+    return { cleanedResponse: cleaned, created: 'task' }
+  }
+
+  const reminderMatch = response.match(REMINDER_TAG_REGEX)
+  if (reminderMatch) {
+    const reminderText = reminderMatch[1].trim()
+    await prisma.task.create({
+      data: {
+        projectId: req.projectId,
+        userId: req.userId,
+        name: reminderText.length > 80 ? reminderText.slice(0, 80) + '...' : reminderText,
+        instruction: reminderText,
+        status: 'pending',
+        context: JSON.parse(JSON.stringify({
+          source: 'reminder',
+        })),
+      },
+    })
+    const cleaned = response.replace(REMINDER_TAG_REGEX, '').trim()
+    return { cleanedResponse: cleaned, created: 'reminder' }
+  }
+
+  return { cleanedResponse: response, created: null }
+}
+
+/**
+ * Gather chat context for task creation: compact summary + last 10 messages.
+ */
+async function gatherChatContext(req: ChatRequest): Promise<string> {
+  if (!req.sessionId) return ''
+
+  // Try compact summary first
+  const compactMsg = await prisma.chatMessage.findFirst({
+    where: { sessionId: req.sessionId, sender: 'compact' },
+    select: { content: true },
+    orderBy: { createdAt: 'desc' },
+  })
+
+  // Always get last 10 messages for recent context
+  const recentMsgs = await prisma.chatMessage.findMany({
+    where: {
+      sessionId: req.sessionId,
+      sender: { notIn: ['plan', 'step', 'compact'] },
+    },
+    select: { sender: true, content: true },
+    orderBy: { createdAt: 'desc' },
+    take: 10,
+  })
+
+  const recentContext = recentMsgs.length > 0
+    ? recentMsgs
+        .reverse()
+        .map((m) => `${m.sender}: ${m.content.length > 500 ? m.content.slice(0, 500) + '...' : m.content}`)
+        .join('\n\n')
+    : ''
+
+  if (compactMsg) {
+    return `=== Conversation Summary ===\n${compactMsg.content}\n\n=== Recent Messages ===\n${recentContext}`
+  }
+
+  return recentContext
+}
+
+// ── User-side task request detection ──────────────────────────────────────
+
+const TASK_REQUEST_PATTERNS = [
+  /\b(cria|create|make|faz)\b.*\b(task|tarefa)\b/i,
+  /\b(task|tarefa)\b.*\b(pra|para|for|to)\b.*\b(depois|later|queue|fila)\b/i,
+]
+
+const REMINDER_REQUEST_PATTERNS = [
+  /\b(cria|create|make|faz)\b.*\b(reminder|lembrete|lembrar)\b/i,
+  /\b(remind|lembr)\b.*\b(me|eu)\b/i,
+  /\b(reminder|lembrete)\b.*\b(de|about|pra|para|for)\b/i,
+]
+
+function isUserRequestingTask(content: string): boolean {
+  return TASK_REQUEST_PATTERNS.some((p) => p.test(content))
+}
+
+function isUserRequestingReminder(content: string): boolean {
+  return REMINDER_REQUEST_PATTERNS.some((p) => p.test(content))
+}
+
 // ── Build confirmation detection ───────────────────────────────────────────
 
 const BUILD_CONFIRM_PATTERNS = [
@@ -162,8 +317,20 @@ export async function processChatSync(req: ChatRequest): Promise<ChatResult> {
   // Detect build confirmation and create/end session
   const buildTarget = detectBuildConfirmation(req.content, req.activeSkillId, req.mode)
   if (buildTarget) {
+    // Check if repo is locked by a running task
+    const lockStatus = await getRepoLockStatus(req.projectId)
+    if (lockStatus.locked && lockStatus.lockedBy === 'task') {
+      const taskName = await getLockerTaskName(req.projectId)
+      const userMessage = await saveMessage(req, 'user', req.content)
+      const lockMsg = await saveMessage(req, 'system',
+        `Cannot start build — a task is currently running${taskName ? ` ("${taskName}")` : ''} and modifying the repository. You can:\n• Pause it in the Tasks tab\n• Or I can create a task for what you want — it'll go to Pending for you to manage.`
+      )
+      return { userMessage, replies: [lockMsg] }
+    }
+
+    // Acquire lock for chat build
+    await acquireRepoLock(req.projectId, 'chat')
     await createBuildSession(req.projectId, req.userId, buildTarget)
-    // Save a system message confirming
     const skillName = buildTarget === 'claude' ? 'Claude (direct)' : SKILLS[buildTarget]?.name ?? buildTarget
     const userMessage = await saveMessage(req, 'user', req.content)
     const confirmMsg = await saveMessage(req, 'system', `Build authorized with ${skillName}. Ready to execute.`)
@@ -174,9 +341,25 @@ export async function processChatSync(req: ChatRequest): Promise<ChatResult> {
   const lower = req.content.toLowerCase()
   if (lower.includes('stop build') || lower.includes('cancel build') || lower.includes('para de construir')) {
     await endBuildSession(req.projectId)
+    await releaseRepoLock(req.projectId, 'chat')
     const userMessage = await saveMessage(req, 'user', req.content)
     const stopMsg = await saveMessage(req, 'system', 'Build session ended.')
     return { userMessage, replies: [stopMsg] }
+  }
+
+  // Track user activity for idle detection
+  await touchProjectActivity(req.projectId)
+
+  // Detect explicit user task request: "create a task for me"
+  if (isUserRequestingTask(req.content)) {
+    const userMessage = await saveMessage(req, 'user', req.content)
+    return handleUserTaskRequest(req, user.anthropicToken, userMessage)
+  }
+
+  // Detect explicit reminder request: "create a reminder"
+  if (isUserRequestingReminder(req.content)) {
+    const userMessage = await saveMessage(req, 'user', req.content)
+    return handleUserReminderRequest(req, user.anthropicToken, userMessage)
   }
 
   // Check context and auto-compact if needed
@@ -223,6 +406,99 @@ export async function processChat(req: ChatRequest): Promise<void> {
   }
 }
 
+// ── User Task Request Handler ─────────────────────────────────────────────
+
+async function handleUserTaskRequest(req: ChatRequest, token: string, userMessage: ChatReply): Promise<ChatResult> {
+  // Ask Claude to determine if the request relates to conversation context
+  let content: string
+  try {
+    const recentContext = await gatherChatContext(req)
+    const result = await callAnthropic({
+      encryptedToken: token,
+      systemPrompt: `You help users create tasks. The user just asked to create a task.
+
+CONVERSATION CONTEXT:
+${recentContext || '(no prior conversation)'}
+
+RULES:
+- If the conversation context makes it clear what the task should be about, create it immediately. Use [CREATE_TASK: descriptive task name] and briefly confirm.
+- If the user's request is vague but the conversation gives enough context, infer the task and create it. Use [CREATE_TASK: descriptive task name].
+- If you genuinely cannot determine what the task should be about (no relevant conversation context), ask the user: "What should this task be about?"
+- If the request has nothing to do with code/development (e.g. personal reminders), use [CREATE_REMINDER: reminder text] instead and briefly confirm.
+- Keep task names clear and actionable (e.g. "Implement dark mode for settings page", not "Do the thing we discussed").`,
+      userMessage: req.content,
+      ...getModelOptions(req),
+    })
+    content = result.text
+  } catch {
+    content = 'Sorry, I had trouble creating the task. Please try again.'
+  }
+
+  // Process the response for task/reminder tags
+  const { cleanedResponse, created } = await detectAndCreateTask(content, req)
+
+  if (created === 'task') {
+    const reply = await saveMessage(req, 'claude', cleanedResponse)
+    const confirmMsg = await saveMessage(req, 'system', 'Task created — manage it in the Tasks tab.')
+    return { userMessage, replies: [reply, confirmMsg] }
+  }
+
+  if (created === 'reminder') {
+    const reply = await saveMessage(req, 'claude', cleanedResponse)
+    const confirmMsg = await saveMessage(req, 'system', 'Reminder created — find it in the Tasks tab.')
+    return { userMessage, replies: [reply, confirmMsg] }
+  }
+
+  // Claude asked for clarification — no task created yet
+  const reply = await saveMessage(req, 'claude', content)
+  return { userMessage, replies: [reply] }
+}
+
+// ── User Reminder Request Handler ─────────────────────────────────────────
+
+async function handleUserReminderRequest(req: ChatRequest, token: string, userMessage: ChatReply): Promise<ChatResult> {
+  let content: string
+  try {
+    const recentContext = await gatherChatContext(req)
+    const result = await callAnthropic({
+      encryptedToken: token,
+      systemPrompt: `You help users create reminders and tasks. The user asked to create a reminder.
+
+CONVERSATION CONTEXT:
+${recentContext || '(no prior conversation)'}
+
+RULES:
+- If the reminder is about code/development work and the conversation has relevant context, ask: "This sounds like it could be a task with full context attached — want me to create it as a task instead, or keep it as a simple reminder?"
+- If they want a task → use [CREATE_TASK: descriptive task name]
+- If they want a reminder (or it's clearly non-dev) → use [CREATE_REMINDER: reminder text]
+- If the request is clear and simple → just create the reminder directly with [CREATE_REMINDER: text] and confirm.`,
+      userMessage: req.content,
+      ...getModelOptions(req),
+    })
+    content = result.text
+  } catch {
+    content = 'Sorry, I had trouble creating the reminder. Please try again.'
+  }
+
+  const { cleanedResponse, created } = await detectAndCreateTask(content, req)
+
+  if (created === 'task') {
+    const reply = await saveMessage(req, 'claude', cleanedResponse)
+    const confirmMsg = await saveMessage(req, 'system', 'Task created — manage it in the Tasks tab.')
+    return { userMessage, replies: [reply, confirmMsg] }
+  }
+
+  if (created === 'reminder') {
+    const reply = await saveMessage(req, 'claude', cleanedResponse)
+    const confirmMsg = await saveMessage(req, 'system', 'Reminder created — find it in the Tasks tab.')
+    return { userMessage, replies: [reply, confirmMsg] }
+  }
+
+  // Claude asked for clarification
+  const reply = await saveMessage(req, 'claude', content)
+  return { userMessage, replies: [reply] }
+}
+
 // ── No Skill ───────────────────────────────────────────────────────────────
 
 async function handleNoSkill(req: ChatRequest, token: string, userMessage: ChatReply, compactSummary: string | null = null): Promise<ChatResult> {
@@ -230,7 +506,7 @@ async function handleNoSkill(req: ChatRequest, token: string, userMessage: ChatR
   try {
     const result = await callAnthropic({
       encryptedToken: token,
-      systemPrompt: `You are a helpful AI assistant. Be concise and direct.\n\n${BUILD_RULE}`,
+      systemPrompt: `You are a helpful AI assistant. Be concise and direct.\n\n${ALL_RULES}`,
       userMessage: req.content,
       compactSummary: compactSummary ?? undefined,
       ...getModelOptions(req),
@@ -240,8 +516,17 @@ async function handleNoSkill(req: ChatRequest, token: string, userMessage: ChatR
     content = 'Sorry, I encountered an error. Please try again.'
   }
 
-  const reply = await saveMessage(req, 'claude', content)
-  return { userMessage, replies: [reply] }
+  // Check if Claude proactively suggested a task/reminder
+  const { cleanedResponse, created } = await detectAndCreateTask(content, req)
+  const replies: ChatReply[] = []
+  replies.push(await saveMessage(req, 'claude', cleanedResponse))
+  if (created === 'task') {
+    replies.push(await saveMessage(req, 'system', 'Task created — manage it in the Tasks tab.'))
+  } else if (created === 'reminder') {
+    replies.push(await saveMessage(req, 'system', 'Reminder created — find it in the Tasks tab.'))
+  }
+
+  return { userMessage, replies }
 }
 
 // ── Skill ──────────────────────────────────────────────────────────────────
@@ -258,7 +543,7 @@ async function handleSkill(req: ChatRequest, token: string, userMessage: ChatRep
   try {
     const result = await callAnthropic({
       encryptedToken: token,
-      systemPrompt: `${skill.systemPrompt}\n\n${BUILD_RULE}`,
+      systemPrompt: `${skill.systemPrompt}\n\n${ALL_RULES}`,
       compactSummary: compactSummary ?? undefined,
       ...getModelOptions(req),
       userMessage: req.content,
@@ -269,8 +554,17 @@ async function handleSkill(req: ChatRequest, token: string, userMessage: ChatRep
     content = `${skill.name}: Sorry, error. Try again.`
   }
 
-  const reply = await saveMessage(req, skill.name, content)
-  return { userMessage, replies: [reply] }
+  // Check if employee proactively suggested a task/reminder
+  const { cleanedResponse, created } = await detectAndCreateTask(content, req)
+  const replies: ChatReply[] = []
+  replies.push(await saveMessage(req, skill.name, cleanedResponse))
+  if (created === 'task') {
+    replies.push(await saveMessage(req, 'system', 'Task created — manage it in the Tasks tab.'))
+  } else if (created === 'reminder') {
+    replies.push(await saveMessage(req, 'system', 'Reminder created — find it in the Tasks tab.'))
+  }
+
+  return { userMessage, replies }
 }
 
 // ── Team ───────────────────────────────────────────────────────────────────
@@ -306,6 +600,10 @@ async function handleTeam(req: ChatRequest, token: string, isBuild: boolean = fa
       status: 'running',
     },
   })
+
+  const startTime = Date.now()
+  const reportEtapas: ReportEtapa[] = []
+  let buildReportData: ReportBuildDetails | undefined
 
   try {
     // ── Step 1: Create the etapas plan ─────────────────────────────────
@@ -372,6 +670,7 @@ Respond ONLY in JSON:
 
       let restartCount = 0
       const MAX_RESTARTS = 2
+      const currentEtapaSteps: ReportStep[] = []
 
       for (let i = 0; i < orderedMembers.length; i++) {
         const member = orderedMembers[i]
@@ -413,6 +712,14 @@ CONVERSATION only. Do NOT write or edit any code. Only analyze, discuss, and adv
                 chatReq: req,
               })
               content = `Builder: Built successfully. Files touched: ${buildResult.filesTouched.join(', ') || 'none'}\n\n${buildResult.summary}`
+              buildReportData = {
+                executor: 'Builder',
+                filesChanged: buildResult.fileActions,
+                toolCalls: buildResult.toolCalls,
+                reasoning: previousOutput.length > 1000 ? previousOutput.slice(0, 1000) + '...' : previousOutput,
+                summary: buildResult.summary,
+                iterationCount: buildResult.iterationCount,
+              }
             } catch {
               content = 'Builder: [Build error]'
             }
@@ -437,6 +744,17 @@ CONVERSATION only. Do NOT write or edit any code. Only analyze, discuss, and adv
 
         await saveMessage(req, member.name, content)
 
+        // Track step for report
+        const stepInput = previousOutput
+        currentEtapaSteps.push({
+          employee: member.name,
+          role: member.name === 'Builder' ? 'Builder' : (memberId === 'security' ? 'Reviewer' : 'Planner'),
+          input: stepInput.length > 1000 ? stepInput.slice(0, 1000) + '...' : stepInput,
+          output: content.length > 1000 ? content.slice(0, 1000) + '...' : content,
+          decision: canRecreate ? (content.toUpperCase().includes('REJECT:') ? 'rejected' : 'approved') : null,
+          durationMs: undefined,
+        })
+
         // Update state: mark done
         state[ei].members[i].status = 'done'
         await updateTeamRunState(teamRun.id, state)
@@ -451,6 +769,11 @@ CONVERSATION only. Do NOT write or edit any code. Only analyze, discuss, and adv
           const redirectToName = orderedMembers[restartIndex]?.name ?? orderedMembers[0].name
 
           state[ei].members[i].redirectedTo = redirectToName
+
+          // Mark redirect in report step
+          if (currentEtapaSteps.length > 0) {
+            currentEtapaSteps[currentEtapaSteps.length - 1].redirectedTo = redirectToName
+          }
 
           // Add new members for restart
           for (let j = restartIndex; j < orderedMembers.length; j++) {
@@ -472,6 +795,14 @@ CONVERSATION only. Do NOT write or edit any code. Only analyze, discuss, and adv
       state[ei].status = 'done'
       await updateTeamRunState(teamRun.id, state)
       previousEtapaResult = previousOutput
+
+      // Collect etapa report
+      reportEtapas.push({
+        name: etapa.name,
+        objective: etapa.objective,
+        steps: currentEtapaSteps,
+        status: currentEtapaSteps.some((s) => s.decision === 'rejected') ? 'rejected' : 'completed',
+      })
     }
 
     // ── Step 3: Conclusion ─────────────────────────────────────────────
@@ -490,7 +821,20 @@ CONVERSATION only. Do NOT write or edit any code. Only analyze, discuss, and adv
       conclusion = 'Team Conclusion: Discussion complete.'
     }
 
-    await saveMessage(req, 'team', conclusion)
+    // Build the report
+    const teamReport: ChatReport = {
+      type: isBuild ? 'team_build' : 'team_discussion',
+      mode: 'team',
+      timestamp: new Date().toISOString(),
+      question: req.content,
+      etapas: reportEtapas,
+      build: isBuild ? buildReportData : undefined,
+      conclusion,
+      model: req.model,
+      totalDurationMs: Date.now() - startTime,
+    }
+
+    await saveMessage(req, 'team', conclusion, teamReport)
     await prisma.teamRun.update({
       where: { id: teamRun.id },
       data: { status: 'completed' },
@@ -509,6 +853,7 @@ CONVERSATION only. Do NOT write or edit any code. Only analyze, discuss, and adv
 // ── Build: Direct (no skill) ───────────────────────────────────────────────
 
 async function handleBuildDirect(req: ChatRequest, token: string, userMessage: ChatReply, _compactSummary: string | null = null): Promise<ChatResult> {
+  const buildStart = Date.now()
   const repo = await prisma.repository.findUnique({ where: { projectId: req.projectId } })
   if (!repo) {
     const reply = await saveMessage(req, 'system', 'No repository connected. Clone a repo first.')
@@ -517,20 +862,40 @@ async function handleBuildDirect(req: ChatRequest, token: string, userMessage: C
 
   const result = await runBuildToolLoop({
     encryptedToken: token,
-    systemPrompt: `You are a skilled developer. Execute the user's request by reading and writing files in the repository. Be precise and thorough.\n\n${BUILD_RULE}`,
+    systemPrompt: `You are a skilled developer. Execute the user's request by reading and writing files in the repository. Be precise and thorough.\n\n${ALL_RULES}`,
     userMessage: req.content,
     repositoryId: repo.id,
     projectId: req.projectId,
     chatReq: req,
   })
 
-  const reply = await saveMessage(req, 'builder', result.summary)
+  const report: ChatReport = {
+    type: 'build',
+    mode: 'no_skill',
+    timestamp: new Date().toISOString(),
+    question: req.content,
+    build: {
+      executor: 'Claude',
+      filesChanged: result.fileActions,
+      toolCalls: result.toolCalls,
+      reasoning: req.content.length > 1000 ? req.content.slice(0, 1000) + '...' : req.content,
+      summary: result.summary,
+      iterationCount: result.iterationCount,
+    },
+    conclusion: result.summary,
+    model: req.model,
+    totalDurationMs: Date.now() - buildStart,
+  }
+
+  await releaseRepoLock(req.projectId, 'chat')
+  const reply = await saveMessage(req, 'builder', result.summary, report)
   return { userMessage, replies: [reply] }
 }
 
 // ── Build: With Skill ──────────────────────────────────────────────────────
 
 async function handleBuildWithSkill(req: ChatRequest, token: string, userMessage: ChatReply, _compactSummary: string | null = null): Promise<ChatResult> {
+  const buildStart = Date.now()
   const skillId = req.activeSkillId
   if (!skillId || !SKILLS[skillId]) {
     const reply = await saveMessage(req, 'system', 'No employee selected.')
@@ -546,14 +911,33 @@ async function handleBuildWithSkill(req: ChatRequest, token: string, userMessage
   const skill = SKILLS[skillId]
   const result = await runBuildToolLoop({
     encryptedToken: token,
-    systemPrompt: `${skill.systemPrompt}\n\nYou are now in BUILD MODE. Execute the request by reading and writing files. Apply your expertise as ${skill.name} while building.\n\n${BUILD_RULE}`,
+    systemPrompt: `${skill.systemPrompt}\n\nYou are now in BUILD MODE. Execute the request by reading and writing files. Apply your expertise as ${skill.name} while building.\n\n${ALL_RULES}`,
     userMessage: req.content,
     repositoryId: repo.id,
     projectId: req.projectId,
     chatReq: req,
   })
 
-  const reply = await saveMessage(req, skill.name, `${skill.name}: ${result.summary}`)
+  const report: ChatReport = {
+    type: 'build',
+    mode: 'skill',
+    timestamp: new Date().toISOString(),
+    question: req.content,
+    build: {
+      executor: skill.name,
+      filesChanged: result.fileActions,
+      toolCalls: result.toolCalls,
+      reasoning: req.content.length > 1000 ? req.content.slice(0, 1000) + '...' : req.content,
+      summary: result.summary,
+      iterationCount: result.iterationCount,
+    },
+    conclusion: result.summary,
+    model: req.model,
+    totalDurationMs: Date.now() - buildStart,
+  }
+
+  await releaseRepoLock(req.projectId, 'chat')
+  const reply = await saveMessage(req, skill.name, `${skill.name}: ${result.summary}`, report)
   return { userMessage, replies: [reply] }
 }
 
@@ -568,14 +952,18 @@ async function runBuildToolLoop(options: {
   repositoryId: string
   projectId: string
   chatReq: ChatRequest
-}): Promise<{ summary: string; filesTouched: string[] }> {
+}): Promise<{ summary: string; filesTouched: string[]; fileActions: { path: string; action: 'write' | 'delete' }[]; toolCalls: ReportToolCall[]; iterationCount: number }> {
   const messages: ToolCallMessage[] = [
     { role: 'user', content: options.userMessage },
   ]
   const allText: string[] = []
   const filesTouched = new Set<string>()
+  const fileActions: { path: string; action: 'write' | 'delete' }[] = []
+  const reportToolCalls: ReportToolCall[] = []
+  let iterationCount = 0
 
   for (let i = 0; i < MAX_BUILD_ITERATIONS; i++) {
+    iterationCount++
     const response = await callAnthropicWithTools({
       encryptedToken: options.encryptedToken,
       systemPrompt: options.systemPrompt,
@@ -610,8 +998,18 @@ async function runBuildToolLoop(options: {
         is_error: result.isError || undefined,
       })
 
+      // Track for report
+      const toolPath = toolCall.input.path as string | undefined
+      reportToolCalls.push({
+        tool: toolCall.name,
+        path: toolPath,
+        action: `${toolCall.name}${toolPath ? ` → ${toolPath}` : ''}`,
+      })
+
       if (toolCall.name === 'write_file' || toolCall.name === 'delete_file') {
-        filesTouched.add(toolCall.input.path as string)
+        const filePath = toolCall.input.path as string
+        filesTouched.add(filePath)
+        fileActions.push({ path: filePath, action: toolCall.name === 'delete_file' ? 'delete' : 'write' })
         // Log file change in chat
         await saveMessage(options.chatReq, 'step', JSON.stringify({
           type: 'file_changed',
@@ -625,7 +1023,7 @@ async function runBuildToolLoop(options: {
   }
 
   const summary = allText.join('\n\n') || 'Build completed.'
-  return { summary, filesTouched: [...filesTouched] }
+  return { summary, filesTouched: [...filesTouched], fileActions, toolCalls: reportToolCalls, iterationCount }
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -742,7 +1140,7 @@ function getModelOptions(req: ChatRequest): { model?: string; thinkingBudget?: n
   }
 }
 
-async function saveMessage(req: ChatRequest, sender: string, content: string): Promise<ChatReply> {
+async function saveMessage(req: ChatRequest, sender: string, content: string, report?: ChatReport): Promise<ChatReply> {
   const msg = await prisma.chatMessage.create({
     data: {
       projectId: req.projectId,
@@ -752,6 +1150,7 @@ async function saveMessage(req: ChatRequest, sender: string, content: string): P
       sender,
       mode: req.mode,
       activeSkillId: req.activeSkillId ?? null,
+      report: report ? JSON.parse(JSON.stringify(report)) : undefined,
     },
     select: { id: true, content: true, sender: true, mode: true, activeSkillId: true },
   })

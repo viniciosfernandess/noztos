@@ -20,7 +20,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: 'Task not found' }, { status: 404 })
   }
 
-  let body: { name?: string; instruction?: string; teamId?: string }
+  let body: { name?: string; instruction?: string; teamId?: string; executorType?: string; executorId?: string | null; status?: string; scheduledAt?: string | null; accumulatedContext?: Record<string, unknown> }
   try {
     body = await request.json()
   } catch {
@@ -30,6 +30,50 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   const data: Record<string, unknown> = {}
   if (body.name?.trim()) data.name = body.name.trim()
   if (body.instruction !== undefined) data.instruction = body.instruction?.trim() || null
+  if (body.status) data.status = body.status
+  if (body.scheduledAt !== undefined) {
+    if (body.scheduledAt) {
+      // Validate no other task is scheduled at the same time (within 1 min window)
+      const scheduledDate = new Date(body.scheduledAt)
+      const windowStart = new Date(scheduledDate.getTime() - 60000)
+      const windowEnd = new Date(scheduledDate.getTime() + 60000)
+      const conflict = await prisma.task.findFirst({
+        where: {
+          projectId: id,
+          id: { not: taskId },
+          status: 'queue',
+          scheduledAt: { gte: windowStart, lte: windowEnd },
+        },
+        select: { id: true, name: true },
+      })
+      if (conflict) {
+        return NextResponse.json(
+          { error: `Time conflict — "${conflict.name}" is already scheduled at this time. Choose a different time.` },
+          { status: 409 }
+        )
+      }
+      data.scheduledAt = scheduledDate
+    } else {
+      data.scheduledAt = null
+    }
+  }
+  if (body.executorType) data.executorType = body.executorType
+  if (body.executorId !== undefined) data.executorId = body.executorId
+  if (body.accumulatedContext) data.accumulatedContext = JSON.parse(JSON.stringify(body.accumulatedContext))
+
+  // Auto-assign queue position when moving to queue
+  if (body.status === 'queue') {
+    const maxPos = await prisma.task.aggregate({
+      where: { projectId: id, status: 'queue' },
+      _max: { queuePosition: true },
+    })
+    data.queuePosition = (maxPos._max.queuePosition ?? -1) + 1
+  }
+
+  // Clear queue position when leaving queue
+  if (body.status && body.status !== 'queue') {
+    data.queuePosition = null
+  }
 
   if (body.teamId !== undefined) {
     if (body.teamId) {
@@ -50,7 +94,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   const updated = await prisma.task.update({
     where: { id: taskId },
     data,
-    select: { id: true, name: true, status: true, executorType: true, executorId: true },
+    select: {
+      id: true, name: true, instruction: true, status: true,
+      executorType: true, executorId: true, context: true, accumulatedContext: true,
+      queuePosition: true, scheduledAt: true, originalScheduledAt: true, rescheduledReason: true, rescheduledCount: true, createdAt: true,
+    },
   })
 
   return NextResponse.json(updated)

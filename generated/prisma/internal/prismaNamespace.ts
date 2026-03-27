@@ -1743,6 +1743,8 @@ export const ProjectScalarFieldEnum = {
   repositoryPath: 'repositoryPath',
   slackChannel: 'slackChannel',
   slackWebhook: 'slackWebhook',
+  queueStatus: 'queueStatus',
+  lastActivityAt: 'lastActivityAt',
   createdAt: 'createdAt'
 } as const
 
@@ -1757,6 +1759,9 @@ export const RepositoryScalarFieldEnum = {
   githubBranch: 'githubBranch',
   lastSyncedSha: 'lastSyncedSha',
   lastSyncedAt: 'lastSyncedAt',
+  lockedBy: 'lockedBy',
+  lockedByTaskId: 'lockedByTaskId',
+  lockedAt: 'lockedAt',
   createdAt: 'createdAt'
 } as const
 
@@ -1832,6 +1837,7 @@ export const ChatMessageScalarFieldEnum = {
   sender: 'sender',
   activeSkillId: 'activeSkillId',
   mode: 'mode',
+  report: 'report',
   createdAt: 'createdAt'
 } as const
 
@@ -1853,6 +1859,10 @@ export const TaskScalarFieldEnum = {
   isRecurring: 'isRecurring',
   recurrenceConfig: 'recurrenceConfig',
   scheduledAt: 'scheduledAt',
+  originalScheduledAt: 'originalScheduledAt',
+  rescheduledReason: 'rescheduledReason',
+  rescheduledCount: 'rescheduledCount',
+  queuePosition: 'queuePosition',
   pausedAt: 'pausedAt',
   pausedAtIteration: 'pausedAtIteration',
   pausedAtEmployee: 'pausedAtEmployee',

@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db'
 import { callAnthropic, callAnthropicWithTools } from '@/lib/anthropic'
 import { REPO_TOOLS, executeTool } from '@/lib/tools'
 import type { ContentBlock, ToolCallMessage } from '@/lib/anthropic'
+import { acquireRepoLock, releaseRepoLock } from '@/lib/repo-lock'
 
 // Team Pipeline Engine
 //
@@ -44,6 +45,12 @@ export async function startPipeline(taskId: string): Promise<PipelineResult> {
   }
   if (!task.user.anthropicToken) {
     return { status: 'error', message: 'User has no Anthropic token. Connect your API key first.' }
+  }
+
+  // Acquire repo lock for this task
+  const lockAcquired = await acquireRepoLock(task.projectId, 'task', taskId)
+  if (!lockAcquired) {
+    return { status: 'error', message: 'Repository is currently in use. Cannot start task.' }
   }
 
   const order = task.team.collaboratorOrder as unknown as CollaboratorOrder
@@ -98,6 +105,7 @@ export async function advancePipeline(
       where: { id: taskId },
       data: { status: 'completed', pausedAtEmployee: null },
     })
+    await releaseRepoLock(task.projectId, 'task')
     return { status: 'completed', message: 'Pipeline complete' }
   }
 

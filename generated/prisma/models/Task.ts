@@ -27,10 +27,14 @@ export type AggregateTask = {
 }
 
 export type TaskAvgAggregateOutputType = {
+  rescheduledCount: number | null
+  queuePosition: number | null
   pausedAtIteration: number | null
 }
 
 export type TaskSumAggregateOutputType = {
+  rescheduledCount: number | null
+  queuePosition: number | null
   pausedAtIteration: number | null
 }
 
@@ -46,6 +50,10 @@ export type TaskMinAggregateOutputType = {
   status: $Enums.TaskStatus | null
   isRecurring: boolean | null
   scheduledAt: Date | null
+  originalScheduledAt: Date | null
+  rescheduledReason: string | null
+  rescheduledCount: number | null
+  queuePosition: number | null
   pausedAt: Date | null
   pausedAtIteration: number | null
   pausedAtEmployee: string | null
@@ -65,6 +73,10 @@ export type TaskMaxAggregateOutputType = {
   status: $Enums.TaskStatus | null
   isRecurring: boolean | null
   scheduledAt: Date | null
+  originalScheduledAt: Date | null
+  rescheduledReason: string | null
+  rescheduledCount: number | null
+  queuePosition: number | null
   pausedAt: Date | null
   pausedAtIteration: number | null
   pausedAtEmployee: string | null
@@ -87,6 +99,10 @@ export type TaskCountAggregateOutputType = {
   isRecurring: number
   recurrenceConfig: number
   scheduledAt: number
+  originalScheduledAt: number
+  rescheduledReason: number
+  rescheduledCount: number
+  queuePosition: number
   pausedAt: number
   pausedAtIteration: number
   pausedAtEmployee: number
@@ -97,10 +113,14 @@ export type TaskCountAggregateOutputType = {
 
 
 export type TaskAvgAggregateInputType = {
+  rescheduledCount?: true
+  queuePosition?: true
   pausedAtIteration?: true
 }
 
 export type TaskSumAggregateInputType = {
+  rescheduledCount?: true
+  queuePosition?: true
   pausedAtIteration?: true
 }
 
@@ -116,6 +136,10 @@ export type TaskMinAggregateInputType = {
   status?: true
   isRecurring?: true
   scheduledAt?: true
+  originalScheduledAt?: true
+  rescheduledReason?: true
+  rescheduledCount?: true
+  queuePosition?: true
   pausedAt?: true
   pausedAtIteration?: true
   pausedAtEmployee?: true
@@ -135,6 +159,10 @@ export type TaskMaxAggregateInputType = {
   status?: true
   isRecurring?: true
   scheduledAt?: true
+  originalScheduledAt?: true
+  rescheduledReason?: true
+  rescheduledCount?: true
+  queuePosition?: true
   pausedAt?: true
   pausedAtIteration?: true
   pausedAtEmployee?: true
@@ -157,6 +185,10 @@ export type TaskCountAggregateInputType = {
   isRecurring?: true
   recurrenceConfig?: true
   scheduledAt?: true
+  originalScheduledAt?: true
+  rescheduledReason?: true
+  rescheduledCount?: true
+  queuePosition?: true
   pausedAt?: true
   pausedAtIteration?: true
   pausedAtEmployee?: true
@@ -266,6 +298,10 @@ export type TaskGroupByOutputType = {
   isRecurring: boolean
   recurrenceConfig: runtime.JsonValue | null
   scheduledAt: Date | null
+  originalScheduledAt: Date | null
+  rescheduledReason: string | null
+  rescheduledCount: number
+  queuePosition: number | null
   pausedAt: Date | null
   pausedAtIteration: number | null
   pausedAtEmployee: string | null
@@ -311,6 +347,10 @@ export type TaskWhereInput = {
   isRecurring?: Prisma.BoolFilter<"Task"> | boolean
   recurrenceConfig?: Prisma.JsonNullableFilter<"Task">
   scheduledAt?: Prisma.DateTimeNullableFilter<"Task"> | Date | string | null
+  originalScheduledAt?: Prisma.DateTimeNullableFilter<"Task"> | Date | string | null
+  rescheduledReason?: Prisma.StringNullableFilter<"Task"> | string | null
+  rescheduledCount?: Prisma.IntFilter<"Task"> | number
+  queuePosition?: Prisma.IntNullableFilter<"Task"> | number | null
   pausedAt?: Prisma.DateTimeNullableFilter<"Task"> | Date | string | null
   pausedAtIteration?: Prisma.IntNullableFilter<"Task"> | number | null
   pausedAtEmployee?: Prisma.StringNullableFilter<"Task"> | string | null
@@ -342,6 +382,10 @@ export type TaskOrderByWithRelationInput = {
   isRecurring?: Prisma.SortOrder
   recurrenceConfig?: Prisma.SortOrderInput | Prisma.SortOrder
   scheduledAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  originalScheduledAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  rescheduledReason?: Prisma.SortOrderInput | Prisma.SortOrder
+  rescheduledCount?: Prisma.SortOrder
+  queuePosition?: Prisma.SortOrderInput | Prisma.SortOrder
   pausedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   pausedAtIteration?: Prisma.SortOrderInput | Prisma.SortOrder
   pausedAtEmployee?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -376,6 +420,10 @@ export type TaskWhereUniqueInput = Prisma.AtLeast<{
   isRecurring?: Prisma.BoolFilter<"Task"> | boolean
   recurrenceConfig?: Prisma.JsonNullableFilter<"Task">
   scheduledAt?: Prisma.DateTimeNullableFilter<"Task"> | Date | string | null
+  originalScheduledAt?: Prisma.DateTimeNullableFilter<"Task"> | Date | string | null
+  rescheduledReason?: Prisma.StringNullableFilter<"Task"> | string | null
+  rescheduledCount?: Prisma.IntFilter<"Task"> | number
+  queuePosition?: Prisma.IntNullableFilter<"Task"> | number | null
   pausedAt?: Prisma.DateTimeNullableFilter<"Task"> | Date | string | null
   pausedAtIteration?: Prisma.IntNullableFilter<"Task"> | number | null
   pausedAtEmployee?: Prisma.StringNullableFilter<"Task"> | string | null
@@ -407,6 +455,10 @@ export type TaskOrderByWithAggregationInput = {
   isRecurring?: Prisma.SortOrder
   recurrenceConfig?: Prisma.SortOrderInput | Prisma.SortOrder
   scheduledAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  originalScheduledAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  rescheduledReason?: Prisma.SortOrderInput | Prisma.SortOrder
+  rescheduledCount?: Prisma.SortOrder
+  queuePosition?: Prisma.SortOrderInput | Prisma.SortOrder
   pausedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   pausedAtIteration?: Prisma.SortOrderInput | Prisma.SortOrder
   pausedAtEmployee?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -437,6 +489,10 @@ export type TaskScalarWhereWithAggregatesInput = {
   isRecurring?: Prisma.BoolWithAggregatesFilter<"Task"> | boolean
   recurrenceConfig?: Prisma.JsonNullableWithAggregatesFilter<"Task">
   scheduledAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Task"> | Date | string | null
+  originalScheduledAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Task"> | Date | string | null
+  rescheduledReason?: Prisma.StringNullableWithAggregatesFilter<"Task"> | string | null
+  rescheduledCount?: Prisma.IntWithAggregatesFilter<"Task"> | number
+  queuePosition?: Prisma.IntNullableWithAggregatesFilter<"Task"> | number | null
   pausedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Task"> | Date | string | null
   pausedAtIteration?: Prisma.IntNullableWithAggregatesFilter<"Task"> | number | null
   pausedAtEmployee?: Prisma.StringNullableWithAggregatesFilter<"Task"> | string | null
@@ -456,6 +512,10 @@ export type TaskCreateInput = {
   isRecurring?: boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
+  originalScheduledAt?: Date | string | null
+  rescheduledReason?: string | null
+  rescheduledCount?: number
+  queuePosition?: number | null
   pausedAt?: Date | string | null
   pausedAtIteration?: number | null
   pausedAtEmployee?: string | null
@@ -487,6 +547,10 @@ export type TaskUncheckedCreateInput = {
   isRecurring?: boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
+  originalScheduledAt?: Date | string | null
+  rescheduledReason?: string | null
+  rescheduledCount?: number
+  queuePosition?: number | null
   pausedAt?: Date | string | null
   pausedAtIteration?: number | null
   pausedAtEmployee?: string | null
@@ -512,6 +576,10 @@ export type TaskUpdateInput = {
   isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
+  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -543,6 +611,10 @@ export type TaskUncheckedUpdateInput = {
   isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
+  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -571,6 +643,10 @@ export type TaskCreateManyInput = {
   isRecurring?: boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
+  originalScheduledAt?: Date | string | null
+  rescheduledReason?: string | null
+  rescheduledCount?: number
+  queuePosition?: number | null
   pausedAt?: Date | string | null
   pausedAtIteration?: number | null
   pausedAtEmployee?: string | null
@@ -590,6 +666,10 @@ export type TaskUpdateManyMutationInput = {
   isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
+  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -612,6 +692,10 @@ export type TaskUncheckedUpdateManyInput = {
   isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
+  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -644,6 +728,10 @@ export type TaskCountOrderByAggregateInput = {
   isRecurring?: Prisma.SortOrder
   recurrenceConfig?: Prisma.SortOrder
   scheduledAt?: Prisma.SortOrder
+  originalScheduledAt?: Prisma.SortOrder
+  rescheduledReason?: Prisma.SortOrder
+  rescheduledCount?: Prisma.SortOrder
+  queuePosition?: Prisma.SortOrder
   pausedAt?: Prisma.SortOrder
   pausedAtIteration?: Prisma.SortOrder
   pausedAtEmployee?: Prisma.SortOrder
@@ -652,6 +740,8 @@ export type TaskCountOrderByAggregateInput = {
 }
 
 export type TaskAvgOrderByAggregateInput = {
+  rescheduledCount?: Prisma.SortOrder
+  queuePosition?: Prisma.SortOrder
   pausedAtIteration?: Prisma.SortOrder
 }
 
@@ -667,6 +757,10 @@ export type TaskMaxOrderByAggregateInput = {
   status?: Prisma.SortOrder
   isRecurring?: Prisma.SortOrder
   scheduledAt?: Prisma.SortOrder
+  originalScheduledAt?: Prisma.SortOrder
+  rescheduledReason?: Prisma.SortOrder
+  rescheduledCount?: Prisma.SortOrder
+  queuePosition?: Prisma.SortOrder
   pausedAt?: Prisma.SortOrder
   pausedAtIteration?: Prisma.SortOrder
   pausedAtEmployee?: Prisma.SortOrder
@@ -686,6 +780,10 @@ export type TaskMinOrderByAggregateInput = {
   status?: Prisma.SortOrder
   isRecurring?: Prisma.SortOrder
   scheduledAt?: Prisma.SortOrder
+  originalScheduledAt?: Prisma.SortOrder
+  rescheduledReason?: Prisma.SortOrder
+  rescheduledCount?: Prisma.SortOrder
+  queuePosition?: Prisma.SortOrder
   pausedAt?: Prisma.SortOrder
   pausedAtIteration?: Prisma.SortOrder
   pausedAtEmployee?: Prisma.SortOrder
@@ -694,6 +792,8 @@ export type TaskMinOrderByAggregateInput = {
 }
 
 export type TaskSumOrderByAggregateInput = {
+  rescheduledCount?: Prisma.SortOrder
+  queuePosition?: Prisma.SortOrder
   pausedAtIteration?: Prisma.SortOrder
 }
 
@@ -941,6 +1041,10 @@ export type TaskCreateWithoutUserInput = {
   isRecurring?: boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
+  originalScheduledAt?: Date | string | null
+  rescheduledReason?: string | null
+  rescheduledCount?: number
+  queuePosition?: number | null
   pausedAt?: Date | string | null
   pausedAtIteration?: number | null
   pausedAtEmployee?: string | null
@@ -970,6 +1074,10 @@ export type TaskUncheckedCreateWithoutUserInput = {
   isRecurring?: boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
+  originalScheduledAt?: Date | string | null
+  rescheduledReason?: string | null
+  rescheduledCount?: number
+  queuePosition?: number | null
   pausedAt?: Date | string | null
   pausedAtIteration?: number | null
   pausedAtEmployee?: string | null
@@ -1027,6 +1135,10 @@ export type TaskScalarWhereInput = {
   isRecurring?: Prisma.BoolFilter<"Task"> | boolean
   recurrenceConfig?: Prisma.JsonNullableFilter<"Task">
   scheduledAt?: Prisma.DateTimeNullableFilter<"Task"> | Date | string | null
+  originalScheduledAt?: Prisma.DateTimeNullableFilter<"Task"> | Date | string | null
+  rescheduledReason?: Prisma.StringNullableFilter<"Task"> | string | null
+  rescheduledCount?: Prisma.IntFilter<"Task"> | number
+  queuePosition?: Prisma.IntNullableFilter<"Task"> | number | null
   pausedAt?: Prisma.DateTimeNullableFilter<"Task"> | Date | string | null
   pausedAtIteration?: Prisma.IntNullableFilter<"Task"> | number | null
   pausedAtEmployee?: Prisma.StringNullableFilter<"Task"> | string | null
@@ -1046,6 +1158,10 @@ export type TaskCreateWithoutProjectInput = {
   isRecurring?: boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
+  originalScheduledAt?: Date | string | null
+  rescheduledReason?: string | null
+  rescheduledCount?: number
+  queuePosition?: number | null
   pausedAt?: Date | string | null
   pausedAtIteration?: number | null
   pausedAtEmployee?: string | null
@@ -1075,6 +1191,10 @@ export type TaskUncheckedCreateWithoutProjectInput = {
   isRecurring?: boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
+  originalScheduledAt?: Date | string | null
+  rescheduledReason?: string | null
+  rescheduledCount?: number
+  queuePosition?: number | null
   pausedAt?: Date | string | null
   pausedAtIteration?: number | null
   pausedAtEmployee?: string | null
@@ -1126,6 +1246,10 @@ export type TaskCreateWithoutTeamInput = {
   isRecurring?: boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
+  originalScheduledAt?: Date | string | null
+  rescheduledReason?: string | null
+  rescheduledCount?: number
+  queuePosition?: number | null
   pausedAt?: Date | string | null
   pausedAtIteration?: number | null
   pausedAtEmployee?: string | null
@@ -1155,6 +1279,10 @@ export type TaskUncheckedCreateWithoutTeamInput = {
   isRecurring?: boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
+  originalScheduledAt?: Date | string | null
+  rescheduledReason?: string | null
+  rescheduledCount?: number
+  queuePosition?: number | null
   pausedAt?: Date | string | null
   pausedAtIteration?: number | null
   pausedAtEmployee?: string | null
@@ -1206,6 +1334,10 @@ export type TaskCreateWithoutIterationsInput = {
   isRecurring?: boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
+  originalScheduledAt?: Date | string | null
+  rescheduledReason?: string | null
+  rescheduledCount?: number
+  queuePosition?: number | null
   pausedAt?: Date | string | null
   pausedAtIteration?: number | null
   pausedAtEmployee?: string | null
@@ -1236,6 +1368,10 @@ export type TaskUncheckedCreateWithoutIterationsInput = {
   isRecurring?: boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
+  originalScheduledAt?: Date | string | null
+  rescheduledReason?: string | null
+  rescheduledCount?: number
+  queuePosition?: number | null
   pausedAt?: Date | string | null
   pausedAtIteration?: number | null
   pausedAtEmployee?: string | null
@@ -1276,6 +1412,10 @@ export type TaskUpdateWithoutIterationsInput = {
   isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
+  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1306,6 +1446,10 @@ export type TaskUncheckedUpdateWithoutIterationsInput = {
   isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
+  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1330,6 +1474,10 @@ export type TaskCreateWithoutSkillLogsInput = {
   isRecurring?: boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
+  originalScheduledAt?: Date | string | null
+  rescheduledReason?: string | null
+  rescheduledCount?: number
+  queuePosition?: number | null
   pausedAt?: Date | string | null
   pausedAtIteration?: number | null
   pausedAtEmployee?: string | null
@@ -1360,6 +1508,10 @@ export type TaskUncheckedCreateWithoutSkillLogsInput = {
   isRecurring?: boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
+  originalScheduledAt?: Date | string | null
+  rescheduledReason?: string | null
+  rescheduledCount?: number
+  queuePosition?: number | null
   pausedAt?: Date | string | null
   pausedAtIteration?: number | null
   pausedAtEmployee?: string | null
@@ -1400,6 +1552,10 @@ export type TaskUpdateWithoutSkillLogsInput = {
   isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
+  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1430,6 +1586,10 @@ export type TaskUncheckedUpdateWithoutSkillLogsInput = {
   isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
+  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1454,6 +1614,10 @@ export type TaskCreateWithoutBuildLogsInput = {
   isRecurring?: boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
+  originalScheduledAt?: Date | string | null
+  rescheduledReason?: string | null
+  rescheduledCount?: number
+  queuePosition?: number | null
   pausedAt?: Date | string | null
   pausedAtIteration?: number | null
   pausedAtEmployee?: string | null
@@ -1484,6 +1648,10 @@ export type TaskUncheckedCreateWithoutBuildLogsInput = {
   isRecurring?: boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
+  originalScheduledAt?: Date | string | null
+  rescheduledReason?: string | null
+  rescheduledCount?: number
+  queuePosition?: number | null
   pausedAt?: Date | string | null
   pausedAtIteration?: number | null
   pausedAtEmployee?: string | null
@@ -1524,6 +1692,10 @@ export type TaskUpdateWithoutBuildLogsInput = {
   isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
+  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1554,6 +1726,10 @@ export type TaskUncheckedUpdateWithoutBuildLogsInput = {
   isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
+  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1578,6 +1754,10 @@ export type TaskCreateWithoutSuggestionsInput = {
   isRecurring?: boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
+  originalScheduledAt?: Date | string | null
+  rescheduledReason?: string | null
+  rescheduledCount?: number
+  queuePosition?: number | null
   pausedAt?: Date | string | null
   pausedAtIteration?: number | null
   pausedAtEmployee?: string | null
@@ -1608,6 +1788,10 @@ export type TaskUncheckedCreateWithoutSuggestionsInput = {
   isRecurring?: boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
+  originalScheduledAt?: Date | string | null
+  rescheduledReason?: string | null
+  rescheduledCount?: number
+  queuePosition?: number | null
   pausedAt?: Date | string | null
   pausedAtIteration?: number | null
   pausedAtEmployee?: string | null
@@ -1648,6 +1832,10 @@ export type TaskUpdateWithoutSuggestionsInput = {
   isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
+  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1678,6 +1866,10 @@ export type TaskUncheckedUpdateWithoutSuggestionsInput = {
   isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
+  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1702,6 +1894,10 @@ export type TaskCreateWithoutSlackLogsInput = {
   isRecurring?: boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
+  originalScheduledAt?: Date | string | null
+  rescheduledReason?: string | null
+  rescheduledCount?: number
+  queuePosition?: number | null
   pausedAt?: Date | string | null
   pausedAtIteration?: number | null
   pausedAtEmployee?: string | null
@@ -1732,6 +1928,10 @@ export type TaskUncheckedCreateWithoutSlackLogsInput = {
   isRecurring?: boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
+  originalScheduledAt?: Date | string | null
+  rescheduledReason?: string | null
+  rescheduledCount?: number
+  queuePosition?: number | null
   pausedAt?: Date | string | null
   pausedAtIteration?: number | null
   pausedAtEmployee?: string | null
@@ -1772,6 +1972,10 @@ export type TaskUpdateWithoutSlackLogsInput = {
   isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
+  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1802,6 +2006,10 @@ export type TaskUncheckedUpdateWithoutSlackLogsInput = {
   isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
+  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1826,6 +2034,10 @@ export type TaskCreateWithoutResourceUsageInput = {
   isRecurring?: boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
+  originalScheduledAt?: Date | string | null
+  rescheduledReason?: string | null
+  rescheduledCount?: number
+  queuePosition?: number | null
   pausedAt?: Date | string | null
   pausedAtIteration?: number | null
   pausedAtEmployee?: string | null
@@ -1856,6 +2068,10 @@ export type TaskUncheckedCreateWithoutResourceUsageInput = {
   isRecurring?: boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
+  originalScheduledAt?: Date | string | null
+  rescheduledReason?: string | null
+  rescheduledCount?: number
+  queuePosition?: number | null
   pausedAt?: Date | string | null
   pausedAtIteration?: number | null
   pausedAtEmployee?: string | null
@@ -1896,6 +2112,10 @@ export type TaskUpdateWithoutResourceUsageInput = {
   isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
+  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1926,6 +2146,10 @@ export type TaskUncheckedUpdateWithoutResourceUsageInput = {
   isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
+  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1952,6 +2176,10 @@ export type TaskCreateManyUserInput = {
   isRecurring?: boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
+  originalScheduledAt?: Date | string | null
+  rescheduledReason?: string | null
+  rescheduledCount?: number
+  queuePosition?: number | null
   pausedAt?: Date | string | null
   pausedAtIteration?: number | null
   pausedAtEmployee?: string | null
@@ -1971,6 +2199,10 @@ export type TaskUpdateWithoutUserInput = {
   isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
+  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -2000,6 +2232,10 @@ export type TaskUncheckedUpdateWithoutUserInput = {
   isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
+  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -2027,6 +2263,10 @@ export type TaskUncheckedUpdateManyWithoutUserInput = {
   isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
+  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -2048,6 +2288,10 @@ export type TaskCreateManyProjectInput = {
   isRecurring?: boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
+  originalScheduledAt?: Date | string | null
+  rescheduledReason?: string | null
+  rescheduledCount?: number
+  queuePosition?: number | null
   pausedAt?: Date | string | null
   pausedAtIteration?: number | null
   pausedAtEmployee?: string | null
@@ -2067,6 +2311,10 @@ export type TaskUpdateWithoutProjectInput = {
   isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
+  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -2096,6 +2344,10 @@ export type TaskUncheckedUpdateWithoutProjectInput = {
   isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
+  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -2123,6 +2375,10 @@ export type TaskUncheckedUpdateManyWithoutProjectInput = {
   isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
+  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -2144,6 +2400,10 @@ export type TaskCreateManyTeamInput = {
   isRecurring?: boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
+  originalScheduledAt?: Date | string | null
+  rescheduledReason?: string | null
+  rescheduledCount?: number
+  queuePosition?: number | null
   pausedAt?: Date | string | null
   pausedAtIteration?: number | null
   pausedAtEmployee?: string | null
@@ -2163,6 +2423,10 @@ export type TaskUpdateWithoutTeamInput = {
   isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
+  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -2192,6 +2456,10 @@ export type TaskUncheckedUpdateWithoutTeamInput = {
   isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
+  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -2219,6 +2487,10 @@ export type TaskUncheckedUpdateManyWithoutTeamInput = {
   isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
   recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
+  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -2317,6 +2589,10 @@ export type TaskSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = r
   isRecurring?: boolean
   recurrenceConfig?: boolean
   scheduledAt?: boolean
+  originalScheduledAt?: boolean
+  rescheduledReason?: boolean
+  rescheduledCount?: boolean
+  queuePosition?: boolean
   pausedAt?: boolean
   pausedAtIteration?: boolean
   pausedAtEmployee?: boolean
@@ -2349,6 +2625,10 @@ export type TaskSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensio
   isRecurring?: boolean
   recurrenceConfig?: boolean
   scheduledAt?: boolean
+  originalScheduledAt?: boolean
+  rescheduledReason?: boolean
+  rescheduledCount?: boolean
+  queuePosition?: boolean
   pausedAt?: boolean
   pausedAtIteration?: boolean
   pausedAtEmployee?: boolean
@@ -2374,6 +2654,10 @@ export type TaskSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensio
   isRecurring?: boolean
   recurrenceConfig?: boolean
   scheduledAt?: boolean
+  originalScheduledAt?: boolean
+  rescheduledReason?: boolean
+  rescheduledCount?: boolean
+  queuePosition?: boolean
   pausedAt?: boolean
   pausedAtIteration?: boolean
   pausedAtEmployee?: boolean
@@ -2399,6 +2683,10 @@ export type TaskSelectScalar = {
   isRecurring?: boolean
   recurrenceConfig?: boolean
   scheduledAt?: boolean
+  originalScheduledAt?: boolean
+  rescheduledReason?: boolean
+  rescheduledCount?: boolean
+  queuePosition?: boolean
   pausedAt?: boolean
   pausedAtIteration?: boolean
   pausedAtEmployee?: boolean
@@ -2406,7 +2694,7 @@ export type TaskSelectScalar = {
   updatedAt?: boolean
 }
 
-export type TaskOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "projectId" | "userId" | "name" | "instruction" | "context" | "accumulatedContext" | "canModifyRepo" | "executorType" | "executorId" | "status" | "isRecurring" | "recurrenceConfig" | "scheduledAt" | "pausedAt" | "pausedAtIteration" | "pausedAtEmployee" | "createdAt" | "updatedAt", ExtArgs["result"]["task"]>
+export type TaskOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "projectId" | "userId" | "name" | "instruction" | "context" | "accumulatedContext" | "canModifyRepo" | "executorType" | "executorId" | "status" | "isRecurring" | "recurrenceConfig" | "scheduledAt" | "originalScheduledAt" | "rescheduledReason" | "rescheduledCount" | "queuePosition" | "pausedAt" | "pausedAtIteration" | "pausedAtEmployee" | "createdAt" | "updatedAt", ExtArgs["result"]["task"]>
 export type TaskInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   project?: boolean | Prisma.ProjectDefaultArgs<ExtArgs>
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
@@ -2458,6 +2746,10 @@ export type $TaskPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs =
     isRecurring: boolean
     recurrenceConfig: runtime.JsonValue | null
     scheduledAt: Date | null
+    originalScheduledAt: Date | null
+    rescheduledReason: string | null
+    rescheduledCount: number
+    queuePosition: number | null
     pausedAt: Date | null
     pausedAtIteration: number | null
     pausedAtEmployee: string | null
@@ -2909,6 +3201,10 @@ export interface TaskFieldRefs {
   readonly isRecurring: Prisma.FieldRef<"Task", 'Boolean'>
   readonly recurrenceConfig: Prisma.FieldRef<"Task", 'Json'>
   readonly scheduledAt: Prisma.FieldRef<"Task", 'DateTime'>
+  readonly originalScheduledAt: Prisma.FieldRef<"Task", 'DateTime'>
+  readonly rescheduledReason: Prisma.FieldRef<"Task", 'String'>
+  readonly rescheduledCount: Prisma.FieldRef<"Task", 'Int'>
+  readonly queuePosition: Prisma.FieldRef<"Task", 'Int'>
   readonly pausedAt: Prisma.FieldRef<"Task", 'DateTime'>
   readonly pausedAtIteration: Prisma.FieldRef<"Task", 'Int'>
   readonly pausedAtEmployee: Prisma.FieldRef<"Task", 'String'>
