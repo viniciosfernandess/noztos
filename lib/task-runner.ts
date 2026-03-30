@@ -1,10 +1,18 @@
 import { prisma } from '@/lib/db'
 import { callAnthropic, callAnthropicWithTools, MODELS } from '@/lib/anthropic'
-import { REPO_TOOLS, executeTool } from '@/lib/tools'
+import { REPO_TOOLS, READ_TOOLS, executeTool } from '@/lib/tools'
 import { acquireRepoLock, releaseRepoLock } from '@/lib/repo-lock'
 import type { ContentBlock, ToolCallMessage } from '@/lib/anthropic'
-import { SECURITY_FULL_SCAN_PROMPT, SECURITY_TARGETED_PROMPT } from '@/lib/security-prompt'
-import { CODEHEALTH_FULL_SCAN_PROMPT, CODEHEALTH_TARGETED_PROMPT } from '@/lib/codehealth-prompt'
+import { ensureSandboxRunning, stopSandbox, isSandboxNeeded } from '@/lib/sandbox-manager'
+import {
+  buildTaskSkillPrompt,
+  buildTaskTeamMemberPrompt,
+  buildTaskBuilderPrompt,
+  getSecurityScanPrompt,
+  getCodeHealthPrompt,
+  getSuggestionsRules,
+  SKILL_NAMES,
+} from '@/lib/prompts'
 
 // ── Task Runner ───────────────────────────────────────────────────────────
 //
@@ -13,64 +21,8 @@ import { CODEHEALTH_FULL_SCAN_PROMPT, CODEHEALTH_TARGETED_PROMPT } from '@/lib/c
 // but completely isolated from the chat.
 //
 // Execution results are stored in TaskSkillLog and TaskBuildLog.
-
-// ── Skills (same as chat-engine) ──────────────────────────────────────────
-
-const SKILLS: Record<string, { name: string; systemPrompt: string }> = {
-  ceo: {
-    name: 'CEO',
-    systemPrompt: `You are the CEO. Strategic: challenge assumptions, question scope, ensure the right problem is being solved.
-- Ask "Is this the right problem?"
-- Identify risks and blockers
-- Give clear go/no-go with reasoning
-- Think in user outcomes
-- Be direct and decisive`,
-  },
-  architect: {
-    name: 'Architect',
-    systemPrompt: `You are the Lead Architect. Define exactly what needs to be built.
-- List every file to create or edit with reason
-- Define data flow with ASCII diagrams
-- Specify key interfaces and types
-- Identify edge cases
-- Be precise — your output is the builder's contract`,
-  },
-  designer: {
-    name: 'Designer',
-    systemPrompt: `You are the Lead Designer. Review UI/UX and catch AI slop.
-- Evaluate information hierarchy
-- Check all interaction states
-- Identify edge cases
-- Ensure simplicity
-- Flag complexity without user value`,
-  },
-  security: {
-    name: 'Security',
-    systemPrompt: `You are the Security Reviewer. Find vulnerabilities before production.
-- Check injection vectors
-- Verify authorization boundaries
-- Check secrets handling
-- Verify input validation
-- OWASP Top 10 + STRIDE
-- Rate findings: High/Medium/Low with remediation`,
-  },
-}
-
-const BUILDER_PROMPT = `You are the Builder. Execute the plan that your team has created.
-- Build exactly what was specified — nothing more, nothing less
-- Read existing code before editing
-- Be precise and thorough
-- Report what files you touched and what you changed`
-
-const SUGGESTIONS_INSTRUCTION = `
-
-IMPORTANT — SUGGESTIONS (optional):
-While completing your assigned work, if you naturally notice anything OUTSIDE the scope of this task that needs attention (bugs, security issues, missing features, inconsistencies, performance problems, outdated patterns), note them briefly at the very end of your response after the marker "SUGGESTIONS:" on a new line.
-- Format each suggestion on its own line starting with "- "
-- Only include things you actually encountered while working — do NOT go looking for problems
-- If you found nothing noteworthy, do NOT include the SUGGESTIONS marker at all
-- Your main task response must be complete BEFORE any suggestions
-- Suggestions must not affect or delay your main work in any way`
+//
+// All prompts are loaded from /prompts/*.md via lib/prompts.ts
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -166,6 +118,12 @@ export async function runTask(taskId: string): Promise<RunResult> {
   const canBuild = intent === 'build' || intent === 'analyze_fix'
   const hasRepo = !!task.project.repository
   const pausedState = accumulated.pausedState
+
+  // Start sandbox if this task needs to write files
+  if (hasRepo && canBuild) {
+    console.log(`[task-runner] Starting sandbox for build task ${taskId}`)
+    await ensureSandboxRunning(task.projectId)
+  }
 
   // If resuming: check if files were modified externally → if so, clear paused state (restart)
   let shouldRestart = false
@@ -373,6 +331,14 @@ export async function runTask(taskId: string): Promise<RunResult> {
     if (hasRepo) {
       await releaseRepoLock(task.projectId, 'task')
     }
+    // Stop sandbox if no longer needed (no other tasks, terminal not open)
+    if (hasRepo && canBuild) {
+      const needed = await isSandboxNeeded(task.projectId)
+      if (!needed) {
+        console.log(`[task-runner] Stopping sandbox — no longer needed`)
+        await stopSandbox(task.projectId).catch(() => {})
+      }
+    }
   }
 }
 
@@ -389,23 +355,24 @@ async function runSkillTask(options: {
   model?: string
   skillId: string | null
 }): Promise<RunResult> {
-  const skill = options.skillId ? SKILLS[options.skillId] : null
-  const skillName = skill?.name ?? 'Claude'
+  const skillName = options.skillId ? (SKILL_NAMES[options.skillId] ?? 'Claude') : 'Claude'
 
-  const systemPrompt = skill
-    ? `${skill.systemPrompt}\n\nYou are executing a task autonomously. No user interaction — complete the work based on the instructions provided.${SUGGESTIONS_INSTRUCTION}`
-    : `You are a skilled developer executing a task autonomously. Complete the work based on the instructions provided.${SUGGESTIONS_INSTRUCTION}`
+  const systemPrompt = options.skillId
+    ? `${buildTaskSkillPrompt(options.skillId, options.canBuild)}\n\nYou are executing a task autonomously. No user interaction — complete the work based on the instructions provided.`
+    : `${getSuggestionsRules()}\n\nYou are a skilled developer executing a task autonomously. Complete the work based on the instructions provided.`
 
-  // Conversation-only mode (no file access)
-  if (!options.canBuild || !options.repositoryId) {
-    const result = await callAnthropic({
+  // Conversation/review mode — read tools only (can read files, not write)
+  if (!options.canBuild) {
+    const readResult = await runReadToolLoop({
       encryptedToken: options.encryptedToken,
-      systemPrompt,
+      systemPrompt: systemPrompt + '\n\nYou have access to read files in the repository. Use them to analyze code.',
       userMessage: options.taskPrompt,
+      repositoryId: options.repositoryId ?? '',
+      projectId: options.projectId,
       model: options.model,
     })
 
-    const { cleanResponse, suggestions } = extractSuggestions(result.text)
+    const { cleanResponse, suggestions } = extractSuggestions(readResult.summary)
     if (suggestions.length > 0) await saveSuggestions(options.taskId, suggestions, skillName)
 
     await prisma.taskSkillLog.create({
@@ -428,7 +395,7 @@ async function runSkillTask(options: {
     encryptedToken: options.encryptedToken,
     systemPrompt: `${systemPrompt}\n\nYou have access to file tools. Read, write, and modify files as needed to complete the task.`,
     userMessage: options.taskPrompt,
-    repositoryId: options.repositoryId,
+    repositoryId: options.repositoryId!,
     projectId: options.projectId,
     model: options.model,
   })
@@ -576,7 +543,7 @@ ${isBuilder ? '' : 'CONVERSATION only. Do NOT write code.'}`
         // Builder executes code
         const buildResult = await runBuildLoop({
           encryptedToken: options.encryptedToken,
-          systemPrompt: `${BUILDER_PROMPT}\n\nCONTEXT FROM TEAM:\n${previousOutput}${SUGGESTIONS_INSTRUCTION}`,
+          systemPrompt: `${buildTaskBuilderPrompt()}\n\nCONTEXT FROM TEAM:\n${previousOutput}`,
           userMessage: previousOutput,
           repositoryId: options.repositoryId,
           projectId: options.projectId,
@@ -587,15 +554,19 @@ ${isBuilder ? '' : 'CONVERSATION only. Do NOT write code.'}`
         output = `Builder: ${cleanBuild}`
         allFilesTouched.push(...buildResult.filesTouched)
       } else {
-        // Non-builder: conversation
-        const systemPrompt = (collab.skillMd || `You are ${collab.name}. Complete the assigned work thoroughly.`) + SUGGESTIONS_INSTRUCTION
-        const result = await callAnthropic({
+        // Non-builder: with read tools to analyze code
+        const systemPrompt = collab.skillMd
+          ? `${collab.skillMd}\n\n${getSuggestionsRules()}`
+          : `${buildTaskTeamMemberPrompt(collab.name.toLowerCase())}`
+        const readResult = await runReadToolLoop({
           encryptedToken: options.encryptedToken,
           systemPrompt: `${systemPrompt}\n\n${memberContext}`,
           userMessage: previousOutput,
+          repositoryId: options.repositoryId ?? '',
+          projectId: options.projectId,
           model: options.model,
         })
-        const { cleanResponse: cleanMember, suggestions: memberSuggestions } = extractSuggestions(result.text)
+        const { cleanResponse: cleanMember, suggestions: memberSuggestions } = extractSuggestions(readResult.summary)
         if (memberSuggestions.length > 0) await saveSuggestions(options.taskId, memberSuggestions, collab.name)
         output = cleanMember
         if (!output.startsWith(`${collab.name}:`)) output = `${collab.name}: ${output}`
@@ -678,6 +649,56 @@ ${isBuilder ? '' : 'CONVERSATION only. Do NOT write code.'}`
 // ── Build Tool Loop ───────────────────────────────────────────────────────
 
 const MAX_ITERATIONS = 30
+
+// ── Read-only Tool Loop (for conversation/review tasks) ───────────────────
+
+async function runReadToolLoop(options: {
+  encryptedToken: string
+  systemPrompt: string
+  userMessage: string
+  repositoryId: string
+  projectId: string
+  model?: string
+}): Promise<{ summary: string }> {
+  const messages: ToolCallMessage[] = [{ role: 'user', content: options.userMessage }]
+  const allText: string[] = []
+
+  for (let i = 0; i < MAX_ITERATIONS; i++) {
+    const response = await callAnthropicWithTools({
+      encryptedToken: options.encryptedToken,
+      systemPrompt: options.systemPrompt,
+      messages,
+      tools: READ_TOOLS,
+      maxTokens: 8192,
+      model: options.model,
+    })
+
+    for (const block of response.content) {
+      if (block.type === 'text') allText.push(block.text)
+    }
+
+    if (response.stopReason === 'end_turn' || response.stopReason === 'max_tokens') break
+
+    const toolUseBlocks = response.content.filter(
+      (b): b is Extract<ContentBlock, { type: 'tool_use' }> => b.type === 'tool_use'
+    )
+    if (toolUseBlocks.length === 0) break
+
+    messages.push({ role: 'assistant', content: response.content })
+
+    const toolResults: { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean }[] = []
+    for (const toolCall of toolUseBlocks) {
+      const result = await executeTool(options.repositoryId, toolCall.name, toolCall.input, options.projectId)
+      toolResults.push({ type: 'tool_result', tool_use_id: toolCall.id, content: result.result, is_error: result.isError || undefined })
+    }
+
+    messages.push({ role: 'user', content: toolResults as unknown as ContentBlock[] })
+  }
+
+  return { summary: allText.join('\n\n') || 'Analysis completed.' }
+}
+
+// ── Build Tool Loop ───────────────────────────────────────────────────────
 
 async function runBuildLoop(options: {
   encryptedToken: string
@@ -797,13 +818,13 @@ function buildTaskPrompt(
   // Security scan context
   if (context.source === 'security_scan') {
     const secContext = context as { scanType?: string }
-    parts.push(`\nSECURITY AUDIT CONTEXT:\n${secContext.scanType === 'targeted' ? SECURITY_TARGETED_PROMPT : SECURITY_FULL_SCAN_PROMPT}`)
+    parts.push(`\nSECURITY AUDIT CONTEXT:\n${getSecurityScanPrompt(secContext.scanType === 'targeted' ? 'targeted' : 'full')}`)
   }
 
   // Code health context
   if (context.source === 'code_health') {
     const healthCtx = context as { scanType?: string }
-    parts.push(`\nCODE HEALTH CONTEXT:\n${healthCtx.scanType === 'targeted' ? CODEHEALTH_TARGETED_PROMPT : CODEHEALTH_FULL_SCAN_PROMPT}`)
+    parts.push(`\nCODE HEALTH CONTEXT:\n${getCodeHealthPrompt(healthCtx.scanType === 'targeted' ? 'targeted' : 'full')}`)
   }
 
   // Resume context — task was paused and is continuing

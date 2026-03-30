@@ -3,11 +3,13 @@
     "allow": [
       "Bash(ls /Users/viniciosfernandes/Desktop/projects/bornastar/app/api/projects/[id]/route.ts)",
       "Bash(node -e \":*)",
-      "Bash(source .env)"
+      "Bash(source .env)",
+      "Bash(node -e \"try { require\\(''@e2b/code-interpreter''\\); console.log\\(''E2B OK''\\) } catch\\(e\\) { console.log\\(''E2B FAIL:'', e.message\\) }\")"
     ],
     "additionalDirectories": [
       "/Users/viniciosfernandes/Desktop/projects/bornastar/app/api/projects/[id]",
-      "/Users/viniciosfernandes/Desktop/projects/bornastar/app/api/projects/[id]/terminal"
+      "/Users/viniciosfernandes/Desktop/projects/bornastar/app/api/projects/[id]/terminal",
+      "/Users/viniciosfernandes/Desktop/projects/bornastar"
     ]
   }
 }

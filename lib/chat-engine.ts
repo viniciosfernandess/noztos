@@ -1,109 +1,18 @@
 import { prisma } from '@/lib/db'
 import { callAnthropic, callAnthropicWithTools, MODELS } from '@/lib/anthropic'
-import { createBuildSession, endBuildSession, REPO_TOOLS, executeTool } from '@/lib/tools'
+import { createBuildSession, endBuildSession, REPO_TOOLS, READ_TOOLS, executeTool } from '@/lib/tools'
 import type { ContentBlock, ToolCallMessage } from '@/lib/anthropic'
 import type { ChatReport, ReportEtapa, ReportStep, ReportBuildDetails, ReportToolCall } from '@/lib/report-types'
 import { getRepoLockStatus, getLockerTaskName, acquireRepoLock, releaseRepoLock, touchProjectActivity } from '@/lib/repo-lock'
-
-// ── Rules (injected into ALL prompts) ──────────────────────────────────────
-
-const BUILD_RULE = `
-CRITICAL RULE — BUILD CONFIRMATION (NEVER VIOLATE):
-You must NEVER write code, edit files, create files, build, implement, or execute anything without EXPLICIT confirmation from the user. This means TWO things must happen:
-
-1. The user must explicitly say YES to building (e.g. "yes build it", "go ahead", "do it")
-2. The user must confirm WHO should build — which employee or team. If no one is selected (no / skill active), you MUST ask: "Who should I build this with? Select an employee or team with /"
-
-If the user asks you to build, create, implement, code, or make something:
-- ALWAYS respond with: "I can build this. Should I proceed with [current skill/employee name], continue without a skill (just me, Claude), or would you like to assign it to another employee or team using /?"
-- If NO skill is selected (no / active), say: "I can build this. Should I proceed directly (without a skill), or would you like to assign it to an employee or team using /?"
-- NEVER assume. NEVER start building without both confirmations.
-- Even if the user says "just do it" — still confirm WHO (you directly, or a specific employee/team).
-
-This rule applies at ALL times, in ALL modes, with ALL skills. No exceptions.
-
-REPOSITORY LOCK:
-The repository can only be modified by one source at a time. If a task is currently running and using the repository, you CANNOT start a build. The system will block it automatically, but you should be aware:
-- If the user asks to build and a task is running, explain that the repository is locked by a running task.
-- Offer to create a task for what they want instead — it will go to Pending for them to manage.
-- They can also pause the running task from the Tasks tab to free the repository.`
-
-const TASK_RULE = `
-TASK CREATION AWARENESS:
-You can suggest creating tasks for later execution. Tasks go to a queue where the user configures them and schedules when they run.
-
-WHEN TO SUGGEST A TASK:
-- When you would offer to build something, ALSO offer: "Want me to build this now, or create a task to handle it later?"
-- During discussions where you identify actionable work (bugs to fix, features to add, refactors needed), you can proactively suggest: "This could be a good task for later — want me to create it?"
-- You do NOT need to suggest tasks for every message. Only when there's a clear, actionable item.
-
-WHEN THE USER ASKS TO CREATE A TASK:
-- If the conversation context makes it clear what the task is about, create it immediately using [CREATE_TASK: task name here]. No need to ask for clarification.
-- If you're unsure what the task should be about (the request seems unrelated to the conversation), ask: "What should this task be about?" Then create it based on their answer.
-- If the user asks to create a task but the request has NOTHING to do with code or development (e.g. "remind me to buy groceries"), offer a reminder instead: [CREATE_REMINDER: reminder text here]
-
-WHEN THE USER ASKS TO CREATE A REMINDER:
-- If the user explicitly says "reminder" / "lembrete", create it with [CREATE_REMINDER: reminder text].
-- BUT if the reminder seems to be about code/development work that has context in the conversation, ask: "This sounds like it could be a task with full context — want me to create it as a task instead, or keep it as a simple reminder?"
-- If they confirm task → [CREATE_TASK: name]. If they confirm reminder → [CREATE_REMINDER: text].
-
-TASKS vs REMINDERS:
-- TASK = actionable development work. Carries full conversation context (summary + recent messages). Goes to the task queue for an employee/team to execute.
-- REMINDER = lightweight note. Just the text, no heavy context. A simple note in the pending list.
-- Never confuse them. Tasks are for building/coding. Reminders are for everything else.
-
-IMPORTANT:
-- NEVER create a task or reminder without the user's explicit request or confirmation of your suggestion.
-- Task/reminder creation and build confirmation are SEPARATE flows. Never mix them.
-- When creating a task, use exactly this format in your response: [CREATE_TASK: descriptive task name]
-- When creating a reminder, use exactly this format: [CREATE_REMINDER: reminder text]
-- After the tag, briefly confirm what was created.`
-
-// ── Skills ─────────────────────────────────────────────────────────────────
-
-const SKILLS: Record<string, { name: string; systemPrompt: string }> = {
-  ceo: {
-    name: 'CEO',
-    systemPrompt: `You are the CEO. Strategic: challenge assumptions, question scope, ensure the right problem is being solved.
-- Ask "Is this the right problem?"
-- Identify risks and blockers
-- Give clear go/no-go with reasoning
-- Think in user outcomes
-- Be direct and decisive
-Always start your response with "CEO:"`,
-  },
-  architect: {
-    name: 'Architect',
-    systemPrompt: `You are the Lead Architect. Define exactly what needs to be built.
-- List every file to create or edit with reason
-- Define data flow with ASCII diagrams
-- Specify key interfaces and types
-- Identify edge cases
-- Be precise — your output is the builder's contract
-Always start your response with "Architect:"`,
-  },
-  designer: {
-    name: 'Designer',
-    systemPrompt: `You are the Lead Designer. Review UI/UX and catch AI slop.
-- Evaluate information hierarchy
-- Check all interaction states
-- Identify edge cases
-- Ensure simplicity
-- Flag complexity without user value
-Always start your response with "Designer:"`,
-  },
-  security: {
-    name: 'Security',
-    systemPrompt: `You are the Security Reviewer. Find vulnerabilities before production.
-- Check injection vectors
-- Verify authorization boundaries
-- Check secrets handling
-- Verify input validation
-- OWASP Top 10 + STRIDE
-- Rate findings: High/Medium/Low with remediation
-Always start your response with "Security:"`,
-  },
-}
+import {
+  buildChatPrompt,
+  buildSkillChatPrompt,
+  buildTeamChatPrompt,
+  buildTeamMemberPrompt,
+  buildTeamBuilderPrompt,
+  getSkillPrompt,
+  SKILL_NAMES,
+} from '@/lib/prompts'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -148,7 +57,7 @@ interface EtapaState {
   status: 'pending' | 'active' | 'done'
 }
 
-const ALL_RULES = `${BUILD_RULE}\n\n${TASK_RULE}`
+// Rules are now loaded from /prompts/*.md via lib/prompts.ts
 
 // ── Error Detection ───────────────────────────────────────────────────────
 
@@ -356,7 +265,7 @@ export async function processChatSync(req: ChatRequest): Promise<ChatResult> {
     // Acquire lock for chat build
     await acquireRepoLock(req.projectId, 'chat')
     await createBuildSession(req.projectId, req.userId, buildTarget)
-    const skillName = buildTarget === 'claude' ? 'Claude (direct)' : SKILLS[buildTarget]?.name ?? buildTarget
+    const skillName = buildTarget === 'claude' ? 'Claude (direct)' : SKILL_NAMES[buildTarget] ?? buildTarget
     const userMessage = await saveMessage(req, 'user', req.content)
     const confirmMsg = await saveMessage(req, 'system', `Build authorized with ${skillName}. Ready to execute.`)
     return { userMessage, replies: [confirmMsg] }
@@ -528,15 +437,33 @@ RULES:
 
 async function handleNoSkill(req: ChatRequest, token: string, userMessage: ChatReply, compactSummary: string | null = null): Promise<ChatResult> {
   let content: string
+
+  // Check if project has a repo — if yes, give Claude read tools
+  const repo = await prisma.repository.findUnique({ where: { projectId: req.projectId }, select: { id: true } })
+
   try {
-    const result = await callAnthropic({
-      encryptedToken: token,
-      systemPrompt: `You are a helpful AI assistant. Be concise and direct.\n\n${ALL_RULES}`,
-      userMessage: req.content,
-      compactSummary: compactSummary ?? undefined,
-      ...getModelOptions(req),
-    })
-    content = result.text
+    if (repo) {
+      // With read tools — Claude can read/search files when asked
+      const response = await callAnthropicWithTools({
+        encryptedToken: token,
+        systemPrompt: buildChatPrompt(true),
+        messages: [{ role: 'user', content: req.content }],
+        tools: READ_TOOLS,
+        maxTokens: 8192,
+        ...(compactSummary ? {} : {}),
+      })
+      // Process tool calls (read-only loop)
+      content = await processReadToolLoop(token, req, response)
+    } else {
+      const result = await callAnthropic({
+        encryptedToken: token,
+        systemPrompt: buildChatPrompt(false),
+        userMessage: req.content,
+        compactSummary: compactSummary ?? undefined,
+        ...getModelOptions(req),
+      })
+      content = result.text
+    }
   } catch (err) {
     content = getChatErrorMessage(err)
   }
@@ -558,31 +485,45 @@ async function handleNoSkill(req: ChatRequest, token: string, userMessage: ChatR
 
 async function handleSkill(req: ChatRequest, token: string, userMessage: ChatReply, compactSummary: string | null = null): Promise<ChatResult> {
   const skillId = req.activeSkillId
-  if (!skillId || !SKILLS[skillId]) {
+  const skillName = skillId ? SKILL_NAMES[skillId] : null
+  if (!skillId || !skillName) {
     const reply = await saveMessage(req, 'system', 'No employee selected.')
     return { userMessage, replies: [reply] }
   }
 
-  const skill = SKILLS[skillId]
   let content: string
+
+  const repo = await prisma.repository.findUnique({ where: { projectId: req.projectId }, select: { id: true } })
+
   try {
-    const result = await callAnthropic({
-      encryptedToken: token,
-      systemPrompt: `${skill.systemPrompt}\n\n${ALL_RULES}`,
-      compactSummary: compactSummary ?? undefined,
-      ...getModelOptions(req),
-      userMessage: req.content,
-    })
-    content = result.text
-    if (!content.startsWith(`${skill.name}:`)) content = `${skill.name}: ${content}`
+    if (repo) {
+      const response = await callAnthropicWithTools({
+        encryptedToken: token,
+        systemPrompt: buildSkillChatPrompt(skillId, true),
+        messages: [{ role: 'user', content: req.content }],
+        tools: READ_TOOLS,
+        maxTokens: 8192,
+      })
+      content = await processReadToolLoop(token, req, response)
+    } else {
+      const result = await callAnthropic({
+        encryptedToken: token,
+        systemPrompt: buildSkillChatPrompt(skillId, false),
+        compactSummary: compactSummary ?? undefined,
+        ...getModelOptions(req),
+        userMessage: req.content,
+      })
+      content = result.text
+    }
+    if (!content.startsWith(`${skillName}:`)) content = `${skillName}: ${content}`
   } catch (err) {
-    content = `${skill.name}: ${getChatErrorMessage(err)}`
+    content = `${skillName}: ${getChatErrorMessage(err)}`
   }
 
   // Check if employee proactively suggested a task/reminder
   const { cleanedResponse, created } = await detectAndCreateTask(content, req)
   const replies: ChatReply[] = []
-  replies.push(await saveMessage(req, skill.name, cleanedResponse))
+  replies.push(await saveMessage(req, skillName, cleanedResponse))
   if (created === 'task') {
     replies.push(await saveMessage(req, 'system', 'Task created — manage it in the Tasks tab.'))
   } else if (created === 'reminder') {
@@ -607,8 +548,8 @@ async function handleTeam(req: ChatRequest, token: string, isBuild: boolean = fa
     : config.order.filter((id) => id !== 'builder')
 
   const orderedMembers = orderedIds
-    .map((id) => id === 'builder' ? { name: 'Builder', systemPrompt: '' } : SKILLS[id])
-    .filter((s): s is NonNullable<typeof s> => !!s)
+    .map((id) => id === 'builder' ? { id: 'builder', name: 'Builder' } : { id, name: SKILL_NAMES[id] ?? id })
+    .filter((s) => !!s.name)
 
   if (orderedMembers.length === 0) {
     await saveMessage(req, 'system', 'Team has no conversation members.')
@@ -730,7 +671,7 @@ CONVERSATION only. Do NOT write or edit any code. Only analyze, discuss, and adv
             try {
               const buildResult = await runBuildToolLoop({
                 encryptedToken: token,
-                systemPrompt: `You are the Builder. Execute the plan that your team has created. Build exactly what was specified.\n\nCONTEXT FROM TEAM:\n${previousOutput}`,
+                systemPrompt: `${buildTeamBuilderPrompt()}\n\nCONTEXT FROM TEAM:\n${previousOutput}`,
                 userMessage: previousOutput,
                 repositoryId: repo.id,
                 projectId: req.projectId,
@@ -752,15 +693,53 @@ CONVERSATION only. Do NOT write or edit any code. Only analyze, discuss, and adv
             content = 'Builder: No repository connected. Cannot build.'
           }
         } else {
-          // Normal conversation for non-builder members
+          // Non-builder members — with read tools to analyze code
+          const memberRepo = await prisma.repository.findUnique({ where: { projectId: req.projectId }, select: { id: true } })
           try {
-            const result = await callAnthropic({
-              encryptedToken: token,
-              systemPrompt: `${member.systemPrompt}\n\n${teamContext}`,
-              userMessage: previousOutput,
-              ...getModelOptions(req),
-            })
-            content = result.text
+            if (memberRepo) {
+              // With read tools — can read files while analyzing
+              const memberMessages: ToolCallMessage[] = [{ role: 'user', content: previousOutput }]
+              let memberText = ''
+
+              for (let ti = 0; ti < 5; ti++) {
+                const response = await callAnthropicWithTools({
+                  encryptedToken: token,
+                  systemPrompt: `${buildTeamMemberPrompt(member.id)}\n\n${teamContext}`,
+                  messages: memberMessages,
+                  tools: READ_TOOLS,
+                  maxTokens: 8192,
+                })
+
+                for (const block of response.content) {
+                  if (block.type === 'text') memberText += (memberText ? '\n\n' : '') + block.text
+                }
+
+                if (response.stopReason === 'end_turn' || response.stopReason === 'max_tokens') break
+
+                const memberToolBlocks = response.content.filter(
+                  (b): b is Extract<ContentBlock, { type: 'tool_use' }> => b.type === 'tool_use'
+                )
+                if (memberToolBlocks.length === 0) break
+
+                memberMessages.push({ role: 'assistant', content: response.content })
+                const memberToolResults: { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean }[] = []
+                for (const tc of memberToolBlocks) {
+                  const r = await executeTool(memberRepo.id, tc.name, tc.input, req.projectId)
+                  memberToolResults.push({ type: 'tool_result', tool_use_id: tc.id, content: r.result, is_error: r.isError || undefined })
+                }
+                memberMessages.push({ role: 'user', content: memberToolResults as unknown as ContentBlock[] })
+              }
+
+              content = memberText || `${member.name}: [No response]`
+            } else {
+              const result = await callAnthropic({
+                encryptedToken: token,
+                systemPrompt: `${buildTeamMemberPrompt(member.id)}\n\n${teamContext}`,
+                userMessage: previousOutput,
+                ...getModelOptions(req),
+              })
+              content = result.text
+            }
             if (!content.startsWith(`${member.name}:`)) content = `${member.name}: ${content}`
           } catch (memberErr) {
             content = `${member.name}: [${getChatErrorMessage(memberErr)}]`
@@ -887,7 +866,7 @@ async function handleBuildDirect(req: ChatRequest, token: string, userMessage: C
 
   const result = await runBuildToolLoop({
     encryptedToken: token,
-    systemPrompt: `You are a skilled developer. Execute the user's request by reading and writing files in the repository. Be precise and thorough.\n\n${ALL_RULES}`,
+    systemPrompt: buildChatPrompt(true),
     userMessage: req.content,
     repositoryId: repo.id,
     projectId: req.projectId,
@@ -922,7 +901,8 @@ async function handleBuildDirect(req: ChatRequest, token: string, userMessage: C
 async function handleBuildWithSkill(req: ChatRequest, token: string, userMessage: ChatReply, _compactSummary: string | null = null): Promise<ChatResult> {
   const buildStart = Date.now()
   const skillId = req.activeSkillId
-  if (!skillId || !SKILLS[skillId]) {
+  const skillBuildName = skillId ? SKILL_NAMES[skillId] : null
+  if (!skillId || !skillBuildName) {
     const reply = await saveMessage(req, 'system', 'No employee selected.')
     return { userMessage, replies: [reply] }
   }
@@ -933,10 +913,9 @@ async function handleBuildWithSkill(req: ChatRequest, token: string, userMessage
     return { userMessage, replies: [reply] }
   }
 
-  const skill = SKILLS[skillId]
   const result = await runBuildToolLoop({
     encryptedToken: token,
-    systemPrompt: `${skill.systemPrompt}\n\nYou are now in BUILD MODE. Execute the request by reading and writing files. Apply your expertise as ${skill.name} while building.\n\n${ALL_RULES}`,
+    systemPrompt: buildSkillChatPrompt(skillId, true),
     userMessage: req.content,
     repositoryId: repo.id,
     projectId: req.projectId,
@@ -949,7 +928,7 @@ async function handleBuildWithSkill(req: ChatRequest, token: string, userMessage
     timestamp: new Date().toISOString(),
     question: req.content,
     build: {
-      executor: skill.name,
+      executor: skillBuildName,
       filesChanged: result.fileActions,
       toolCalls: result.toolCalls,
       reasoning: req.content.length > 1000 ? req.content.slice(0, 1000) + '...' : req.content,
@@ -962,7 +941,7 @@ async function handleBuildWithSkill(req: ChatRequest, token: string, userMessage
   }
 
   await releaseRepoLock(req.projectId, 'chat')
-  const reply = await saveMessage(req, skill.name, `${skill.name}: ${result.summary}`, report)
+  const reply = await saveMessage(req, skillBuildName, `${skillBuildName}: ${result.summary}`, report)
   return { userMessage, replies: [reply] }
 }
 
@@ -1155,6 +1134,82 @@ export async function compactConversation(
   })
 
   return summary
+}
+
+// ── Read-only tool loop (for conversation modes) ──────────────────────────
+
+const MAX_READ_ITERATIONS = 10
+
+async function processReadToolLoop(
+  token: string,
+  req: ChatRequest,
+  initialResponse: { content: ContentBlock[]; stopReason: string },
+): Promise<string> {
+  const messages: ToolCallMessage[] = [{ role: 'user', content: req.content }]
+  const allText: string[] = []
+
+  // Collect text from initial response
+  for (const block of initialResponse.content) {
+    if (block.type === 'text') allText.push(block.text)
+  }
+
+  // If no tool calls, return text directly
+  if (initialResponse.stopReason === 'end_turn' || initialResponse.stopReason === 'max_tokens') {
+    return allText.join('\n\n') || 'Sorry, I could not generate a response.'
+  }
+
+  // Process tool call loop (read-only)
+  messages.push({ role: 'assistant', content: initialResponse.content })
+
+  const toolUseBlocks = initialResponse.content.filter(
+    (b): b is Extract<ContentBlock, { type: 'tool_use' }> => b.type === 'tool_use'
+  )
+
+  if (toolUseBlocks.length === 0) return allText.join('\n\n')
+
+  // Get repo for tool execution
+  const repo = await prisma.repository.findUnique({ where: { projectId: req.projectId }, select: { id: true } })
+  if (!repo) return allText.join('\n\n')
+
+  const toolResults: { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean }[] = []
+  for (const toolCall of toolUseBlocks) {
+    const result = await executeTool(repo.id, toolCall.name, toolCall.input, req.projectId)
+    toolResults.push({ type: 'tool_result', tool_use_id: toolCall.id, content: result.result, is_error: result.isError || undefined })
+  }
+  messages.push({ role: 'user', content: toolResults as unknown as ContentBlock[] })
+
+  // Continue loop
+  for (let i = 0; i < MAX_READ_ITERATIONS; i++) {
+    const response = await callAnthropicWithTools({
+      encryptedToken: token,
+      systemPrompt: buildChatPrompt(true),
+      messages,
+      tools: READ_TOOLS,
+      maxTokens: 8192,
+    })
+
+    for (const block of response.content) {
+      if (block.type === 'text') allText.push(block.text)
+    }
+
+    if (response.stopReason === 'end_turn' || response.stopReason === 'max_tokens') break
+
+    const newToolBlocks = response.content.filter(
+      (b): b is Extract<ContentBlock, { type: 'tool_use' }> => b.type === 'tool_use'
+    )
+    if (newToolBlocks.length === 0) break
+
+    messages.push({ role: 'assistant', content: response.content })
+
+    const newResults: { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean }[] = []
+    for (const toolCall of newToolBlocks) {
+      const result = await executeTool(repo.id, toolCall.name, toolCall.input, req.projectId)
+      newResults.push({ type: 'tool_result', tool_use_id: toolCall.id, content: result.result, is_error: result.isError || undefined })
+    }
+    messages.push({ role: 'user', content: newResults as unknown as ContentBlock[] })
+  }
+
+  return allText.join('\n\n') || 'Sorry, I could not generate a response.'
 }
 
 function getModelOptions(req: ChatRequest): { model?: string; thinkingBudget?: number } {

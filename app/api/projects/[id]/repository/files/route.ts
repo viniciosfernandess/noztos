@@ -1,38 +1,50 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyProjectAccess } from '@/lib/auth'
+import { ensureSandboxRunning } from '@/lib/sandbox-manager'
+import { E2BProvider } from '@/lib/compute-e2b'
+
+const compute = new E2BProvider()
 
 interface RouteParams {
   params: Promise<{ id: string }>
 }
 
-// GET — List all files with modification status
-export async function GET(request: NextRequest, { params }: RouteParams) {
+// GET — List all files from container
+export async function GET(_request: NextRequest, { params }: RouteParams) {
   const { id } = await params
   const auth = await verifyProjectAccess(id)
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
-  const repository = await prisma.repository.findUnique({ where: { projectId: id } })
-  if (!repository) return NextResponse.json({ files: [] })
+  const repo = await prisma.repository.findUnique({ where: { projectId: id } })
+  if (!repo) return NextResponse.json({ files: [] })
 
-  const files = await prisma.repoFile.findMany({
-    where: { repositoryId: repository.id },
-    select: { id: true, path: true, isModified: true, originalContent: true, sizeBytes: true },
-    orderBy: { path: 'asc' },
-  })
+  const sandboxId = await ensureSandboxRunning(id)
+  if (!sandboxId) return NextResponse.json({ files: [], error: 'Container not available' })
 
-  const filesWithNew = files.map((f) => ({
-    id: f.id,
-    path: f.path,
-    isModified: f.isModified,
-    isNew: f.isModified && f.originalContent === '',
-    sizeBytes: f.sizeBytes,
-  }))
+  try {
+    // Get all tracked files from git + modified/untracked
+    const result = await compute.exec(sandboxId, `cd /home/user/project && find . -type f -not -path './.git/*' -not -path './node_modules/*' -not -path './__pycache__/*' -not -path './venv/*' -not -path './.next/*' -not -path './dist/*' | sed 's|^\\./||' | sort`)
 
-  return NextResponse.json({ files: filesWithNew })
+    // Get modified files from git
+    const modifiedResult = await compute.exec(sandboxId, `cd /home/user/project && git diff --name-only 2>/dev/null && git ls-files --others --exclude-standard 2>/dev/null`)
+    const modifiedFiles = new Set(modifiedResult.stdout.split('\n').filter(Boolean))
+
+    const files = result.stdout.split('\n').filter(Boolean).map((path, i) => ({
+      id: `file-${i}`,
+      path,
+      isModified: modifiedFiles.has(path),
+      isNew: false, // Could check with git ls-files --others
+      sizeBytes: 0,
+    }))
+
+    return NextResponse.json({ files })
+  } catch (err) {
+    return NextResponse.json({ files: [], error: 'Failed to list files' })
+  }
 }
 
-// PATCH — Revert or accept a file
+// PATCH — File operations (revert, accept, create, rename, delete, move)
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const { id } = await params
   const auth = await verifyProjectAccess(id)
@@ -47,94 +59,65 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   }
 
   const { path, action } = body
+  if (!path || !action) return NextResponse.json({ error: 'path and action required' }, { status: 400 })
 
-  if (!path || !action) {
-    return NextResponse.json({ error: 'path and action are required' }, { status: 400 })
-  }
+  const sandboxId = await ensureSandboxRunning(id)
+  if (!sandboxId) return NextResponse.json({ error: 'Container not available' }, { status: 503 })
 
-  const repository = await prisma.repository.findUnique({ where: { projectId: id } })
-  if (!repository) return NextResponse.json({ error: 'No repository' }, { status: 400 })
+  const PROJECT_ROOT = '/home/user/project'
 
-  // Create — new empty file
-  if (action === 'create') {
-    const existing = await prisma.repoFile.findUnique({
-      where: { repositoryId_path: { repositoryId: repository.id, path } },
-    })
-    if (existing) return NextResponse.json({ error: 'File already exists' }, { status: 409 })
+  try {
+    switch (action) {
+      case 'create': {
+        const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
+        if (dir) await compute.exec(sandboxId, `mkdir -p ${PROJECT_ROOT}/${dir}`)
+        await compute.writeFile(sandboxId, `${PROJECT_ROOT}/${path}`, body.content ?? '')
+        return NextResponse.json({ success: true })
+      }
 
-    await prisma.repoFile.create({
-      data: {
-        repositoryId: repository.id,
-        path,
-        content: body.content ?? '',
-        originalContent: '',
-        isModified: true,
-        sizeBytes: 0,
-      },
-    })
-    return NextResponse.json({ success: true })
-  }
+      case 'delete': {
+        await compute.exec(sandboxId, `rm -f ${PROJECT_ROOT}/${path}`)
+        return NextResponse.json({ success: true })
+      }
 
-  const file = await prisma.repoFile.findUnique({
-    where: { repositoryId_path: { repositoryId: repository.id, path } },
-  })
+      case 'rename': {
+        if (!body.newName) return NextResponse.json({ error: 'newName required' }, { status: 400 })
+        const parts = path.split('/')
+        parts[parts.length - 1] = body.newName
+        const newPath = parts.join('/')
+        await compute.exec(sandboxId, `mv ${PROJECT_ROOT}/${path} ${PROJECT_ROOT}/${newPath}`)
+        return NextResponse.json({ success: true, newPath })
+      }
 
-  if (!file) return NextResponse.json({ error: 'File not found' }, { status: 404 })
+      case 'move': {
+        if (!body.newPath) return NextResponse.json({ error: 'newPath required' }, { status: 400 })
+        const newDir = body.newPath.includes('/') ? body.newPath.slice(0, body.newPath.lastIndexOf('/')) : ''
+        if (newDir) await compute.exec(sandboxId, `mkdir -p ${PROJECT_ROOT}/${newDir}`)
+        await compute.exec(sandboxId, `mv ${PROJECT_ROOT}/${path} ${PROJECT_ROOT}/${body.newPath}`)
+        return NextResponse.json({ success: true, newPath: body.newPath })
+      }
 
-  // Delete
-  if (action === 'delete') {
-    await prisma.repoFile.delete({ where: { id: file.id } })
-    return NextResponse.json({ success: true })
-  }
+      case 'revert': {
+        // Revert to last committed version
+        const result = await compute.exec(sandboxId, `cd ${PROJECT_ROOT} && git checkout -- ${path} 2>/dev/null`)
+        if (result.exitCode !== 0) {
+          // New file — just delete
+          await compute.exec(sandboxId, `rm -f ${PROJECT_ROOT}/${path}`)
+          return NextResponse.json({ success: true, deleted: true })
+        }
+        return NextResponse.json({ success: true })
+      }
 
-  // Rename — change just the filename
-  if (action === 'rename' && body.newName) {
-    const parts = path.split('/')
-    parts[parts.length - 1] = body.newName
-    const newPath = parts.join('/')
-    await prisma.repoFile.update({
-      where: { id: file.id },
-      data: { path: newPath, isModified: true },
-    })
-    return NextResponse.json({ success: true, newPath })
-  }
+      case 'accept': {
+        // Stage the file (git add) — marks it as accepted
+        await compute.exec(sandboxId, `cd ${PROJECT_ROOT} && git add ${path}`)
+        return NextResponse.json({ success: true })
+      }
 
-  // Move — change the full path (drag and drop)
-  if (action === 'move' && body.newPath) {
-    const existing = await prisma.repoFile.findUnique({
-      where: { repositoryId_path: { repositoryId: repository.id, path: body.newPath } },
-    })
-    if (existing) return NextResponse.json({ error: 'File already exists at destination' }, { status: 409 })
-
-    await prisma.repoFile.update({
-      where: { id: file.id },
-      data: { path: body.newPath, isModified: true },
-    })
-    return NextResponse.json({ success: true, newPath: body.newPath })
-  }
-
-  // Revert
-  if (action === 'revert') {
-    if (!file.originalContent && !file.isModified) {
-      return NextResponse.json({ error: 'Nothing to revert' }, { status: 400 })
+      default:
+        return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 })
     }
-    if (file.originalContent === '') {
-      await prisma.repoFile.delete({ where: { id: file.id } })
-      return NextResponse.json({ success: true, deleted: true })
-    }
-    await prisma.repoFile.update({
-      where: { id: file.id },
-      data: { content: file.originalContent, isModified: false },
-    })
+  } catch (err) {
+    return NextResponse.json({ error: `Operation failed: ${err instanceof Error ? err.message : 'Unknown'}` }, { status: 500 })
   }
-
-  // Accept
-  if (action === 'accept') {
-    await prisma.repoFile.update({
-      where: { id: file.id },
-      data: { originalContent: file.content, isModified: false },
-    })
-  }
-
-  return NextResponse.json({ success: true })
 }

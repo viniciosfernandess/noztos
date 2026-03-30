@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyProjectAccess } from '@/lib/auth'
-import { E2BProvider } from '@/lib/compute-e2b'
+import { execInSandbox } from '@/lib/sandbox-manager'
 
 interface RouteContext {
   params: Promise<{ id: string }>
 }
 
-const provider = new E2BProvider()
-
-// POST — execute a command in the sandbox
+// POST — execute a command (auto-starts sandbox if needed)
 export async function POST(request: NextRequest, context: RouteContext) {
   const { id } = await context.params
   const access = await verifyProjectAccess(id)
@@ -20,24 +18,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: 'Command is required' }, { status: 400 })
   }
 
-  const repo = await prisma.repository.findUnique({
-    where: { projectId: id },
-    select: { sandboxId: true, sandboxStatus: true },
-  })
-
-  if (!repo?.sandboxId || repo.sandboxStatus !== 'running') {
-    return NextResponse.json({ error: 'No active sandbox. Start the terminal first.' }, { status: 400 })
-  }
-
   try {
-    const result = await provider.exec(repo.sandboxId, body.command)
+    const result = await execInSandbox(id, body.command)
 
     // Track resource usage
     await prisma.resourceUsage.create({
       data: {
         userId: access.userId,
         projectId: id,
-        cpuSeconds: 1, // Rough estimate per command
+        cpuSeconds: 1,
       },
     })
 

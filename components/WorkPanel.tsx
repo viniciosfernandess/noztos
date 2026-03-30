@@ -5,6 +5,73 @@ import { ChatTabs } from './ChatTabs'
 import { ReportBadge } from './ChatReport'
 import type { ChatReport } from '@/lib/report-types'
 
+// ── Thinking Indicator ────────────────────────────────────────────────────
+
+const THINKING_PHASES_DIRECT = [
+  'Understanding your question...',
+  'Analyzing the context...',
+  'Reading relevant code...',
+  'Formulating response...',
+  'Putting it all together...',
+]
+
+const THINKING_PHASES_SKILL = (name: string) => [
+  `${name} is reviewing the request...`,
+  `${name} is analyzing the codebase...`,
+  `${name} is thinking through the approach...`,
+  `${name} is crafting a detailed response...`,
+  `${name} is finalizing...`,
+]
+
+const THINKING_PHASES_TEAM = [
+  'Dividing work into stages...',
+  'Team is collaborating...',
+  'Employees analyzing their parts...',
+  'Processing through the pipeline...',
+  'Consolidating team outputs...',
+]
+
+function ThinkingIndicator({ mode, employeeName }: { mode: 'direct' | 'skill' | 'team'; employeeName?: string }) {
+  const [phaseIndex, setPhaseIndex] = useState(0)
+  const [fade, setFade] = useState(true)
+
+  const phases = mode === 'team'
+    ? THINKING_PHASES_TEAM
+    : mode === 'skill' && employeeName
+      ? THINKING_PHASES_SKILL(employeeName)
+      : THINKING_PHASES_DIRECT
+
+  useEffect(() => {
+    setPhaseIndex(0)
+    setFade(true)
+  }, [mode, employeeName])
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setFade(false)
+      setTimeout(() => {
+        setPhaseIndex((prev) => (prev + 1) % phases.length)
+        setFade(true)
+      }, 300)
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [phases.length])
+
+  return (
+    <div className="flex items-center gap-2.5 px-3 py-2">
+      <div className="relative h-2 w-2">
+        <div className="absolute inset-0 animate-ping rounded-full bg-violet-400/60" />
+        <div className="absolute inset-0 rounded-full bg-violet-400" />
+      </div>
+      <span
+        className={`text-[12px] text-zinc-400 transition-opacity duration-300 ${fade ? 'opacity-100' : 'opacity-0'}`}
+      >
+        {phases[phaseIndex]}
+      </span>
+    </div>
+  )
+}
+
 // ── Types ──────────────────────────────────────────────────────────────────
 
 interface FileEntry {
@@ -1598,8 +1665,42 @@ function ChatPanel({
           }))
           setMessages((prev) => [...prev, ...newMsgs])
         }
+      } else {
+        // API returned error
+        try {
+          const errData = await res.json()
+          setMessages((prev) => [...prev, {
+            id: `err-${Date.now()}`,
+            content: errData.error || 'Something went wrong. Please try again.',
+            sender: 'system',
+            mode: activeMode,
+            activeSkillId: null,
+            report: null,
+            createdAt: new Date().toISOString(),
+          }])
+        } catch {
+          setMessages((prev) => [...prev, {
+            id: `err-${Date.now()}`,
+            content: 'Something went wrong. Please try again.',
+            sender: 'system',
+            mode: activeMode,
+            activeSkillId: null,
+            report: null,
+            createdAt: new Date().toISOString(),
+          }])
+        }
       }
-    } catch { /* ignore */ }
+    } catch (err) {
+      setMessages((prev) => [...prev, {
+        id: `err-${Date.now()}`,
+        content: `Connection error: ${err instanceof Error ? err.message : 'Please check your connection and try again.'}`,
+        sender: 'system',
+        mode: activeMode,
+        activeSkillId: null,
+        report: null,
+        createdAt: new Date().toISOString(),
+      }])
+    }
     setSending(false)
   }
 
@@ -1651,11 +1752,12 @@ function ChatPanel({
             </div>
           </div>
         ))}
-        {teamProcessing && (
-          <div className="flex items-center gap-2 rounded-lg bg-zinc-100 px-3 py-2">
-            <div className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
-            <p className="text-xs text-zinc-500">Team is working...</p>
-          </div>
+        {/* Thinking indicator — dynamic status messages */}
+        {(sending || teamProcessing) && (
+          <ThinkingIndicator
+            mode={teamProcessing ? 'team' : activeMode === 'skill' && activeEmployee ? 'skill' : 'direct'}
+            employeeName={activeMode === 'skill' && activeEmployee ? activeEmployee.name : undefined}
+          />
         )}
         <div ref={bottomRef} />
       </div>
@@ -2562,17 +2664,57 @@ function TerminalBody({ projectId }: { projectId: string }) {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [history.length])
 
+  // Auto-start on mount, auto-stop on unmount
   useEffect(() => {
-    // Check sandbox status on mount
-    fetch(`/api/projects/${projectId}/terminal`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.status === 'running' && data.sandboxId) {
-          setSandboxStatus('running')
-          setHistory([{ type: 'system', text: `Connected to sandbox ${data.sandboxId.slice(0, 8)}... (${data.repo})` }])
+    let mounted = true
+
+    async function autoStart() {
+      setSandboxStatus('starting')
+      setHistory([{ type: 'system', text: 'Connecting to sandbox...' }])
+      try {
+        // Check if already running
+        const checkRes = await fetch(`/api/projects/${projectId}/terminal`)
+        const checkData = await checkRes.json()
+
+        if (checkData.status === 'running' && checkData.sandboxId) {
+          if (mounted) {
+            setSandboxStatus('running')
+            setHistory([{ type: 'system', text: `Connected to sandbox ${checkData.sandboxId.slice(0, 8)}... (${checkData.repo})` }])
+            inputRef.current?.focus()
+          }
+          return
         }
-      })
-      .catch(() => {})
+
+        // Start new sandbox
+        if (mounted) setHistory((prev) => [...prev, { type: 'system', text: 'Starting sandbox...' }])
+        const res = await fetch(`/api/projects/${projectId}/terminal`, { method: 'POST' })
+        const data = await res.json()
+
+        if (mounted) {
+          if (data.sandboxId) {
+            setSandboxStatus('running')
+            setHistory((prev) => [...prev, { type: 'system', text: `Sandbox ready. ID: ${data.sandboxId.slice(0, 8)}...` }])
+            inputRef.current?.focus()
+          } else {
+            setSandboxStatus('disconnected')
+            setHistory((prev) => [...prev, { type: 'stderr', text: data.error || 'Failed to start' }])
+          }
+        }
+      } catch {
+        if (mounted) {
+          setSandboxStatus('disconnected')
+          setHistory((prev) => [...prev, { type: 'stderr', text: 'Failed to connect' }])
+        }
+      }
+    }
+
+    autoStart()
+
+    return () => {
+      mounted = false
+      // Don't stop sandbox on terminal close — idle timer (15 min) handles it
+      // This way tasks can still use the container after terminal closes
+    }
   }, [projectId])
 
   async function handleStart() {
