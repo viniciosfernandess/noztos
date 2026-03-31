@@ -202,10 +202,15 @@ export async function callAnthropicWithTools(options: ToolCallOptions): Promise<
   const apiKey = decrypt(options.encryptedToken)
   if (!apiKey) throw new Error('Failed to decrypt Anthropic token')
 
+  // System prompt as cached blocks (same format as callAnthropic)
+  const systemBlocks: { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }[] = [
+    { type: 'text', text: options.systemPrompt, cache_control: { type: 'ephemeral' } },
+  ]
+
   const body: Record<string, unknown> = {
     model: options.model ?? DEFAULT_MODEL,
     max_tokens: options.maxTokens ?? MAX_TOKENS,
-    system: options.systemPrompt,
+    system: systemBlocks,
     messages: options.messages,
     tools: options.tools,
   }
