@@ -1384,6 +1384,7 @@ function ChatPanel({
   const [showReminderModal, setShowReminderModal] = useState(false)
   const [selectedModel, setSelectedModel] = useState<string>('sonnet')
   const [thinkingLevel, setThinkingLevel] = useState<string>('off')
+  const [permissionMode, setPermissionMode] = useState<'leitura' | 'planejamento' | 'edicao'>('leitura')
   const [contextPercentage, setContextPercentage] = useState(0)
   const [showContextTooltip, setShowContextTooltip] = useState(false)
   const [compacting, setCompacting] = useState(false)
@@ -1570,6 +1571,7 @@ function ChatPanel({
           sessionId: sessionId ?? undefined,
           model: selectedModel !== 'sonnet' ? selectedModel : undefined,
           thinkingBudget: thinkingLevel !== 'off' ? { off: 0, low: 5000, medium: 10000, high: 30000 }[thinkingLevel] : undefined,
+          permissionMode,
           teamConfig: activeTeam ? {
             order: activeTeam.order,
             canRecreateTasks: activeTeam.canRecreateTasks,
@@ -2108,6 +2110,17 @@ function ChatPanel({
               <option value="low">Thinking: Low</option>
               <option value="medium">Thinking: Medium</option>
               <option value="high">Thinking: High</option>
+            </select>
+
+            {/* Mode selector */}
+            <select
+              value={permissionMode}
+              onChange={(e) => setPermissionMode(e.target.value as 'leitura' | 'planejamento' | 'edicao')}
+              className="rounded border border-white/15 bg-white/5 px-1.5 py-0.5 text-[10px] text-zinc-300 outline-none hover:bg-white/10"
+            >
+              <option value="leitura">Ask</option>
+              <option value="planejamento">Plan</option>
+              <option value="edicao">Agent</option>
             </select>
 
             <input

@@ -126,9 +126,15 @@ export async function callAnthropic(options: CallOptions): Promise<{
   const data: AnthropicResponse = await res.json()
   const textBlock = data.content.find((c) => c.type === 'text')
 
+  const cacheCreate = data.usage.cache_creation_input_tokens ?? 0
+  const cacheRead = data.usage.cache_read_input_tokens ?? 0
+  if (cacheCreate > 0 || cacheRead > 0) {
+    console.log(`[cache] create: ${cacheCreate} | read: ${cacheRead} | input: ${data.usage.input_tokens} | output: ${data.usage.output_tokens}${cacheRead > 0 ? ' ✓ hit' : ' — miss'}`)
+  }
+
   return {
     text: textBlock?.text ?? '',
-    inputTokens: data.usage.input_tokens + (data.usage.cache_read_input_tokens ?? 0) + (data.usage.cache_creation_input_tokens ?? 0),
+    inputTokens: data.usage.input_tokens + cacheRead + cacheCreate,
     outputTokens: data.usage.output_tokens,
   }
 }
@@ -179,6 +185,7 @@ interface ToolCallOptions {
   encryptedToken: string
   systemPrompt?: string    // legacy single block
   systemParts?: string[]   // preferred: multiple blocks, each cached separately
+  compactSummary?: string  // compacted context injected after system parts (cached)
   messages: ToolCallMessage[]
   tools: ToolDefinition[]
   model?: string
@@ -189,7 +196,12 @@ interface ToolCallOptions {
 interface ToolCallApiResponse {
   content: ContentBlock[]
   stop_reason: 'end_turn' | 'tool_use' | 'max_tokens'
-  usage: { input_tokens: number; output_tokens: number }
+  usage: {
+    input_tokens: number
+    output_tokens: number
+    cache_creation_input_tokens?: number
+    cache_read_input_tokens?: number
+  }
 }
 
 /**
@@ -210,6 +222,15 @@ export async function callAnthropicWithTools(options: ToolCallOptions): Promise<
   const toolParts = options.systemParts ?? (options.systemPrompt ? [options.systemPrompt] : [])
   for (const part of toolParts) {
     systemBlocks.push({ type: 'text', text: part, cache_control: { type: 'ephemeral' } })
+  }
+
+  // Compact summary — cached after system parts, same pattern as callAnthropic
+  if (options.compactSummary) {
+    systemBlocks.push({
+      type: 'text',
+      text: `\n\nPREVIOUS CONVERSATION CONTEXT:\n${options.compactSummary}`,
+      cache_control: { type: 'ephemeral' },
+    })
   }
 
   const body: Record<string, unknown> = {
@@ -241,6 +262,12 @@ export async function callAnthropicWithTools(options: ToolCallOptions): Promise<
   }
 
   const data: ToolCallApiResponse = await res.json()
+
+  const cacheCreate = data.usage.cache_creation_input_tokens ?? 0
+  const cacheRead = data.usage.cache_read_input_tokens ?? 0
+  if (cacheCreate > 0 || cacheRead > 0) {
+    console.log(`[cache] create: ${cacheCreate} | read: ${cacheRead} | input: ${data.usage.input_tokens} | output: ${data.usage.output_tokens}${cacheRead > 0 ? ' ✓ hit' : ' — miss'}`)
+  }
 
   return {
     content: data.content,

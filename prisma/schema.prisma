@@ -69,6 +69,8 @@ model Repository {
   sandboxId        String?
   sandboxStartedAt DateTime?
   sandboxStatus    String?
+  fileTree         String?
+  fileTreeUpdatedAt DateTime?
   files            RepoFile[]
   project          Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
 

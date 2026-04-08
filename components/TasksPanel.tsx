@@ -3462,9 +3462,9 @@ function CreateTaskModal({
             <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Mode</p>
             <div className="flex gap-2">
               {([
-                { id: 'leitura', label: 'Leitura', desc: 'Só lê e analisa' },
-                { id: 'planejamento', label: 'Planejamento', desc: 'Planeja, não executa' },
-                { id: 'edicao', label: 'Edição', desc: 'Acesso total' },
+                { id: 'leitura', label: 'Ask', desc: 'Read and analyze only' },
+                { id: 'planejamento', label: 'Plan', desc: 'Plan without executing' },
+                { id: 'edicao', label: 'Agent', desc: 'Full access' },
               ] as const).map((m) => (
                 <button key={m.id} onClick={() => setPermissionMode(m.id)} className={`flex-1 rounded-lg border px-3 py-2 text-left transition-all ${permissionMode === m.id ? 'border-violet-500/50 bg-violet-500/10' : 'border-white/10 hover:border-white/20'}`}>
                   <p className={`text-xs font-medium ${permissionMode === m.id ? 'text-violet-300' : 'text-zinc-400'}`}>{m.label}</p>

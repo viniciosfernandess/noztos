@@ -134,7 +134,9 @@ export const RepositoryScalarFieldEnum = {
   lockedByTaskId: 'lockedByTaskId',
   sandboxId: 'sandboxId',
   sandboxStartedAt: 'sandboxStartedAt',
-  sandboxStatus: 'sandboxStatus'
+  sandboxStatus: 'sandboxStatus',
+  fileTree: 'fileTree',
+  fileTreeUpdatedAt: 'fileTreeUpdatedAt'
 } as const
 
 export type RepositoryScalarFieldEnum = (typeof RepositoryScalarFieldEnum)[keyof typeof RepositoryScalarFieldEnum]

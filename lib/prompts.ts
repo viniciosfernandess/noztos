@@ -157,7 +157,7 @@ const MODE_DESCRIPTIONS: Record<PermissionMode, string> = {
  * Tells Claude which model it's running on, current date, and active permission mode.
  * Goes AFTER the static blocks so it never busts the static cache.
  */
-export function buildEnvironmentBlock(modelKey?: string, permissionMode?: PermissionMode): string {
+export function buildEnvironmentBlock(modelKey?: string, permissionMode?: PermissionMode, projectName?: string, repoName?: string): string {
   const modelNames: Record<string, string> = {
     haiku: 'Claude Haiku 4.5 (claude-haiku-4-5-20251001)',
     sonnet: 'Claude Sonnet 4 (claude-sonnet-4-20250514)',
@@ -174,11 +174,13 @@ export function buildEnvironmentBlock(modelKey?: string, permissionMode?: Permis
     ? `\n\nYou may read and analyze files freely. When asked to implement something, produce a detailed step-by-step plan of exactly what you would do — files, changes, commands — but do NOT execute any writes or commands. Do not use [REQUEST_EDIT_PERMISSION].`
     : ''
 
+  const projectLine = projectName ? `\n- Project: ${projectName}${repoName ? ` (${repoName})` : ''}` : ''
+
   return `# Environment
 
 - Model: ${modelName}
 - Date: ${today}
-- Latest Claude models — Opus 4.6: claude-opus-4-6, Sonnet 4.6: claude-sonnet-4-6, Haiku 4.5: claude-haiku-4-5-20251001
+- Latest Claude models — Opus 4.6: claude-opus-4-6, Sonnet 4.6: claude-sonnet-4-6, Haiku 4.5: claude-haiku-4-5-20251001${projectLine}
 
 # Permission Mode
 

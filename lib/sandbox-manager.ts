@@ -102,6 +102,25 @@ export async function ensureSandboxRunning(projectId: string): Promise<string | 
       data: { sandboxId: sandbox.id, sandboxStatus: 'running', sandboxStartedAt: new Date() },
     })
 
+    // Build file tree after clone — stored in DB, used by all chats as project map
+    try {
+      const findResult = await provider.exec(sandbox.id, `find /home/user/project -type f -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' -not -path '*/.next/*' -not -path '*/dist/*' | sed 's|/home/user/project/||' | sort`)
+      if (!findResult.stderr?.includes('SANDBOX_DEAD') && findResult.stdout.trim()) {
+        await prisma.repository.update({
+          where: { projectId },
+          data: { fileTree: findResult.stdout.trim(), fileTreeUpdatedAt: new Date() },
+        })
+        console.log(`[filetree] Built: ${findResult.stdout.trim().split('\n').length} files`)
+      }
+    } catch (err) {
+      console.error('[filetree] Failed to build:', err)
+    }
+
+    // Build semantic index after clone — fire and forget, doesn't block the response
+    import('@/lib/embeddings/indexer').then(({ buildIndex }) => {
+      buildIndex(projectId).catch((err) => console.error('[indexer] Failed to build:', err))
+    })
+
     resetIdleTimer(projectId)
     return sandbox.id
   } catch (err) {

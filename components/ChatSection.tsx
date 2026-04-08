@@ -5,9 +5,9 @@ import { useState, useRef, useEffect } from 'react'
 type PermissionMode = 'leitura' | 'planejamento' | 'edicao'
 
 const MODES: { value: PermissionMode; label: string; description: string }[] = [
-  { value: 'leitura', label: 'Leitura', description: 'Só lê e analisa' },
-  { value: 'planejamento', label: 'Planejamento', description: 'Planeja, não executa' },
-  { value: 'edicao', label: 'Edição', description: 'Acesso total' },
+  { value: 'leitura', label: 'Ask', description: 'Read and analyze only' },
+  { value: 'planejamento', label: 'Plan', description: 'Plan without executing' },
+  { value: 'edicao', label: 'Agent', description: 'Full access' },
 ]
 
 interface Message {
@@ -89,14 +89,14 @@ export function ChatSection({ projectId, initialMessages }: ChatSectionProps) {
       {pendingPermission && (
         <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-black/40 backdrop-blur-sm">
           <div className="mx-4 w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-5 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
-            <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Permissão necessária</p>
+            <p className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Permission required</p>
             <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">{pendingPermission.reason}</p>
             <div className="mt-4 flex gap-2">
               <button
                 onClick={approvePermission}
                 className="flex-1 rounded-lg bg-zinc-900 px-3 py-2 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
               >
-                Mudar pra Edição
+                Switch to Agent
               </button>
               <button
                 onClick={denyPermission}
@@ -127,7 +127,7 @@ export function ChatSection({ projectId, initialMessages }: ChatSectionProps) {
             try {
               const parsed = JSON.parse(msg.content)
               if (parsed.label) label = parsed.label
-              else if (parsed.path) label = `${parsed.action === 'delete' ? 'Deleted' : 'Changed'} \`${parsed.path}\``
+              else if (parsed.path) label = `${parsed.action === 'delete_file' ? 'Deleted' : 'Changed'} \`${parsed.path}\``
             } catch { /* use raw content */ }
             return (
               <div key={msg.id} className="flex justify-start">
@@ -161,28 +161,9 @@ export function ChatSection({ projectId, initialMessages }: ChatSectionProps) {
         <div ref={bottomRef} />
       </div>
 
-      {/* Mode selector */}
-      <div className="flex items-center gap-1 border-t border-zinc-200 px-4 pt-3 dark:border-zinc-800">
-        {MODES.map((m) => (
-          <button
-            key={m.value}
-            type="button"
-            onClick={() => setPermissionMode(m.value)}
-            title={m.description}
-            className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
-              permissionMode === m.value
-                ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900'
-                : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100'
-            }`}
-          >
-            {m.label}
-          </button>
-        ))}
-      </div>
-
       <form
         onSubmit={sendMessage}
-        className="flex items-center gap-2 px-4 pb-3 pt-2"
+        className="flex flex-col gap-2 border-t border-zinc-200 px-4 pb-3 pt-3 dark:border-zinc-800"
       >
         <input
           type="text"
@@ -190,15 +171,35 @@ export function ChatSection({ projectId, initialMessages }: ChatSectionProps) {
           onChange={(e) => setInput(e.target.value)}
           placeholder="Message your AI team..."
           disabled={sending}
-          className="flex-1 h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
+          className="h-9 w-full rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-500 focus:outline-none dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
         />
+        <div className="flex items-center justify-between">
+          {/* Mode selector */}
+          <div className="flex items-center gap-1">
+            {MODES.map((m) => (
+              <button
+                key={m.value}
+                type="button"
+                onClick={() => setPermissionMode(m.value)}
+                title={m.description}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                  permissionMode === m.value
+                    ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900'
+                    : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900 dark:hover:bg-zinc-800 dark:hover:text-zinc-100'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
         <button
           type="submit"
           disabled={sending || !input.trim()}
-          className="flex h-9 items-center justify-center rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-zinc-900"
+          className="flex h-8 items-center justify-center rounded-lg bg-zinc-900 px-4 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-zinc-900"
         >
           {sending ? '...' : 'Send'}
         </button>
+        </div>
       </form>
     </section>
   )

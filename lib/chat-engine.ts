@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/db'
 import { callAnthropic, callAnthropicWithTools, MODELS } from '@/lib/anthropic'
-import { createBuildSession, endBuildSession, REPO_TOOLS, READ_TOOLS, executeTool } from '@/lib/tools'
+import { REPO_TOOLS, READ_TOOLS, executeTool } from '@/lib/tools'
 import type { ContentBlock, ToolCallMessage, ToolDefinition } from '@/lib/anthropic'
 import type { ChatReport, ReportEtapa, ReportStep, ReportBuildDetails, ReportToolCall } from '@/lib/report-types'
 import { getRepoLockStatus, getLockerTaskName, acquireRepoLock, releaseRepoLock, touchProjectActivity } from '@/lib/repo-lock'
@@ -73,6 +73,8 @@ interface ChatRequest {
   model?: string
   thinkingBudget?: number
   permissionMode?: PermissionMode
+  projectName?: string
+  repoName?: string
 }
 
 interface ChatReply {
@@ -240,42 +242,6 @@ function isUserRequestingReminder(content: string): boolean {
   return REMINDER_REQUEST_PATTERNS.some((p) => p.test(content))
 }
 
-// ── Build confirmation detection ───────────────────────────────────────────
-
-const BUILD_CONFIRM_PATTERNS = [
-  /\b(pode|can|go ahead|do it|build|construi|execut|faz|make it|proceed|sim|yes)\b/i,
-]
-
-const BUILD_CANCEL_PATTERNS = [
-  /\b(cancel|para|stop|nao|no|dont|nope)\b.*\b(build|construi|execut)/i,
-]
-
-/**
- * Detect if the user is confirming a build.
- * Returns the buildWith target or null if not a confirmation.
- */
-function detectBuildConfirmation(content: string, currentSkillId: string | undefined, mode: string): string | null {
-  const lower = content.toLowerCase()
-
-  // Check for cancellation first
-  for (const pattern of BUILD_CANCEL_PATTERNS) {
-    if (pattern.test(lower)) return null
-  }
-
-  // Check for build confirmation
-  const isBuildConfirm = BUILD_CONFIRM_PATTERNS.some((p) => p.test(lower)) &&
-    (lower.includes('build') || lower.includes('construi') || lower.includes('execut') ||
-     lower.includes('pode') || lower.includes('go ahead') || lower.includes('faz') ||
-     lower.includes('proceed') || lower.includes('do it'))
-
-  if (!isBuildConfirm) return null
-
-  // Determine who builds
-  if (mode === 'skill' && currentSkillId) return currentSkillId
-  if (mode === 'team') return 'team'
-  return 'claude' // no skill = Claude direct
-}
-
 // ── Sync entry (no_skill + skill) ──────────────────────────────────────────
 
 export async function processChatSync(req: ChatRequest): Promise<ChatResult> {
@@ -290,37 +256,15 @@ export async function processChatSync(req: ChatRequest): Promise<ChatResult> {
     return { userMessage: userMsg, replies: [errMsg] }
   }
 
-  // Detect build confirmation and create/end session
-  const buildTarget = detectBuildConfirmation(req.content, req.activeSkillId, req.mode)
-  if (buildTarget) {
-    // Check if repo is locked by a running task
-    const lockStatus = await getRepoLockStatus(req.projectId)
-    if (lockStatus.locked && lockStatus.lockedBy === 'task') {
-      const taskName = await getLockerTaskName(req.projectId)
-      const userMessage = await saveMessage(req, 'user', req.content)
-      const lockMsg = await saveMessage(req, 'system',
-        `Cannot start build — a task is currently running${taskName ? ` ("${taskName}")` : ''} and modifying the repository. You can:\n• Pause it in the Tasks tab\n• Or I can create a task for what you want — it'll go to Pending for you to manage.`
-      )
-      return { userMessage, replies: [lockMsg] }
-    }
-
-    // Acquire lock for chat build
-    await acquireRepoLock(req.projectId, 'chat')
-    await createBuildSession(req.projectId, req.userId, buildTarget)
-    const skillName = buildTarget === 'claude' ? 'Claude (direct)' : SKILL_NAMES[buildTarget] ?? buildTarget
-    const userMessage = await saveMessage(req, 'user', req.content)
-    const confirmMsg = await saveMessage(req, 'system', `Build authorized with ${skillName}. Ready to execute.`)
-    return { userMessage, replies: [confirmMsg] }
-  }
-
-  // Detect build stop
-  const lower = req.content.toLowerCase()
-  if (lower.includes('stop build') || lower.includes('cancel build') || lower.includes('para de construir')) {
-    await endBuildSession(req.projectId)
-    await releaseRepoLock(req.projectId, 'chat')
-    const userMessage = await saveMessage(req, 'user', req.content)
-    const stopMsg = await saveMessage(req, 'system', 'Build session ended.')
-    return { userMessage, replies: [stopMsg] }
+  // Enrich req with project/repo name for context injection
+  const [projectInfo, repoInfo] = await Promise.all([
+    prisma.project.findUnique({ where: { id: req.projectId }, select: { name: true } }),
+    prisma.repository.findUnique({ where: { projectId: req.projectId }, select: { githubOwner: true, githubRepo: true } }),
+  ])
+  req = {
+    ...req,
+    projectName: projectInfo?.name ?? undefined,
+    repoName: repoInfo ? `${repoInfo.githubOwner}/${repoInfo.githubRepo}` : undefined,
   }
 
   // Track user activity for idle detection
@@ -478,82 +422,120 @@ RULES:
 }
 
 // ── Prefetch Context ───────────────────────────────────────────────────────
+//
+// Uses semantic vector search (Voyage AI + pgvector) to find relevant chunks.
+// Falls back to grep-based search if the index isn't ready yet.
 
-async function prefetchContext(req: ChatRequest, keywords: string[]): Promise<string> {
-  if (keywords.length === 0) return ''
-
+async function prefetchContext(req: ChatRequest, keywords: string[], classifierMode?: string | null): Promise<string> {
   const repo = await prisma.repository.findUnique({
     where: { projectId: req.projectId },
-    select: { id: true },
+    select: { id: true, fileTree: true },
   })
   if (!repo) return ''
 
-  // Step 1: Search each keyword — collect file paths and score by relevance
-  const fileScores = new Map<string, number>()
+  const sections: string[] = []
 
+  // fileTree — always injected as the project map
+  let fileTree = repo.fileTree
+  if (!fileTree) {
+    try {
+      const treeResult = await executeTool(repo.id, 'run_command_readonly', {
+        command: `find /home/user/project -type f -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' -not -path '*/.next/*' -not -path '*/dist/*' | sed 's|/home/user/project/||' | sort`
+      }, req.projectId)
+      if (!treeResult.isError && treeResult.result.trim()) {
+        fileTree = treeResult.result.trim()
+        prisma.repository.update({
+          where: { projectId: req.projectId },
+          data: { fileTree, fileTreeUpdatedAt: new Date() },
+        }).catch(() => {})
+        console.log(`[filetree] Built on-demand: ${fileTree.split('\n').length} files`)
+      }
+    } catch {}
+  }
+  if (fileTree) sections.push(`## Project file tree\n${fileTree}`)
+
+  // ── Vector retrieval ────────────────────────────────────────────────────
+  try {
+    const { retrieveChunks, hasIndex } = await import('@/lib/embeddings/retriever')
+    const indexed = await hasIndex(repo.id)
+
+    if (!indexed) {
+      // Index empty — build in background, current message uses grep fallback
+      console.log('[prefetch] Index empty — triggering background build')
+      import('@/lib/embeddings/indexer').then(({ buildIndex }) => {
+        buildIndex(req.projectId).catch(() => {})
+      })
+    }
+
+    if (indexed) {
+      // Build query: question + keywords for richer embedding
+      const query = keywords.length > 0
+        ? `${req.content}\n\nKeywords: ${keywords.join(', ')}`
+        : req.content
+
+      const chunks = await retrieveChunks(repo.id, query, classifierMode ?? null)
+
+      if (chunks.length > 0) {
+        // Group by file — show each file once with all its relevant chunks
+        const byFile = new Map<string, typeof chunks>()
+        for (const chunk of chunks) {
+          if (!byFile.has(chunk.filePath)) byFile.set(chunk.filePath, [])
+          byFile.get(chunk.filePath)!.push(chunk)
+        }
+
+        for (const [filePath, fileChunks] of byFile) {
+          const content = fileChunks.map((c) => c.content).join('\n\n// ...\n\n')
+          sections.push(`## ${filePath}\n\`\`\`\n${content}\n\`\`\``)
+        }
+
+        const fileCount = byFile.size
+        const chunkCount = chunks.length
+        const topScore = chunks[0]?.score.toFixed(3)
+        console.log(`[prefetch] vector: ${chunkCount} chunks from ${fileCount} files | top score: ${topScore}`)
+        return sections.join('\n\n')
+      }
+    }
+  } catch (err) {
+    // Index not available — fall through to grep
+    console.log('[prefetch] Vector search unavailable, falling back to grep:', (err as Error).message)
+  }
+
+  // ── Grep fallback (no index yet) ────────────────────────────────────────
+  if (keywords.length === 0) return sections.join('\n\n')
+
+  const fileScores = new Map<string, number>()
   for (const keyword of keywords.slice(0, 3)) {
     const result = await executeTool(repo.id, 'search_files', { query: keyword }, req.projectId)
     if (result.isError || !result.result.trim()) continue
 
-    // Parse file paths from grep output: ./path/file.ts:12:content
     for (const line of result.result.split('\n')) {
       const match = line.match(/^\.?\/?([^:]+\.[a-z]+):\d+:/)
       if (!match) continue
       const filePath = match[1].replace(/^\//, '')
-
-      // Skip test files, configs, lock files — not useful for context
       if (/\.(lock|log|map)$/.test(filePath)) continue
       if (/(node_modules|__pycache__|\.next|dist\/|\.test\.|\.spec\.)/.test(filePath)) continue
 
       let score = fileScores.get(filePath) || 0
-
-      // Prefer TypeScript/JavaScript — they're the actual codebase
       if (/\.(ts|tsx)$/.test(filePath)) score += 2
       else if (/\.(js|jsx)$/.test(filePath)) score += 1
-
-      // Bonus when the file PATH itself mentions the keyword (e.g. auth in lib/auth.ts)
       if (filePath.toLowerCase().includes(keyword.toLowerCase())) score += 3
-
-      // Bonus for core source directories
       if (/^(lib|app|src|middleware|components|hooks|utils)\//.test(filePath)) score += 1
-
       fileScores.set(filePath, score + 1)
     }
   }
 
-  // Step 2: Top 5 files ranked by score
   const topFiles = Array.from(fileScores.entries())
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
     .map(([path]) => path)
 
-  console.log(`[prefetch] keywords: [${keywords.join(', ')}] → top files: [${topFiles.join(', ')}]`)
+  console.log(`[prefetch] grep fallback: [${topFiles.join(', ')}]`)
 
-  if (topFiles.length === 0) return ''
-
-  // Step 3: Build structured context
-  const sections: string[] = []
   const sessionId = req.sessionId ?? req.projectId
-
-  // Project structure overview (cached per session)
-  const structureCacheKey = '__project_structure__'
-  let structure = getCachedFile(sessionId, structureCacheKey)
-  if (!structure) {
-    const rootListing = await executeTool(repo.id, 'list_dir', { path: '' }, req.projectId)
-    if (!rootListing.isError && rootListing.result.trim()) {
-      structure = rootListing.result
-      setCachedFile(sessionId, structureCacheKey, structure)
-    }
-  }
-  if (structure) sections.push(`## Project structure\n${structure}`)
-
-  // Full content of each relevant file — skip if already cached this session
-  let cacheHits = 0
   for (const filePath of topFiles) {
     const cached = getCachedFile(sessionId, filePath)
     if (cached) {
       sections.push(`## ${filePath}\n\`\`\`\n${cached}\n\`\`\``)
-      cacheHits++
       continue
     }
     const file = await executeTool(repo.id, 'read_file', { path: filePath }, req.projectId)
@@ -561,10 +543,6 @@ async function prefetchContext(req: ChatRequest, keywords: string[]): Promise<st
       setCachedFile(sessionId, filePath, file.result)
       sections.push(`## ${filePath}\n\`\`\`\n${file.result}\n\`\`\``)
     }
-  }
-
-  if (cacheHits > 0) {
-    console.log(`[prefetch] ${cacheHits}/${topFiles.length} files served from cache`)
   }
 
   return sections.join('\n\n')
@@ -663,13 +641,13 @@ async function handleEdit(req: ChatRequest, token: string, userMessage: ChatRepl
     const classification = await classifyMessage(req.content, token, recentMessages)
     const modeFile = getModeFileName(classification.mode)
     // isExecution=true → loads when-after-execution.md with edit-specific rules
-    const systemParts = [...buildClassifiedPrompt(modeFile, true), buildEnvironmentBlock(req.model, req.permissionMode)]
+    const systemParts = [...buildClassifiedPrompt(modeFile, true), buildEnvironmentBlock(req.model, req.permissionMode, req.projectName, req.repoName)]
     console.log(`[edit] Mode: ${classification.mode} | Parts: ${systemParts.length} | Prompt: ${systemParts.reduce((s, p) => s + p.length, 0)} chars`)
 
     // Prefetch semantic context — Claude starts with relevant code already in hand
-    const context = await prefetchContext(req, classification.keywords)
+    const context = await prefetchContext(req, classification.keywords, classification.mode)
     const userContent = context
-      ? `${req.content}\n\n---\nRelevant code from the repository:\n${context}`
+      ? `${req.content}\n\n---\nFILES ALREADY LOADED — these files are in your context, do not fetch them again. Use tools only if you need files not listed here:\n${context}`
       : req.content
 
     // Run unified edit tool loop
@@ -680,6 +658,7 @@ async function handleEdit(req: ChatRequest, token: string, userMessage: ChatRepl
       repositoryId: repo.id,
       projectId: req.projectId,
       chatReq: req,
+      compactSummary: _compactSummary,
     })
 
     const report: ChatReport = {
@@ -701,9 +680,37 @@ async function handleEdit(req: ChatRequest, token: string, userMessage: ChatRepl
     }
 
     const reply = await saveMessage(req, 'claude', result.summary, report)
+
+    // Update file tree + semantic index after Agent edits — keeps context fresh
+    if (result.fileActions.length > 0) {
+      refreshFileTree(req.projectId).catch(() => {})
+      const touchedPaths = result.fileActions.map((a: { path: string }) => a.path).filter(Boolean)
+      if (touchedPaths.length > 0) {
+        import('@/lib/embeddings/indexer').then(({ updateIndex }) => {
+          updateIndex(req.projectId, touchedPaths).catch(() => {})
+        })
+      }
+    }
+
     return { userMessage, replies: [reply] }
   } finally {
     await releaseRepoLock(req.projectId, 'chat')
+  }
+}
+
+async function refreshFileTree(projectId: string): Promise<void> {
+  try {
+    const { execInSandbox } = await import('@/lib/sandbox-manager')
+    const result = await execInSandbox(projectId, `find /home/user/project -type f -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' -not -path '*/.next/*' -not -path '*/dist/*' | sed 's|/home/user/project/||' | sort`)
+    if (result.stdout.trim()) {
+      await prisma.repository.update({
+        where: { projectId },
+        data: { fileTree: result.stdout.trim(), fileTreeUpdatedAt: new Date() },
+      })
+      console.log(`[filetree] Refreshed: ${result.stdout.trim().split('\n').length} files`)
+    }
+  } catch (err) {
+    console.error('[filetree] Refresh failed:', err)
   }
 }
 
@@ -718,6 +725,7 @@ async function runEditToolLoop(options: {
   repositoryId: string
   projectId: string
   chatReq: ChatRequest
+  compactSummary?: string | null
 }): Promise<{ summary: string; fileActions: { path: string; action: 'write' | 'delete' }[]; toolCalls: ReportToolCall[]; iterationCount: number }> {
   const messages: ToolCallMessage[] = [{ role: 'user', content: options.userContent }]
   const allText: string[] = []
@@ -730,6 +738,7 @@ async function runEditToolLoop(options: {
     const response = await callAnthropicWithTools({
       encryptedToken: options.encryptedToken,
       systemParts: options.systemParts,
+      compactSummary: options.compactSummary ?? undefined,
       messages,
       tools: REPO_TOOLS as unknown as ToolDefinition[],
       maxTokens: 8192,
@@ -748,14 +757,13 @@ async function runEditToolLoop(options: {
 
     messages.push({ role: 'assistant', content: response.content })
 
-    const toolResults: { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean }[] = []
+    // Step messages fire in parallel, then all tools execute in parallel
+    await Promise.all(toolUseBlocks.map(tc =>
+      saveMessage(options.chatReq, 'step', JSON.stringify({ type: 'tool_call', label: toolStepLabel(tc.name, tc.input) }))
+    ))
 
-    for (const toolCall of toolUseBlocks) {
-      // Log every tool call as a step — visible in real-time in chat
-      await saveMessage(options.chatReq, 'step', JSON.stringify({ type: 'tool_call', label: toolStepLabel(toolCall.name, toolCall.input) }))
-
+    const toolResults = await Promise.all(toolUseBlocks.map(async toolCall => {
       const result = await executeTool(options.repositoryId, toolCall.name, toolCall.input, options.projectId)
-      toolResults.push({ type: 'tool_result', tool_use_id: toolCall.id, content: result.result, is_error: result.isError || undefined })
 
       const toolPath = toolCall.input.path as string | undefined
       reportToolCalls.push({ tool: toolCall.name, path: toolPath, action: `${toolCall.name}${toolPath ? ` → ${toolPath}` : ''}` })
@@ -765,7 +773,9 @@ async function runEditToolLoop(options: {
         const action = toolCall.name === 'delete_file' ? 'delete' : 'write'
         fileActions.push({ path: filePath, action })
       }
-    }
+
+      return { type: 'tool_result' as const, tool_use_id: toolCall.id, content: result.result, is_error: result.isError || undefined }
+    }))
 
     messages.push({ role: 'user', content: toolResults as unknown as ContentBlock[] })
   }
@@ -799,24 +809,25 @@ async function handlePlan(req: ChatRequest, token: string, userMessage: ChatRepl
     const modePrompt = modeFile ? getModePrompt(modeFile) : null
     const planningOutput = getModePrompt('when-planning-output.md')
     const block1Parts = [...(modePrompt ? [modePrompt] : []), planningOutput].join('\n\n---\n\n')
-    const systemParts = [base, block1Parts, buildEnvironmentBlock(req.model, req.permissionMode)]
+    const systemParts = [base, block1Parts, buildEnvironmentBlock(req.model, req.permissionMode, req.projectName, req.repoName)]
 
     console.log(`[plan] Classified: ${classification.mode} | Keywords: [${classification.keywords.join(', ')}] | Prompt: ${systemParts.reduce((s, p) => s + p.length, 0)} chars`)
 
     // Prefetch semantic context + READ_TOOLS — Claude reads to plan accurately
-    const context = await prefetchContext(req, classification.keywords)
+    const context = await prefetchContext(req, classification.keywords, classification.mode)
     const userContent = context
-      ? `${req.content}\n\n---\nRelevant code from the repository:\n${context}`
+      ? `${req.content}\n\n---\nFILES ALREADY LOADED — these files are in your context, do not fetch them again. Use tools only if you need files not listed here:\n${context}`
       : req.content
 
     const response = await callAnthropicWithTools({
       encryptedToken: token,
       systemParts,
+      compactSummary: _compactSummary ?? undefined,
       messages: [{ role: 'user', content: userContent }],
       tools: READ_TOOLS as unknown as ToolDefinition[],
       maxTokens: 8192,
     })
-    content = await processReadToolLoop(token, req, response, systemParts, READ_TOOLS as unknown as ToolDefinition[])
+    content = await processReadToolLoop(token, req, response, systemParts, READ_TOOLS as unknown as ToolDefinition[], _compactSummary ?? undefined)
   } catch (err) {
     content = getChatErrorMessage(err)
   }
@@ -853,15 +864,14 @@ async function handleNoSkill(req: ChatRequest, token: string, userMessage: ChatR
     // Classify the message to pick the right mode prompt + keywords
     const classification = await classifyMessage(req.content, token, recentMessages)
     const modeFile = getModeFileName(classification.mode)
-    const systemParts = [...buildClassifiedPrompt(modeFile, classification.execution), buildEnvironmentBlock(req.model, req.permissionMode)]
+    // Leitura never loads when-after-execution.md — Claude isn't editing anything
+    const systemParts = [...buildClassifiedPrompt(modeFile, false), buildEnvironmentBlock(req.model, req.permissionMode, req.projectName, req.repoName)]
     const totalPromptSize = systemParts.reduce((s, p) => s + p.length, 0)
     console.log(`[prompt] Mode: ${classification.mode} → File: ${modeFile || 'none'} | Permission: ${req.permissionMode ?? 'leitura'} | Parts: ${systemParts.length} | Prompt size: ${totalPromptSize} chars`)
 
+    // All modes — base.md + when-*.md (null if none) + tools from permission mode
     const tools = getToolsForMode(req.permissionMode, req.isBuild)
-
-    // Always: prefetch semantic context + give Claude tools to expand if needed.
-    // Claude decides whether to use the tools — if the prefetch is enough, it answers directly.
-    const context = await prefetchContext(req, classification.keywords)
+    const context = await prefetchContext(req, classification.keywords, classification.mode)
     const userContent = context
       ? `${req.content}\n\n---\nRelevant code from the repository:\n${context}`
       : req.content
@@ -869,11 +879,12 @@ async function handleNoSkill(req: ChatRequest, token: string, userMessage: ChatR
     const response = await callAnthropicWithTools({
       encryptedToken: token,
       systemParts,
+      compactSummary: compactSummary ?? undefined,
       messages: [{ role: 'user', content: userContent }],
       tools,
       maxTokens: 8192,
     })
-    content = await processReadToolLoop(token, req, response, systemParts, tools)
+    content = await processReadToolLoop(token, req, response, systemParts, tools, compactSummary ?? undefined)
   } catch (err) {
     content = getChatErrorMessage(err)
   }
@@ -927,29 +938,31 @@ async function handleSkill(req: ChatRequest, token: string, userMessage: ChatRep
     const recentMessages = await getRecentMessagesForClassifier(req)
     const classification = await classifyMessage(req.content, token, recentMessages)
     const modeFile = getModeFileName(classification.mode)
-    const [base, ...modeParts] = buildClassifiedPrompt(modeFile, classification.execution)
+    // Leitura never loads when-after-execution.md — Claude isn't editing anything
+    const [base, ...modeParts] = buildClassifiedPrompt(modeFile, false)
     // base.md stays as block [0] alone — shared cache hit across ALL skills.
     // skill prompt is block [1] — only this block changes on skill switch.
-    const systemParts = [base, getSkillPrompt(skillId), ...modeParts, buildEnvironmentBlock(req.model, req.permissionMode)]
+    const systemParts = [base, getSkillPrompt(skillId), ...modeParts, buildEnvironmentBlock(req.model, req.permissionMode, req.projectName, req.repoName)]
     const totalSize = systemParts.reduce((s, p) => s + p.length, 0)
     console.log(`[prompt] Skill: ${skillName} | Mode: ${classification.mode} → File: ${modeFile || 'none'} | Permission: ${req.permissionMode ?? 'leitura'} | Parts: ${systemParts.length} | Prompt size: ${totalSize} chars`)
 
     const tools = getToolsForMode(req.permissionMode, req.isBuild)
 
     // Always: prefetch semantic context + give Claude tools to expand if needed.
-    const context = await prefetchContext(req, classification.keywords)
+    const context = await prefetchContext(req, classification.keywords, classification.mode)
     const userContent = context
-      ? `${req.content}\n\n---\nRelevant code from the repository:\n${context}`
+      ? `${req.content}\n\n---\nFILES ALREADY LOADED — these files are in your context, do not fetch them again. Use tools only if you need files not listed here:\n${context}`
       : req.content
 
     const response = await callAnthropicWithTools({
       encryptedToken: token,
       systemParts,
+      compactSummary: compactSummary ?? undefined,
       messages: [{ role: 'user', content: userContent }],
       tools,
       maxTokens: 8192,
     })
-    content = await processReadToolLoop(token, req, response, systemParts, tools)
+    content = await processReadToolLoop(token, req, response, systemParts, tools, compactSummary ?? undefined)
     if (!content.startsWith(`${skillName}:`)) content = `${skillName}: ${content}`
   } catch (err) {
     content = `${skillName}: ${getChatErrorMessage(err)}`
@@ -1645,81 +1658,104 @@ async function processReadToolLoop(
   initialResponse: { content: ContentBlock[]; stopReason: string },
   systemParts?: string | string[],
   tools?: ToolDefinition[],
+  compactSummary?: string,
 ): Promise<string> {
   const activeTools = tools ?? (READ_TOOLS as unknown as ToolDefinition[])
-  // Normalize: accept legacy string or new string[]
   const parts: string[] = Array.isArray(systemParts)
     ? systemParts
     : systemParts
     ? [systemParts]
     : buildClassifiedPrompt(null, false)
   const messages: ToolCallMessage[] = [{ role: 'user', content: req.content }]
-  const allText: string[] = []
 
-  // Collect text from initial response
-  for (const block of initialResponse.content) {
-    if (block.type === 'text') allText.push(block.text)
-  }
-
-  // If no tool calls, return text directly
+  // Only collect text from end_turn responses — intermediate text (e.g. "Vou analisar...")
+  // from rounds where the model is still calling tools is discarded.
   if (initialResponse.stopReason === 'end_turn' || initialResponse.stopReason === 'max_tokens') {
-    return allText.join('\n\n') || 'Sorry, I could not generate a response.'
+    const text = initialResponse.content.filter((b) => b.type === 'text').map((b) => (b as { type: 'text'; text: string }).text).join('\n\n')
+    return text || 'Sorry, I could not generate a response.'
   }
 
-  // Process tool call loop (read-only)
   messages.push({ role: 'assistant', content: initialResponse.content })
 
   const toolUseBlocks = initialResponse.content.filter(
     (b): b is Extract<ContentBlock, { type: 'tool_use' }> => b.type === 'tool_use'
   )
 
-  if (toolUseBlocks.length === 0) return allText.join('\n\n')
-
-  // Get repo for tool execution
-  const repo = await prisma.repository.findUnique({ where: { projectId: req.projectId }, select: { id: true } })
-  if (!repo) return allText.join('\n\n')
-
-  const toolResults: { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean }[] = []
-  for (const toolCall of toolUseBlocks) {
-    await saveMessage(req, 'step', JSON.stringify({ type: 'tool_call', label: toolStepLabel(toolCall.name, toolCall.input) }))
-    const result = await executeTool(repo.id, toolCall.name, toolCall.input, req.projectId)
-    toolResults.push({ type: 'tool_result', tool_use_id: toolCall.id, content: result.result, is_error: result.isError || undefined })
+  if (toolUseBlocks.length === 0) {
+    const text = initialResponse.content.filter((b) => b.type === 'text').map((b) => (b as { type: 'text'; text: string }).text).join('\n\n')
+    return text
   }
+
+  const repo = await prisma.repository.findUnique({ where: { projectId: req.projectId }, select: { id: true } })
+  if (!repo) return 'Sorry, I could not generate a response.'
+
+  // Execute tools in parallel — step messages fire concurrently, then all tools run at once
+  const execBatch = async (blocks: Extract<ContentBlock, { type: 'tool_use' }>[]) => {
+    await Promise.all(blocks.map(tc =>
+      saveMessage(req, 'step', JSON.stringify({ type: 'tool_call', label: toolStepLabel(tc.name, tc.input) }))
+    ))
+    return Promise.all(blocks.map(async tc => {
+      const result = await executeTool(repo.id, tc.name, tc.input, req.projectId)
+      return { type: 'tool_result' as const, tool_use_id: tc.id, content: result.result, is_error: result.isError || undefined }
+    }))
+  }
+
+  const toolResults = await execBatch(toolUseBlocks)
   messages.push({ role: 'user', content: toolResults as unknown as ContentBlock[] })
 
-  // Continue loop
+  let finalText = ''
+
   for (let i = 0; i < MAX_READ_ITERATIONS; i++) {
     const response = await callAnthropicWithTools({
       encryptedToken: token,
       systemParts: parts,
+      compactSummary,
       messages,
       tools: activeTools,
       maxTokens: 8192,
     })
 
-    for (const block of response.content) {
-      if (block.type === 'text') allText.push(block.text)
-    }
+    const roundText = response.content.filter((b) => b.type === 'text').map((b) => (b as { type: 'text'; text: string }).text).join('\n\n')
 
-    if (response.stopReason === 'end_turn' || response.stopReason === 'max_tokens') break
+    if (response.stopReason === 'end_turn' || response.stopReason === 'max_tokens') {
+      if (roundText) finalText = roundText
+      break
+    }
 
     const newToolBlocks = response.content.filter(
       (b): b is Extract<ContentBlock, { type: 'tool_use' }> => b.type === 'tool_use'
     )
-    if (newToolBlocks.length === 0) break
+    if (newToolBlocks.length === 0) {
+      finalText = roundText
+      break
+    }
+
+    // Keep last non-empty text as fallback in case we hit max iterations
+    if (roundText) finalText = roundText
 
     messages.push({ role: 'assistant', content: response.content })
-
-    const newResults: { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean }[] = []
-    for (const toolCall of newToolBlocks) {
-      await saveMessage(req, 'step', JSON.stringify({ type: 'tool_call', label: toolStepLabel(toolCall.name, toolCall.input) }))
-      const result = await executeTool(repo.id, toolCall.name, toolCall.input, req.projectId)
-      newResults.push({ type: 'tool_result', tool_use_id: toolCall.id, content: result.result, is_error: result.isError || undefined })
-    }
+    const newResults = await execBatch(newToolBlocks)
     messages.push({ role: 'user', content: newResults as unknown as ContentBlock[] })
   }
 
-  return allText.join('\n\n') || 'Sorry, I could not generate a response.'
+  // If the loop ended without a real response (model only used tools, never wrote text),
+  // make one final call without tools to force synthesis of what was found.
+  if (!finalText) {
+    const synthesis = await callAnthropicWithTools({
+      encryptedToken: token,
+      systemParts: parts,
+      compactSummary,
+      messages,
+      tools: [],
+      maxTokens: 8192,
+    })
+    finalText = synthesis.content
+      .filter((b) => b.type === 'text')
+      .map((b) => (b as { type: 'text'; text: string }).text)
+      .join('\n\n')
+  }
+
+  return finalText || 'Sorry, I could not generate a response.'
 }
 
 function getModelOptions(req: ChatRequest): { model?: string; thinkingBudget?: number } {
