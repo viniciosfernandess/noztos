@@ -3,10 +3,6 @@ import { prisma } from '@/lib/db'
 import { verifyProjectAccess } from '@/lib/auth'
 import { provisionWorktree, generateWorktreeCodename } from '@/lib/worktree'
 
-// ⚠️ MOCK MODE — temporary, for visual testing of long-name truncation.
-// Remove with the chat-sessions stats and chat-sessions list mocks.
-const MOCK_LONG_NAMES = true
-
 interface RouteContext {
   params: Promise<{ id: string }>
 }
@@ -34,28 +30,6 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     },
     orderBy: { createdAt: 'asc' },
   })
-
-  // ⚠️ MOCK — override worktree names with long fakes + cycle ages
-  if (MOCK_LONG_NAMES) {
-    const fakes = [
-      'Build the brand new dashboard with charts and analytics',
-      'Implement push notifications across iOS Android and web',
-      'Add multi tenant support with org-level permissions and billing',
-    ]
-    const now = Date.now()
-    const fakeAges = [
-      30 * 60 * 1000,             // "30m"
-      5 * 60 * 60 * 1000,         // "5h"
-      3 * 24 * 60 * 60 * 1000,    // "3d"
-    ]
-    return NextResponse.json({
-      worktrees: worktrees.map((w, i) => ({
-        ...w,
-        name: fakes[i % fakes.length],
-        updatedAt: new Date(now - fakeAges[i % fakeAges.length]).toISOString(),
-      })),
-    })
-  }
 
   return NextResponse.json({ worktrees })
 }

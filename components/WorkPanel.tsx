@@ -1054,7 +1054,10 @@ interface WorktreeInfo {
 }
 
 export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true }: WorkPanelProps) {
-  const [terminalOpen, setTerminalOpen] = useState(false)
+  const [terminalOpen, setTerminalOpen] = useState(true)
+  const [rightPanelTab, setRightPanelTab] = useState<'explorer' | 'changes'>('explorer')
+  const [changesSearchOpen, setChangesSearchOpen] = useState(false)
+  const [changesSearchQuery, setChangesSearchQuery] = useState('')
   const [activeMode, setActiveMode] = useState<ChatMode>('no_skill')
   const [activeSkillId, setActiveSkillId] = useState<string | null>(null)
   const [activeTeamId, setActiveTeamId] = useState<string | null>(null)
@@ -1358,12 +1361,16 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
     setActiveTeamId(null)
   }
 
+  // Count changed files for the Changes tab badge — sum of all worktree + chat stats files
+  const changedFilesCount = Object.values(worktreeStats).reduce((sum, s) => sum + s.files, 0)
+    + Object.values(chatStats).reduce((sum, s) => sum + s.files, 0)
+
   const hasOpenChat = activeSessionId !== null
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Main area (sidebar + chat + file tree + minimap) */}
-      <div className={`flex ${terminalOpen ? 'h-[65%]' : 'flex-1'} overflow-hidden`}>
+      <div className="flex flex-1 overflow-hidden">
         {/* Left: Chats sidebar */}
         {sidebarOpen && <ChatsSidebar
           projectId={projectId}
@@ -1471,6 +1478,20 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                           <path strokeLinecap="round" d="M12 7.5V12l3 1.5" />
                           <path strokeLinecap="round" d="M3.51 9A9 9 0 0112 3c2.49 0 4.74 1.01 6.36 2.64" />
                           <path strokeLinecap="round" strokeLinejoin="round" d="M3 4.5v4h4" />
+                        </svg>
+                      </button>
+                      {/* Minimize — go back to main context */}
+                      <button
+                        onClick={() => {
+                          setActiveWorktreeId(null)
+                          setActiveSessionId(null)
+                          setChatMessages([])
+                        }}
+                        title="Minimize worktree"
+                        className="text-zinc-500 transition-colors hover:text-zinc-300"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12h-15" />
                         </svg>
                       </button>
                     </div>
@@ -1604,11 +1625,6 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                   onClearSelection={handleClearSelection}
                   onSessionRenamed={(name: string) => {
                     handleRenameSession(activeSessionId!, name)
-                    // Auto-rename the parent worktree too — but only if this
-                    // chat is the only one inside AND the worktree still has
-                    // its auto-generated codename (like "Kampala v1"). After
-                    // the user renames it manually or adds more chats, this
-                    // no-op so we don't surprise them.
                     if (activeWorktreeId) {
                       const wt = worktrees.find((w) => w.id === activeWorktreeId)
                       const isCodenameStill = wt && /^[A-Z][a-z]+ v\d+$/.test(wt.name)
@@ -1616,6 +1632,11 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                         handleRenameWorktree(wt.id, name)
                       }
                     }
+                  }}
+                  onMinimize={() => {
+                    setActiveSessionId(null)
+                    setActiveWorktreeId(null)
+                    setChatMessages([])
                   }}
                 />
               </div>
@@ -1688,7 +1709,6 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
 
             <div className="text-center">
               <p className="text-sm font-medium text-zinc-300">Let&apos;s build something.</p>
-              <p className="mt-1 text-xs text-zinc-500">Open a new chat or worktree to get started.</p>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -1708,9 +1728,141 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
         )}
       </div>
 
-        {/* Right: File tree */}
-        <div className="flex w-[30%] min-w-0 shrink-0">
-          <FileTree projectId={projectId} hasActiveSession={!!activeSessionId} />
+        {/* Right: Explorer / Changes / Terminal panel */}
+        <div className="flex w-[30%] min-w-0 shrink-0 flex-col border-l border-[#2B2B2B]" style={{ backgroundColor: '#1F1F1F' }}>
+          {/* Tabs: Changes | Explorer + context label */}
+          <div className="flex shrink-0 items-center border-b border-[#2B2B2B] px-3" style={{ backgroundColor: '#1F1F1F' }}>
+            <button
+              onClick={() => setRightPanelTab('changes')}
+              className={`relative flex items-center gap-1.5 px-3 py-2.5 text-[12px] font-medium transition-colors ${
+                rightPanelTab === 'changes'
+                  ? 'text-zinc-100'
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              Changes
+              {changedFilesCount > 0 && (
+                <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] tabular-nums text-zinc-300">
+                  {changedFilesCount}
+                </span>
+              )}
+              {rightPanelTab === 'changes' && (
+                <span className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full bg-white" />
+              )}
+            </button>
+            <button
+              onClick={() => { setRightPanelTab('explorer'); setChangesSearchOpen(false); setChangesSearchQuery('') }}
+              className={`relative flex items-center gap-1.5 px-3 py-2.5 text-[12px] font-medium transition-colors ${
+                rightPanelTab === 'explorer'
+                  ? 'text-zinc-100'
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              Explorer
+              {rightPanelTab === 'explorer' && (
+                <span className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full bg-white" />
+              )}
+            </button>
+            {/* Search icon — only on Changes tab */}
+            {rightPanelTab === 'changes' && (
+              <button
+                onClick={() => { setChangesSearchOpen(!changesSearchOpen); setChangesSearchQuery('') }}
+                title="Search changes"
+                className={`ml-2 transition-colors ${changesSearchOpen ? 'text-zinc-200' : 'text-zinc-500 hover:text-zinc-300'}`}
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                </svg>
+              </button>
+            )}
+            <div className="flex-1" />
+            <span className="text-[11px] font-medium text-zinc-500">
+              {activeWorktreeId
+                ? `${worktrees.find((w) => w.id === activeWorktreeId)?.branchName ?? 'branch'} (branch)`
+                : 'main'}
+            </span>
+          </div>
+
+          {/* Search bar — only when Changes tab + search open */}
+          {rightPanelTab === 'changes' && changesSearchOpen && (
+            <div className="flex shrink-0 items-center gap-2 border-b border-[#2B2B2B] px-3 py-1.5" style={{ backgroundColor: '#1F1F1F' }}>
+              <svg className="h-3 w-3 shrink-0 text-zinc-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+              </svg>
+              <input
+                autoFocus
+                value={changesSearchQuery}
+                onChange={(e) => setChangesSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') { setChangesSearchOpen(false); setChangesSearchQuery('') }
+                }}
+                placeholder="Filter changes..."
+                className="min-w-0 flex-1 bg-transparent text-[11px] text-zinc-200 placeholder-zinc-600 outline-none"
+              />
+              <button
+                onClick={() => { setChangesSearchOpen(false); setChangesSearchQuery('') }}
+                className="text-zinc-600 transition-colors hover:text-zinc-300"
+              >
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          )}
+
+          {/* Panel content — takes remaining space above terminal */}
+          <div className="min-h-0 flex-1 overflow-y-auto" style={{ backgroundColor: '#181818' }}>
+            {rightPanelTab === 'explorer' && (
+              <FileTree projectId={projectId} hasActiveSession={!!activeSessionId} />
+            )}
+            {rightPanelTab === 'changes' && (
+              <div className="flex h-full items-center justify-center">
+                <p className="text-[11px] text-zinc-500">No changes yet.</p>
+              </div>
+            )}
+          </div>
+
+          {/* Terminal — retrátil from bottom of the right panel, only when a chat is open */}
+          {hasOpenChat && terminalOpen ? (
+            <div className="flex h-1/2 shrink-0 flex-col border-t border-[#2B2B2B]" style={{ backgroundColor: '#181818' }}>
+              {/* Terminal header */}
+              <div className="flex shrink-0 items-center border-b border-[#2B2B2B] px-2" style={{ backgroundColor: '#1F1F1F' }}>
+                <div className="flex items-center gap-1 px-2 py-1.5">
+                  <svg className="h-3 w-3 text-emerald-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z" />
+                  </svg>
+                  <span className="text-[10px] font-medium text-zinc-300">Terminal</span>
+                </div>
+                <div className="flex-1" />
+                <button
+                  onClick={() => setTerminalOpen(false)}
+                  className="flex h-5 w-5 items-center justify-center rounded text-zinc-600 hover:bg-white/5 hover:text-zinc-400"
+                  title="Close terminal"
+                >
+                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                  </svg>
+                </button>
+              </div>
+              {/* Terminal body */}
+              <TerminalBody projectId={projectId} sessionId={activeSessionId} worktreeId={activeWorktreeId} />
+            </div>
+          ) : hasOpenChat ? (
+            /* Terminal collapsed — thin bar at bottom to pull up */
+            <button
+              onClick={() => setTerminalOpen(true)}
+              className="flex shrink-0 items-center gap-2 border-t border-[#2B2B2B] px-3 py-1.5 text-left transition-colors hover:bg-white/5"
+              style={{ backgroundColor: '#1F1F1F' }}
+            >
+              <svg className="h-3 w-3 text-zinc-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
+              </svg>
+              <svg className="h-3 w-3 text-emerald-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z" />
+              </svg>
+              <span className="text-[10px] text-zinc-500">Terminal</span>
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -1807,60 +1959,6 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
         </div>
       )}
 
-      {/* Terminal toggle bar + panel */}
-      <div className="shrink-0 border-t border-[#2B2B2B]" style={{ backgroundColor: '#1F1F1F' }}>
-        {/* Toggle bar — always visible */}
-        <button
-          onClick={() => setTerminalOpen(!terminalOpen)}
-          className="flex w-full items-center gap-2 px-4 py-1.5 text-left hover:bg-white/5"
-        >
-          <svg className={`h-3 w-3 text-zinc-500 transition-transform ${terminalOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
-          </svg>
-          <svg className="h-3.5 w-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z" />
-          </svg>
-          <span className="text-[11px] font-medium text-zinc-400">Terminal</span>
-          {terminalOpen && (
-            <div className="ml-auto flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              <span className="text-[9px] text-zinc-600">connected</span>
-            </div>
-          )}
-        </button>
-      </div>
-
-      {/* Terminal panel */}
-      {terminalOpen && (
-        <div className="flex h-[35%] flex-col border-t border-[#2B2B2B]" style={{ backgroundColor: '#181818' }}>
-          {/* Terminal tabs */}
-          <div className="flex shrink-0 items-center border-b border-[#2B2B2B] px-2" style={{ backgroundColor: '#1F1F1F' }}>
-            <div className="flex items-center gap-1 border-r border-[#2B2B2B] px-3 py-1.5">
-              <svg className="h-3 w-3 text-emerald-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z" />
-              </svg>
-              <span className="text-[10px] font-medium text-zinc-300">bash</span>
-            </div>
-            <button className="ml-1 flex h-6 w-6 items-center justify-center rounded text-zinc-600 hover:bg-white/5 hover:text-zinc-400" title="New terminal">
-              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-            </button>
-            <div className="flex-1" />
-            <button
-              onClick={() => setTerminalOpen(false)}
-              className="flex h-6 w-6 items-center justify-center rounded text-zinc-600 hover:bg-white/5 hover:text-zinc-400"
-            >
-              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-
-          {/* Terminal body */}
-          <TerminalBody projectId={projectId} />
-        </div>
-      )}
     </div>
   )
 }
@@ -2905,11 +3003,13 @@ function ChatPanel({
   onSelectTeam,
   onClearSelection,
   onSessionRenamed,
+  onMinimize,
 }: {
   projectId: string
   sessionId: string
   sessionName: string
   isWorktreeChat: boolean
+  onMinimize: () => void
   messages: Message[]
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>
   activeMode: ChatMode
@@ -3354,6 +3454,17 @@ function ChatPanel({
               <path strokeLinecap="round" d="M12 7.5V12l3 1.5" />
               <path strokeLinecap="round" d="M3.51 9A9 9 0 0112 3c2.49 0 4.74 1.01 6.36 2.64" />
               <path strokeLinecap="round" strokeLinejoin="round" d="M3 4.5v4h4" />
+            </svg>
+          </button>
+          {/* Minimize — close this chat view, go back to empty state */}
+          <button
+            type="button"
+            onClick={onMinimize}
+            title="Minimize chat"
+            className="text-zinc-500 transition-colors hover:text-zinc-300"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12h-15" />
             </svg>
           </button>
         </div>
@@ -4328,7 +4439,7 @@ function ReminderModal({ projectId, onClose }: { projectId: string; onClose: () 
 
 // ── Terminal Body ──────────────────────────────────────────────────────────
 
-function TerminalBody({ projectId }: { projectId: string }) {
+function TerminalBody({ projectId, sessionId, worktreeId }: { projectId: string; sessionId?: string | null; worktreeId?: string | null }) {
   const [sandboxStatus, setSandboxStatus] = useState<'disconnected' | 'starting' | 'running'>('disconnected')
   const [history, setHistory] = useState<{ type: 'input' | 'stdout' | 'stderr' | 'system'; text: string }[]>([])
   const [input, setInput] = useState('')
@@ -4341,7 +4452,16 @@ function TerminalBody({ projectId }: { projectId: string }) {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [history.length])
 
-  // Auto-start on mount, auto-stop on unmount
+  // Reset terminal when context changes
+  const contextKey = worktreeId ?? sessionId ?? projectId
+  useEffect(() => {
+    setHistory([])
+    setInput('')
+    setCommandHistory([])
+    setHistoryIndex(-1)
+  }, [contextKey])
+
+  // Auto-start on mount or context change
   useEffect(() => {
     let mounted = true
 
@@ -4392,7 +4512,7 @@ function TerminalBody({ projectId }: { projectId: string }) {
       // Don't stop sandbox on terminal close — idle timer (15 min) handles it
       // This way tasks can still use the container after terminal closes
     }
-  }, [projectId])
+  }, [projectId, contextKey])
 
   async function handleStart() {
     setSandboxStatus('starting')
@@ -4422,7 +4542,11 @@ function TerminalBody({ projectId }: { projectId: string }) {
     setInput('')
 
     try {
-      const res = await fetch(`/api/projects/${projectId}/terminal/exec`, {
+      const execParams = new URLSearchParams()
+      if (worktreeId) execParams.set('worktree', worktreeId)
+      else if (sessionId) execParams.set('session', sessionId)
+      const execUrl = `/api/projects/${projectId}/terminal/exec${execParams.toString() ? `?${execParams}` : ''}`
+      const res = await fetch(execUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command: cmd }),

@@ -6,12 +6,6 @@ import { E2BProvider } from '@/lib/compute-e2b'
 
 const compute = new E2BProvider()
 
-// ⚠️ MOCK MODE — temporary, for visual testing of the badge in the sidebar.
-// When true, returns fake +/- stats for every open main chat in the project,
-// regardless of touchedPaths or git state. Set back to false to restore real
-// behavior. Remove this whole block when done testing.
-const MOCK_STATS = true
-
 interface RouteContext {
   params: Promise<{ id: string }>
 }
@@ -40,20 +34,6 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     where: { projectId: id, status: 'open', worktreeId: null },
     select: { id: true, touchedPaths: true },
   })
-
-  // ⚠️ MOCK — return fake stats for every open main chat. Each gets a slightly
-  // different number so the user can tell rows apart. Remove when done testing.
-  if (MOCK_STATS) {
-    const fakes = [
-      { added: 42, removed: 7, files: 3 },
-      { added: 128, removed: 23, files: 8 },
-      { added: 5, removed: 1, files: 1 },
-      { added: 17, removed: 4, files: 2 },
-    ]
-    const result = Object.fromEntries(sessions.map((s, i) => [s.id, fakes[i % fakes.length]]))
-    console.log(`[mock-stats] project=${id} mainChats=${sessions.length} returning:`, result)
-    return NextResponse.json(result)
-  }
 
   // Skip sessions with no touched paths — their badge is empty
   const sessionsWithPaths = sessions.filter((s) => s.touchedPaths.length > 0)
