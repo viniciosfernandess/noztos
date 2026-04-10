@@ -40,6 +40,7 @@ interface Props {
 
 export function ProjectDashboardClient({ project, collaborators, teams, tasks }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('work')
+  const [sidebarOpen, setSidebarOpen] = useState(true)
   const [hiredIds, setHiredIds] = useState<string[]>([])
   const [localTeams, setLocalTeams] = useState<{ name: string; memberIds: string[]; hasBuilder: boolean; order: string[]; canRecreateTasks: Record<string, string> }[]>([])
 
@@ -66,9 +67,11 @@ export function ProjectDashboardClient({ project, collaborators, teams, tasks }:
   return (
     <ProjectLayout
       projectName={project.name}
+      projectId={project.id}
       activeTab={activeTab}
       onTabChange={setActiveTab}
-      floatingNav={activeTab === 'work'}
+      sidebarOpen={sidebarOpen}
+      onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
     >
       {activeTab === 'overview' && (
         <div className="flex-1 overflow-y-auto p-6" style={{ backgroundColor: '#1e1e28' }}>
@@ -89,6 +92,7 @@ export function ProjectDashboardClient({ project, collaborators, teams, tasks }:
           projectId={project.id}
           hiredEmployees={hiredEmployees}
           teams={teamInfos}
+          sidebarOpen={sidebarOpen}
         />
       )}
 

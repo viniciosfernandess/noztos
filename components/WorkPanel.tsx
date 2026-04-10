@@ -227,7 +227,6 @@ function ChatsSidebar({
   onToggleWorktreeUnread: (worktreeId: string, unread: boolean) => void
   onChanged: () => void
 }) {
-  const [repoCollapsed, setRepoCollapsed] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
@@ -339,28 +338,10 @@ function ChatsSidebar({
   return (
     <div className="flex h-full w-72 shrink-0 flex-col border-r border-white/10" style={{ backgroundColor: '#1F1F1F' }}>
 
-      {/* Scrollable: repo folder(s) */}
+      {/* Scrollable list — starts directly with add buttons */}
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pt-2">
-
-        {/* ── Repository folder ────────────────────────────────────── */}
         <div>
-          {/* Collapsible repo header */}
-          <button
-            onClick={() => setRepoCollapsed(!repoCollapsed)}
-            className="group flex w-full items-center gap-2 px-3 py-1.5 hover:bg-white/[0.025]"
-          >
-            <svg className={`h-2.5 w-2.5 shrink-0 text-zinc-500 transition-transform ${repoCollapsed ? '-rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
-            </svg>
-            <svg className="h-3.5 w-3.5 shrink-0 text-zinc-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
-            </svg>
-            <span className="min-w-0 flex-1 truncate text-left text-[13px] font-medium text-zinc-200">{projectName}</span>
-          </button>
-
-          {!repoCollapsed && (
-            <div>
-              {/* Thin add rows inside the repo — one per line, controls where new items land */}
+              {/* Thin add rows */}
               <button
                 onClick={onNewMainChat}
                 className="flex w-full items-center gap-2 pl-9 pr-4 py-1.5 text-left text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300"
@@ -419,10 +400,6 @@ function ChatsSidebar({
                 const isActiveWorktree = activeWorktreeId === w.id
                 const stat = worktreeStats[w.id]
                 const hasChanges = stat && (stat.added > 0 || stat.removed > 0)
-                // Yellow when (a) the user manually marked this worktree as
-                // unread, OR (b) any nested chat is actually unread — and only
-                // when not currently inside the worktree. Entering hides it
-                // without touching the underlying chat unread state.
                 const isUnread =
                   !isActiveWorktree &&
                   (unreadWorktreeIds.has(w.id) || w.sessions.some((s) => unreadIds.has(s.id)))
@@ -549,19 +526,11 @@ function ChatsSidebar({
                   </div>
                 )
               })}
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Footer — repository + archive + trash (fixed at bottom) */}
+      {/* Footer — archive + trash (fixed at bottom) */}
       <div className="shrink-0 border-t border-white/10">
-        <button className="flex w-full items-center gap-2.5 px-4 py-1.5 text-left text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300">
-          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
-          <span className="text-[11px]">Add repository</span>
-        </button>
         <button
           onClick={() => setShowArchivedModal(true)}
           className="flex w-full items-center gap-2.5 px-4 py-1.5 text-left text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300"
@@ -1066,6 +1035,7 @@ interface WorkPanelProps {
   projectId: string
   hiredEmployees: HiredEmployee[]
   teams: TeamInfo[]
+  sidebarOpen?: boolean
 }
 
 interface SessionInfo {
@@ -1083,7 +1053,7 @@ interface WorktreeInfo {
   sessions: { id: string; name: string; updatedAt?: string }[]
 }
 
-export function WorkPanel({ projectId, hiredEmployees, teams }: WorkPanelProps) {
+export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true }: WorkPanelProps) {
   const [terminalOpen, setTerminalOpen] = useState(false)
   const [activeMode, setActiveMode] = useState<ChatMode>('no_skill')
   const [activeSkillId, setActiveSkillId] = useState<string | null>(null)
@@ -1097,6 +1067,11 @@ export function WorkPanel({ projectId, hiredEmployees, teams }: WorkPanelProps) 
   const [worktrees, setWorktrees] = useState<WorktreeInfo[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [activeWorktreeId, setActiveWorktreeId] = useState<string | null>(null)
+  const [worktreeTabMenuId, setWorktreeTabMenuId] = useState<string | null>(null)
+  const [worktreeTabMenuPos, setWorktreeTabMenuPos] = useState<{ top: number; left: number } | null>(null)
+  const [closingWorktreeChat, setClosingWorktreeChat] = useState<{ worktreeId: string; sessionId: string; sessionName: string } | null>(null)
+  const [renamingTabId, setRenamingTabId] = useState<string | null>(null)
+  const [renamingTabValue, setRenamingTabValue] = useState('')
   const [projectMeta, setProjectMeta] = useState<{ name: string; repoName?: string } | null>(null)
   const [unreadSessionIds, setUnreadSessionIds] = useState<Set<string>>(new Set())
   // Manual "mark worktree as unread" flag — independent from individual chat
@@ -1129,6 +1104,14 @@ export function WorkPanel({ projectId, hiredEmployees, teams }: WorkPanelProps) 
     const interval = setInterval(fetchStats, 5000)
     return () => { cancelled = true; clearInterval(interval) }
   }, [projectId])
+
+  // Close worktree tab menu on outside click
+  useEffect(() => {
+    if (!worktreeTabMenuId) return
+    function handleClick() { setWorktreeTabMenuId(null); setWorktreeTabMenuPos(null) }
+    document.addEventListener('click', handleClick)
+    return () => document.removeEventListener('click', handleClick)
+  }, [worktreeTabMenuId])
 
   // Load project metadata once
   useEffect(() => {
@@ -1313,13 +1296,26 @@ export function WorkPanel({ projectId, hiredEmployees, teams }: WorkPanelProps) 
     }
   }
 
-  async function handleCloseSession(id: string) {
-    await fetch(`/api/projects/${projectId}/chat-sessions/${id}`, {
+  async function handleCloseWorktreeChat(worktreeId: string, sessionId: string) {
+    // Close the chat (status → closed, messages preserved in DB)
+    await fetch(`/api/projects/${projectId}/chat-sessions/${sessionId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: 'closed' }),
     })
-    reloadAll(false)
+    // Update local state — remove from worktree sessions
+    setWorktrees((prev) => prev.map((w) =>
+      w.id === worktreeId
+        ? { ...w, sessions: w.sessions.filter((s) => s.id !== sessionId) }
+        : w
+    ))
+    // If the closed chat was active, switch to the next available one
+    if (activeSessionId === sessionId) {
+      const wt = worktrees.find((w) => w.id === worktreeId)
+      const remaining = wt?.sessions.filter((s) => s.id !== sessionId) ?? []
+      setActiveSessionId(remaining[0]?.id ?? null)
+      setChatMessages([])
+    }
   }
 
   async function handleRenameSession(id: string, name: string) {
@@ -1369,7 +1365,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams }: WorkPanelProps) 
       {/* Main area (sidebar + chat + file tree + minimap) */}
       <div className={`flex ${terminalOpen ? 'h-[65%]' : 'flex-1'} overflow-hidden`}>
         {/* Left: Chats sidebar */}
-        <ChatsSidebar
+        {sidebarOpen && <ChatsSidebar
           projectId={projectId}
           projectName={projectMeta?.name ?? 'project'}
           mainChats={mainChats}
@@ -1437,71 +1433,150 @@ export function WorkPanel({ projectId, hiredEmployees, teams }: WorkPanelProps) 
             })
           }}
           onChanged={() => reloadAll(false)}
-        />
+        />}
 
         {/* Center-left: Chat */}
-        <div className="flex flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col">
           {hasOpenChat ? (
             <div className="flex flex-1 flex-col overflow-hidden">
-              {/* Worktree tab bar — only when the active chat is inside a worktree */}
+              {/* Worktree header + chat tabs — only when inside a worktree */}
               {activeWorktreeId && (() => {
                 const wt = worktrees.find((w) => w.id === activeWorktreeId)
                 if (!wt) return null
                 return (
-                  <div className="flex shrink-0 items-center border-b border-[#2B2B2B]" style={{ backgroundColor: '#181818' }}>
-                    <div className="flex items-center gap-1.5 border-r border-[#2B2B2B] px-3 py-1.5">
-                      <svg className="h-3 w-3 text-zinc-500" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth="1.5">
+                  <>
+                    {/* Top bar — worktree name + branch + history */}
+                    <div className="flex shrink-0 items-center gap-2 border-b border-[#2B2B2B] px-4 py-2" style={{ backgroundColor: '#1F1F1F' }}>
+                      <svg
+                        className="h-3.5 w-3.5 shrink-0 text-zinc-500"
+                        fill="none"
+                        viewBox="0 0 16 16"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                      >
                         <circle cx="4" cy="4" r="1.5" fill="currentColor" />
                         <circle cx="12" cy="12" r="1.5" fill="currentColor" />
                         <path d="M4 5.5 L4 9 Q4 12 7 12 L10.5 12" strokeLinecap="round" />
                       </svg>
-                      <span className="text-[11px] font-medium text-zinc-300">{wt.name}</span>
-                    </div>
-                    <div className="flex items-center overflow-x-auto">
-                      {wt.sessions.map((s) => {
-                        const tabActive = activeSessionId === s.id
-                        const tabUnread = !tabActive && unreadSessionIds.has(s.id)
-                        return (
-                          <button
-                            key={s.id}
-                            onClick={() => {
-                              setActiveSessionId(s.id)
-                              // Mark this chat as read when opened via the tab bar
-                              setUnreadSessionIds((prev) => {
-                                if (!prev.has(s.id)) return prev
-                                const next = new Set(prev)
-                                next.delete(s.id)
-                                return next
-                              })
-                            }}
-                            className={`flex items-center gap-1.5 border-r border-[#2B2B2B] px-3 py-1.5 text-[11px] ${
-                              tabActive
-                                ? 'bg-[#1F1F1F] text-zinc-200'
-                                : tabUnread
-                                  ? 'text-yellow-400 hover:bg-white/5'
-                                  : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-300'
-                            }`}
-                          >
-                            <span
-                              className={`h-1.5 w-1.5 rounded-full ${
-                                tabActive ? 'bg-zinc-200' : tabUnread ? 'bg-yellow-400' : 'bg-zinc-600'
-                              }`}
-                            />
-                            <span>{s.name}</span>
-                          </button>
-                        )
-                      })}
+                      <span className="min-w-0 truncate text-[12px] font-medium text-zinc-300">{wt.name}</span>
+                      <span className="text-[10px] text-zinc-600">({wt.branchName})</span>
+                      <div className="flex-1" />
                       <button
-                        onClick={() => handleAddChatToWorktree(activeWorktreeId)}
-                        className="flex items-center px-3 py-1.5 text-zinc-500 hover:text-zinc-200"
-                        title="Add chat to this worktree"
+                        type="button"
+                        title="Session history"
+                        className="text-zinc-500 transition-colors hover:text-zinc-300"
                       >
-                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                          <circle cx="12" cy="12" r="9" />
+                          <path strokeLinecap="round" d="M12 7.5V12l3 1.5" />
+                          <path strokeLinecap="round" d="M3.51 9A9 9 0 0112 3c2.49 0 4.74 1.01 6.36 2.64" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 4.5v4h4" />
                         </svg>
                       </button>
                     </div>
-                  </div>
+
+                    {/* Chat tabs bar — scroll horizontal when overflow */}
+                    <div className="flex shrink-0 items-center border-b border-[#2B2B2B]" style={{ backgroundColor: '#181818' }}>
+                      <div className="flex min-w-0 flex-1 items-center overflow-x-auto scrollbar-none">
+                        {wt.sessions.map((s) => {
+                          const tabActive = activeSessionId === s.id
+                          const tabUnread = !tabActive && unreadSessionIds.has(s.id)
+                          const isRenaming = renamingTabId === s.id
+                          return (
+                            <div
+                              key={s.id}
+                              className={`group/tab flex w-44 shrink-0 items-center border-r border-[#2B2B2B] ${
+                                tabActive
+                                  ? 'bg-[#1F1F1F]'
+                                  : 'hover:bg-white/5'
+                              }`}
+                            >
+                              <div
+                                onClick={() => {
+                                  setActiveSessionId(s.id)
+                                  setUnreadSessionIds((prev) => {
+                                    if (!prev.has(s.id)) return prev
+                                    const next = new Set(prev)
+                                    next.delete(s.id)
+                                    return next
+                                  })
+                                }}
+                                onDoubleClick={() => {
+                                  setRenamingTabId(s.id)
+                                  setRenamingTabValue(s.name)
+                                }}
+                                className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 pl-3 pr-1.5 py-2.5 text-[11px]"
+                              >
+                                <svg
+                                  className={`h-3 w-3 shrink-0 ${
+                                    tabActive ? 'text-zinc-200' : tabUnread ? 'text-yellow-400' : 'text-zinc-500'
+                                  }`}
+                                  fill="none"
+                                  viewBox="0 0 16 16"
+                                  stroke="currentColor"
+                                  strokeWidth="1.5"
+                                >
+                                  <path strokeLinejoin="round" d="M2.75 4.25 Q2.75 2.75 4.25 2.75 L11.75 2.75 Q13.25 2.75 13.25 4.25 L13.25 9.5 Q13.25 11 11.75 11 L7 11 L4.25 13.5 L4.25 11 Q2.75 11 2.75 9.5 Z" />
+                                </svg>
+                                {isRenaming ? (
+                                  <input
+                                    autoFocus
+                                    value={renamingTabValue}
+                                    onChange={(e) => setRenamingTabValue(e.target.value)}
+                                    onBlur={() => {
+                                      if (renamingTabValue.trim()) handleRenameSession(s.id, renamingTabValue.trim())
+                                      setRenamingTabId(null)
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') { if (renamingTabValue.trim()) handleRenameSession(s.id, renamingTabValue.trim()); setRenamingTabId(null) }
+                                      if (e.key === 'Escape') setRenamingTabId(null)
+                                    }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="min-w-0 flex-1 bg-transparent text-[11px] text-zinc-100 outline-none"
+                                  />
+                                ) : (
+                                  <span className={`min-w-0 truncate ${tabActive ? 'text-zinc-200' : tabUnread ? 'text-zinc-300' : 'text-zinc-500'}`}>
+                                    {s.name}
+                                  </span>
+                                )}
+                              </div>
+                              {/* 3-dot menu trigger — appears on hover */}
+                              <button
+                                data-tab-menu-trigger={s.id}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  if (worktreeTabMenuId === s.id) {
+                                    setWorktreeTabMenuId(null)
+                                    setWorktreeTabMenuPos(null)
+                                  } else {
+                                    const rect = e.currentTarget.getBoundingClientRect()
+                                    setWorktreeTabMenuPos({ top: rect.bottom + 4, left: rect.left })
+                                    setWorktreeTabMenuId(s.id)
+                                  }
+                                }}
+                                className="mr-1.5 hidden h-4 w-4 shrink-0 items-center justify-center rounded text-zinc-600 transition-colors hover:bg-white/10 hover:text-zinc-300 group-hover/tab:flex"
+                              >
+                                <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24">
+                                  <circle cx="5" cy="12" r="1.5" />
+                                  <circle cx="12" cy="12" r="1.5" />
+                                  <circle cx="19" cy="12" r="1.5" />
+                                </svg>
+                              </button>
+                            </div>
+                          )
+                        })}
+                        <button
+                          onClick={() => handleAddChatToWorktree(activeWorktreeId)}
+                          className="flex items-center px-3 py-2.5 text-zinc-500 hover:text-zinc-200"
+                          title="Add chat to this worktree"
+                        >
+                          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  </>
                 )
               })()}
 
@@ -1509,6 +1584,12 @@ export function WorkPanel({ projectId, hiredEmployees, teams }: WorkPanelProps) 
                 <ChatPanel
                   projectId={projectId}
                   sessionId={activeSessionId}
+                  sessionName={
+                    activeWorktreeId
+                      ? worktrees.find((w) => w.id === activeWorktreeId)?.sessions.find((s) => s.id === activeSessionId)?.name ?? 'Chat'
+                      : mainChats.find((s) => s.id === activeSessionId)?.name ?? 'Chat'
+                  }
+                  isWorktreeChat={!!activeWorktreeId}
                   messages={chatMessages}
                   setMessages={setChatMessages}
                   activeMode={activeMode}
@@ -1627,23 +1708,104 @@ export function WorkPanel({ projectId, hiredEmployees, teams }: WorkPanelProps) 
         )}
       </div>
 
-        {/* Center: File tree */}
-        <div className="flex w-[25%] min-w-0 shrink-0">
+        {/* Right: File tree */}
+        <div className="flex w-[30%] min-w-0 shrink-0">
           <FileTree projectId={projectId} hasActiveSession={!!activeSessionId} />
         </div>
-
-      {/* Right: Mini map */}
-      <MiniMap
-        projectId={projectId}
-        activeMode={activeMode}
-        activeEmployee={activeEmployee}
-        activeTeam={activeTeam}
-        messages={chatMessages}
-        hiredEmployees={hiredEmployees}
-        teamRunState={teamRunState}
-        teamRunActive={teamRunActive}
-      />
       </div>
+
+      {/* Worktree tab menu — rendered at root level to escape overflow-hidden */}
+      {worktreeTabMenuId && worktreeTabMenuPos && (() => {
+        const wt = worktrees.find((w) => w.sessions.some((s) => s.id === worktreeTabMenuId))
+        const session = wt?.sessions.find((s) => s.id === worktreeTabMenuId)
+        if (!wt || !session) return null
+        const canClose = wt.sessions.length > 1
+        return (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => { setWorktreeTabMenuId(null); setWorktreeTabMenuPos(null) }} />
+            <div
+              className="fixed z-50 w-40 rounded-lg border border-white/10 py-1 shadow-2xl shadow-black/60"
+              style={{ backgroundColor: '#252526', top: worktreeTabMenuPos.top, left: worktreeTabMenuPos.left }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={() => {
+                  setWorktreeTabMenuId(null)
+                  setWorktreeTabMenuPos(null)
+                  setRenamingTabId(session.id)
+                  setRenamingTabValue(session.name)
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-zinc-300 hover:bg-white/5"
+              >
+                Rename
+              </button>
+              <button
+                onClick={() => {
+                  setWorktreeTabMenuId(null)
+                  setUnreadSessionIds((prev) => {
+                    const next = new Set(prev)
+                    if (next.has(session.id)) next.delete(session.id)
+                    else next.add(session.id)
+                    return next
+                  })
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-zinc-300 hover:bg-white/5"
+              >
+                {unreadSessionIds.has(session.id) ? 'Mark as read' : 'Mark as unread'}
+              </button>
+              {canClose && (
+                <>
+                  <div className="my-1 h-px bg-white/5" />
+                  <button
+                    onClick={() => {
+                      setWorktreeTabMenuId(null)
+                      setClosingWorktreeChat({ worktreeId: wt.id, sessionId: session.id, sessionName: session.name })
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-red-400 hover:bg-red-500/10"
+                  >
+                    Close chat
+                  </button>
+                </>
+              )}
+            </div>
+          </>
+        )
+      })()}
+
+      {/* Close worktree chat confirmation */}
+      {closingWorktreeChat && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setClosingWorktreeChat(null)}>
+          <div
+            className="w-full max-w-xs overflow-hidden rounded-xl border border-white/10 shadow-2xl"
+            style={{ backgroundColor: '#181818' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-5 py-4">
+              <p className="text-[13px] font-semibold text-zinc-100">Close chat?</p>
+              <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-500">
+                <span className="text-zinc-300">{closingWorktreeChat.sessionName}</span> will be removed from this worktree. The conversation history is preserved and can be viewed later.
+              </p>
+            </div>
+            <div className="flex border-t border-[#2B2B2B]">
+              <button
+                onClick={() => setClosingWorktreeChat(null)}
+                className="flex-1 border-r border-[#2B2B2B] px-4 py-2.5 text-[12px] text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  handleCloseWorktreeChat(closingWorktreeChat.worktreeId, closingWorktreeChat.sessionId)
+                  setClosingWorktreeChat(null)
+                }}
+                className="flex-1 px-4 py-2.5 text-[12px] text-red-400 hover:bg-red-500/10"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Terminal toggle bar + panel */}
       <div className="shrink-0 border-t border-[#2B2B2B]" style={{ backgroundColor: '#1F1F1F' }}>
@@ -2728,6 +2890,8 @@ function DiffModal({ projectId, files, onClose }: { projectId: string; files: Fi
 function ChatPanel({
   projectId,
   sessionId,
+  sessionName,
+  isWorktreeChat,
   messages,
   setMessages,
   activeMode,
@@ -2744,6 +2908,8 @@ function ChatPanel({
 }: {
   projectId: string
   sessionId: string
+  sessionName: string
+  isWorktreeChat: boolean
   messages: Message[]
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>
   activeMode: ChatMode
@@ -3162,6 +3328,37 @@ function ChatPanel({
       onDragLeave={() => setIsDragging(false)}
       onDrop={(e) => { e.preventDefault(); setIsDragging(false); if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files) }}
     >
+      {/* Chat header bar */}
+      {!isWorktreeChat && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-[#2B2B2B] px-4 py-2">
+          <svg
+            className="h-3.5 w-3.5 shrink-0 text-zinc-500"
+            fill="none"
+            viewBox="0 0 16 16"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <path strokeLinejoin="round" d="M2.75 4.25 Q2.75 2.75 4.25 2.75 L11.75 2.75 Q13.25 2.75 13.25 4.25 L13.25 9.5 Q13.25 11 11.75 11 L7 11 L4.25 13.5 L4.25 11 Q2.75 11 2.75 9.5 Z" />
+          </svg>
+          <span className="min-w-0 truncate text-[12px] font-medium text-zinc-300">{sessionName}</span>
+          <span className="text-[10px] text-zinc-600">(main)</span>
+          <div className="flex-1" />
+          {/* History button — placeholder, logic TBD */}
+          <button
+            type="button"
+            title="Session history"
+            className="text-zinc-500 transition-colors hover:text-zinc-300"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <circle cx="12" cy="12" r="9" />
+              <path strokeLinecap="round" d="M12 7.5V12l3 1.5" />
+              <path strokeLinecap="round" d="M3.51 9A9 9 0 0112 3c2.49 0 4.74 1.01 6.36 2.64" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 4.5v4h4" />
+            </svg>
+          </button>
+        </div>
+      )}
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.length === 0 && (
