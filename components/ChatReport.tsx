@@ -74,7 +74,7 @@ export function ReportBadge({ report, projectId, sessionId }: ReportBadgeProps) 
           <button
             onClick={handleCreateTask}
             disabled={creating}
-            className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[11px] font-medium text-zinc-400 transition-all hover:border-white/20 hover:bg-white/10 hover:text-zinc-300 disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded-lg border border-[#2B2B2B] bg-white/5 px-2.5 py-1.5 text-[11px] font-medium text-zinc-400 transition-all hover:border-white/20 hover:bg-white/10 hover:text-zinc-300 disabled:opacity-50"
           >
             {creating ? (
               <svg className="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -102,12 +102,12 @@ function ReportModal({ report, onClose }: { report: ChatReport; onClose: () => v
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
-        className="relative max-h-[85vh] w-full max-w-3xl overflow-hidden rounded-2xl border border-white/10 shadow-2xl"
-        style={{ backgroundColor: '#1a1a22' }}
+        className="relative max-h-[85vh] w-full max-w-3xl overflow-hidden rounded-2xl border border-[#2B2B2B] shadow-2xl"
+        style={{ backgroundColor: '#1F1F1F' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-white/10 px-6 py-4" style={{ backgroundColor: '#15151c' }}>
+        <div className="flex items-center justify-between border-b border-[#2B2B2B] px-6 py-4" style={{ backgroundColor: '#181818' }}>
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/20">
               <svg className="h-4 w-4 text-violet-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
@@ -188,7 +188,7 @@ function EtapaBlock({ etapa, index }: { etapa: ReportEtapa; index: number }) {
   const [expanded, setExpanded] = useState(index === 0)
 
   return (
-    <div className="mb-3 overflow-hidden rounded-xl border border-white/10" style={{ backgroundColor: '#111116' }}>
+    <div className="mb-3 overflow-hidden rounded-xl border border-[#2B2B2B]" style={{ backgroundColor: '#181818' }}>
       <button
         onClick={() => setExpanded(!expanded)}
         className="flex w-full items-center gap-3 px-4 py-3 text-left"
@@ -243,6 +243,51 @@ function EtapaBlock({ etapa, index }: { etapa: ReportEtapa; index: number }) {
   )
 }
 
+// ── Diff viewer ───────────────────────────────────────────────────────────
+
+function DiffViewer({ diff }: { diff: string }) {
+  const lines = diff.split('\n')
+  return (
+    <div className="mt-2 overflow-x-auto rounded-lg border border-white/5 bg-black/40 p-3 font-mono text-[10px] leading-relaxed">
+      {lines.map((line, i) => {
+        let color = 'text-zinc-500'
+        if (line.startsWith('+') && !line.startsWith('+++')) color = 'text-emerald-400'
+        else if (line.startsWith('-') && !line.startsWith('---')) color = 'text-red-400'
+        else if (line.startsWith('@@')) color = 'text-blue-400'
+        else if (line.startsWith('diff') || line.startsWith('index') || line.startsWith('---') || line.startsWith('+++')) color = 'text-zinc-600'
+        return (
+          <div key={i} className={`whitespace-pre ${color}`}>{line || ' '}</div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ── File change row ───────────────────────────────────────────────────────
+
+function FileChangeRow({ f }: { f: { path: string; action: string; diff?: string } }) {
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <div>
+      <div
+        className={`flex items-center gap-2 text-[11px] ${f.diff ? 'cursor-pointer hover:opacity-80' : ''}`}
+        onClick={() => f.diff && setExpanded(!expanded)}
+      >
+        <span className={`font-mono ${f.action === 'delete' ? 'text-red-400' : 'text-emerald-400'}`}>
+          {f.action === 'delete' ? 'D' : 'M'}
+        </span>
+        <span className="text-zinc-300">{f.path}</span>
+        {f.diff && (
+          <svg className={`ml-auto h-3 w-3 text-zinc-600 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+          </svg>
+        )}
+      </div>
+      {expanded && f.diff && <DiffViewer diff={f.diff} />}
+    </div>
+  )
+}
+
 // ── Build block ───────────────────────────────────────────────────────────
 
 function BuildBlock({ build }: { build: ReportBuildDetails }) {
@@ -261,16 +306,11 @@ function BuildBlock({ build }: { build: ReportBuildDetails }) {
 
       {/* Files changed */}
       {build.filesChanged.length > 0 && (
-        <div className="rounded-lg border border-white/10 p-3" style={{ backgroundColor: '#111116' }}>
+        <div className="rounded-lg border border-[#2B2B2B] p-3" style={{ backgroundColor: '#181818' }}>
           <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Files Changed</p>
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             {build.filesChanged.map((f, i) => (
-              <div key={i} className="flex items-center gap-2 text-[11px]">
-                <span className={`font-mono ${f.action === 'delete' ? 'text-red-400' : 'text-emerald-400'}`}>
-                  {f.action === 'delete' ? 'D' : 'M'}
-                </span>
-                <span className="text-zinc-300">{f.path}</span>
-              </div>
+              <FileChangeRow key={i} f={f} />
             ))}
           </div>
         </div>
@@ -299,7 +339,7 @@ function BuildBlock({ build }: { build: ReportBuildDetails }) {
       )}
 
       {/* Summary */}
-      <div className="rounded-lg border border-white/10 p-3" style={{ backgroundColor: '#111116' }}>
+      <div className="rounded-lg border border-[#2B2B2B] p-3" style={{ backgroundColor: '#181818' }}>
         <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Build Summary</p>
         <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-zinc-300">{build.summary}</p>
       </div>

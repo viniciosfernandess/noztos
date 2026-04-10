@@ -38,7 +38,6 @@ export function ChatTabs({
     if (editingId && editRef.current) editRef.current.focus()
   }, [editingId])
 
-  // Close menu when clicking outside
   useEffect(() => {
     if (!menuOpenId) return
     function handleClick() { setMenuOpenId(null) }
@@ -58,14 +57,14 @@ export function ChatTabs({
 
   return (
     <>
-      <div className="flex items-center border-b border-white/15" style={{ backgroundColor: '#1e1e28' }}>
+      <div className="flex items-center border-b border-[#2B2B2B]" style={{ backgroundColor: '#181818' }}>
         {sessions.map((session) => (
           <div
             key={session.id}
-            className={`group flex items-center gap-1 border-r border-white/15 px-3 py-1.5 text-xs cursor-pointer ${
+            className={`group flex items-center gap-1 border-r border-[#2B2B2B] px-3 py-1.5 text-xs cursor-pointer ${
               activeSessionId === session.id
-                ? 'bg-white/10 text-zinc-200'
-                : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-400'
+                ? 'bg-[#1F1F1F] text-zinc-200 border-t border-t-white/20'
+                : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-300'
             }`}
             onClick={() => onSelectSession(session.id)}
           >
@@ -89,21 +88,19 @@ export function ChatTabs({
               </span>
             )}
 
-            {/* X to close — always visible */}
             <button
               onClick={(e) => { e.stopPropagation(); setShowCloseConfirm(session.id) }}
-              className="ml-1 text-zinc-300 hover:text-zinc-600"
+              className="ml-1 text-zinc-600 hover:text-zinc-300"
             >
               <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
 
-            {/* 3 dots — visible on hover */}
             <div className="relative">
               <button
                 onClick={(e) => { e.stopPropagation(); setMenuOpenId(menuOpenId === session.id ? null : session.id) }}
-                className="hidden text-zinc-400 hover:text-zinc-700 group-hover:block"
+                className="hidden text-zinc-500 hover:text-zinc-300 group-hover:block"
               >
                 <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24">
                   <circle cx="12" cy="5" r="2" />
@@ -113,7 +110,7 @@ export function ChatTabs({
               </button>
 
               {menuOpenId === session.id && (
-                <div className="absolute left-0 top-full z-20 mt-1 w-32 rounded-lg border border-white/10 py-1 shadow-lg" style={{ backgroundColor: '#1e1e28' }}>
+                <div className="absolute left-0 top-full z-20 mt-1 w-32 rounded-lg border border-[#2B2B2B] py-1 shadow-lg" style={{ backgroundColor: '#313131' }}>
                   <button
                     onClick={(e) => { e.stopPropagation(); setMenuOpenId(null); handleStartRename(session) }}
                     className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-zinc-300 hover:bg-white/10"
@@ -131,7 +128,7 @@ export function ChatTabs({
 
         <button
           onClick={onNewSession}
-          className="flex items-center justify-center px-2 py-1.5 text-zinc-400 hover:text-zinc-700"
+          className="flex items-center justify-center px-2 py-1.5 text-zinc-500 hover:text-zinc-300"
         >
           <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -139,10 +136,9 @@ export function ChatTabs({
         </button>
       </div>
 
-      {/* Close confirmation modal */}
       {showCloseConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="w-full max-w-sm rounded-xl border border-white/10 p-6 shadow-xl" style={{ backgroundColor: '#1a1a22' }}>
+          <div className="w-full max-w-sm rounded-xl border border-[#2B2B2B] p-6 shadow-xl" style={{ backgroundColor: '#181818' }}>
             <h3 className="text-sm font-semibold text-zinc-100">Close this chat?</h3>
             <p className="mt-1 text-xs text-zinc-400">The conversation history will be preserved but the tab will be closed.</p>
             {isWorking && (
@@ -153,13 +149,13 @@ export function ChatTabs({
             <div className="mt-4 flex gap-2">
               <button
                 onClick={() => { onCloseSession(showCloseConfirm); setShowCloseConfirm(null) }}
-                className="flex h-8 flex-1 items-center justify-center rounded-lg bg-violet-600 text-xs font-medium text-white hover:bg-violet-500"
+                className="flex h-8 flex-1 items-center justify-center rounded-lg bg-white text-xs font-medium text-zinc-900 hover:bg-zinc-200"
               >
                 Close
               </button>
               <button
                 onClick={() => setShowCloseConfirm(null)}
-                className="flex h-8 flex-1 items-center justify-center rounded-lg text-xs text-zinc-400 hover:text-zinc-200"
+                className="flex h-8 flex-1 items-center justify-center rounded-lg border border-[#2B2B2B] text-xs text-zinc-400 hover:text-zinc-200"
               >
                 Cancel
               </button>

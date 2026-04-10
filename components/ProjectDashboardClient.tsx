@@ -64,7 +64,12 @@ export function ProjectDashboardClient({ project, collaborators, teams, tasks }:
 
 
   return (
-    <ProjectLayout projectName={project.name} activeTab={activeTab} onTabChange={setActiveTab}>
+    <ProjectLayout
+      projectName={project.name}
+      activeTab={activeTab}
+      onTabChange={setActiveTab}
+      floatingNav={activeTab === 'work'}
+    >
       {activeTab === 'overview' && (
         <div className="flex-1 overflow-y-auto p-6" style={{ backgroundColor: '#1e1e28' }}>
           <div className="mx-auto max-w-3xl space-y-6">

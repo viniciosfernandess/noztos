@@ -41,6 +41,7 @@ export type RepositoryMinAggregateOutputType = {
   sandboxStatus: string | null
   fileTree: string | null
   fileTreeUpdatedAt: Date | null
+  runScript: string | null
 }
 
 export type RepositoryMaxAggregateOutputType = {
@@ -60,6 +61,7 @@ export type RepositoryMaxAggregateOutputType = {
   sandboxStatus: string | null
   fileTree: string | null
   fileTreeUpdatedAt: Date | null
+  runScript: string | null
 }
 
 export type RepositoryCountAggregateOutputType = {
@@ -79,6 +81,7 @@ export type RepositoryCountAggregateOutputType = {
   sandboxStatus: number
   fileTree: number
   fileTreeUpdatedAt: number
+  runScript: number
   _all: number
 }
 
@@ -100,6 +103,7 @@ export type RepositoryMinAggregateInputType = {
   sandboxStatus?: true
   fileTree?: true
   fileTreeUpdatedAt?: true
+  runScript?: true
 }
 
 export type RepositoryMaxAggregateInputType = {
@@ -119,6 +123,7 @@ export type RepositoryMaxAggregateInputType = {
   sandboxStatus?: true
   fileTree?: true
   fileTreeUpdatedAt?: true
+  runScript?: true
 }
 
 export type RepositoryCountAggregateInputType = {
@@ -138,6 +143,7 @@ export type RepositoryCountAggregateInputType = {
   sandboxStatus?: true
   fileTree?: true
   fileTreeUpdatedAt?: true
+  runScript?: true
   _all?: true
 }
 
@@ -230,6 +236,7 @@ export type RepositoryGroupByOutputType = {
   sandboxStatus: string | null
   fileTree: string | null
   fileTreeUpdatedAt: Date | null
+  runScript: string | null
   _count: RepositoryCountAggregateOutputType | null
   _min: RepositoryMinAggregateOutputType | null
   _max: RepositoryMaxAggregateOutputType | null
@@ -270,6 +277,7 @@ export type RepositoryWhereInput = {
   sandboxStatus?: Prisma.StringNullableFilter<"Repository"> | string | null
   fileTree?: Prisma.StringNullableFilter<"Repository"> | string | null
   fileTreeUpdatedAt?: Prisma.DateTimeNullableFilter<"Repository"> | Date | string | null
+  runScript?: Prisma.StringNullableFilter<"Repository"> | string | null
   files?: Prisma.RepoFileListRelationFilter
   project?: Prisma.XOR<Prisma.ProjectScalarRelationFilter, Prisma.ProjectWhereInput>
 }
@@ -291,6 +299,7 @@ export type RepositoryOrderByWithRelationInput = {
   sandboxStatus?: Prisma.SortOrderInput | Prisma.SortOrder
   fileTree?: Prisma.SortOrderInput | Prisma.SortOrder
   fileTreeUpdatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  runScript?: Prisma.SortOrderInput | Prisma.SortOrder
   files?: Prisma.RepoFileOrderByRelationAggregateInput
   project?: Prisma.ProjectOrderByWithRelationInput
 }
@@ -315,6 +324,7 @@ export type RepositoryWhereUniqueInput = Prisma.AtLeast<{
   sandboxStatus?: Prisma.StringNullableFilter<"Repository"> | string | null
   fileTree?: Prisma.StringNullableFilter<"Repository"> | string | null
   fileTreeUpdatedAt?: Prisma.DateTimeNullableFilter<"Repository"> | Date | string | null
+  runScript?: Prisma.StringNullableFilter<"Repository"> | string | null
   files?: Prisma.RepoFileListRelationFilter
   project?: Prisma.XOR<Prisma.ProjectScalarRelationFilter, Prisma.ProjectWhereInput>
 }, "id" | "projectId">
@@ -336,6 +346,7 @@ export type RepositoryOrderByWithAggregationInput = {
   sandboxStatus?: Prisma.SortOrderInput | Prisma.SortOrder
   fileTree?: Prisma.SortOrderInput | Prisma.SortOrder
   fileTreeUpdatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  runScript?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.RepositoryCountOrderByAggregateInput
   _max?: Prisma.RepositoryMaxOrderByAggregateInput
   _min?: Prisma.RepositoryMinOrderByAggregateInput
@@ -361,6 +372,7 @@ export type RepositoryScalarWhereWithAggregatesInput = {
   sandboxStatus?: Prisma.StringNullableWithAggregatesFilter<"Repository"> | string | null
   fileTree?: Prisma.StringNullableWithAggregatesFilter<"Repository"> | string | null
   fileTreeUpdatedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Repository"> | Date | string | null
+  runScript?: Prisma.StringNullableWithAggregatesFilter<"Repository"> | string | null
 }
 
 export type RepositoryCreateInput = {
@@ -379,6 +391,7 @@ export type RepositoryCreateInput = {
   sandboxStatus?: string | null
   fileTree?: string | null
   fileTreeUpdatedAt?: Date | string | null
+  runScript?: string | null
   files?: Prisma.RepoFileCreateNestedManyWithoutRepositoryInput
   project: Prisma.ProjectCreateNestedOneWithoutRepositoryInput
 }
@@ -400,6 +413,7 @@ export type RepositoryUncheckedCreateInput = {
   sandboxStatus?: string | null
   fileTree?: string | null
   fileTreeUpdatedAt?: Date | string | null
+  runScript?: string | null
   files?: Prisma.RepoFileUncheckedCreateNestedManyWithoutRepositoryInput
 }
 
@@ -419,6 +433,7 @@ export type RepositoryUpdateInput = {
   sandboxStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fileTree?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fileTreeUpdatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  runScript?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   files?: Prisma.RepoFileUpdateManyWithoutRepositoryNestedInput
   project?: Prisma.ProjectUpdateOneRequiredWithoutRepositoryNestedInput
 }
@@ -440,6 +455,7 @@ export type RepositoryUncheckedUpdateInput = {
   sandboxStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fileTree?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fileTreeUpdatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  runScript?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   files?: Prisma.RepoFileUncheckedUpdateManyWithoutRepositoryNestedInput
 }
 
@@ -460,6 +476,7 @@ export type RepositoryCreateManyInput = {
   sandboxStatus?: string | null
   fileTree?: string | null
   fileTreeUpdatedAt?: Date | string | null
+  runScript?: string | null
 }
 
 export type RepositoryUpdateManyMutationInput = {
@@ -478,6 +495,7 @@ export type RepositoryUpdateManyMutationInput = {
   sandboxStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fileTree?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fileTreeUpdatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  runScript?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type RepositoryUncheckedUpdateManyInput = {
@@ -497,6 +515,7 @@ export type RepositoryUncheckedUpdateManyInput = {
   sandboxStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fileTree?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fileTreeUpdatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  runScript?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type RepositoryNullableScalarRelationFilter = {
@@ -521,6 +540,7 @@ export type RepositoryCountOrderByAggregateInput = {
   sandboxStatus?: Prisma.SortOrder
   fileTree?: Prisma.SortOrder
   fileTreeUpdatedAt?: Prisma.SortOrder
+  runScript?: Prisma.SortOrder
 }
 
 export type RepositoryMaxOrderByAggregateInput = {
@@ -540,6 +560,7 @@ export type RepositoryMaxOrderByAggregateInput = {
   sandboxStatus?: Prisma.SortOrder
   fileTree?: Prisma.SortOrder
   fileTreeUpdatedAt?: Prisma.SortOrder
+  runScript?: Prisma.SortOrder
 }
 
 export type RepositoryMinOrderByAggregateInput = {
@@ -559,6 +580,7 @@ export type RepositoryMinOrderByAggregateInput = {
   sandboxStatus?: Prisma.SortOrder
   fileTree?: Prisma.SortOrder
   fileTreeUpdatedAt?: Prisma.SortOrder
+  runScript?: Prisma.SortOrder
 }
 
 export type RepositoryScalarRelationFilter = {
@@ -628,6 +650,7 @@ export type RepositoryCreateWithoutProjectInput = {
   sandboxStatus?: string | null
   fileTree?: string | null
   fileTreeUpdatedAt?: Date | string | null
+  runScript?: string | null
   files?: Prisma.RepoFileCreateNestedManyWithoutRepositoryInput
 }
 
@@ -647,6 +670,7 @@ export type RepositoryUncheckedCreateWithoutProjectInput = {
   sandboxStatus?: string | null
   fileTree?: string | null
   fileTreeUpdatedAt?: Date | string | null
+  runScript?: string | null
   files?: Prisma.RepoFileUncheckedCreateNestedManyWithoutRepositoryInput
 }
 
@@ -682,6 +706,7 @@ export type RepositoryUpdateWithoutProjectInput = {
   sandboxStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fileTree?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fileTreeUpdatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  runScript?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   files?: Prisma.RepoFileUpdateManyWithoutRepositoryNestedInput
 }
 
@@ -701,6 +726,7 @@ export type RepositoryUncheckedUpdateWithoutProjectInput = {
   sandboxStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fileTree?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fileTreeUpdatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  runScript?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   files?: Prisma.RepoFileUncheckedUpdateManyWithoutRepositoryNestedInput
 }
 
@@ -720,6 +746,7 @@ export type RepositoryCreateWithoutFilesInput = {
   sandboxStatus?: string | null
   fileTree?: string | null
   fileTreeUpdatedAt?: Date | string | null
+  runScript?: string | null
   project: Prisma.ProjectCreateNestedOneWithoutRepositoryInput
 }
 
@@ -740,6 +767,7 @@ export type RepositoryUncheckedCreateWithoutFilesInput = {
   sandboxStatus?: string | null
   fileTree?: string | null
   fileTreeUpdatedAt?: Date | string | null
+  runScript?: string | null
 }
 
 export type RepositoryCreateOrConnectWithoutFilesInput = {
@@ -774,6 +802,7 @@ export type RepositoryUpdateWithoutFilesInput = {
   sandboxStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fileTree?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fileTreeUpdatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  runScript?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   project?: Prisma.ProjectUpdateOneRequiredWithoutRepositoryNestedInput
 }
 
@@ -794,6 +823,7 @@ export type RepositoryUncheckedUpdateWithoutFilesInput = {
   sandboxStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fileTree?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   fileTreeUpdatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  runScript?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 
@@ -844,6 +874,7 @@ export type RepositorySelect<ExtArgs extends runtime.Types.Extensions.InternalAr
   sandboxStatus?: boolean
   fileTree?: boolean
   fileTreeUpdatedAt?: boolean
+  runScript?: boolean
   files?: boolean | Prisma.Repository$filesArgs<ExtArgs>
   project?: boolean | Prisma.ProjectDefaultArgs<ExtArgs>
   _count?: boolean | Prisma.RepositoryCountOutputTypeDefaultArgs<ExtArgs>
@@ -866,6 +897,7 @@ export type RepositorySelectCreateManyAndReturn<ExtArgs extends runtime.Types.Ex
   sandboxStatus?: boolean
   fileTree?: boolean
   fileTreeUpdatedAt?: boolean
+  runScript?: boolean
   project?: boolean | Prisma.ProjectDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["repository"]>
 
@@ -886,6 +918,7 @@ export type RepositorySelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Ex
   sandboxStatus?: boolean
   fileTree?: boolean
   fileTreeUpdatedAt?: boolean
+  runScript?: boolean
   project?: boolean | Prisma.ProjectDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["repository"]>
 
@@ -906,9 +939,10 @@ export type RepositorySelectScalar = {
   sandboxStatus?: boolean
   fileTree?: boolean
   fileTreeUpdatedAt?: boolean
+  runScript?: boolean
 }
 
-export type RepositoryOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "projectId" | "githubOwner" | "githubRepo" | "githubBranch" | "lastSyncedSha" | "lastSyncedAt" | "createdAt" | "lockedAt" | "lockedBy" | "lockedByTaskId" | "sandboxId" | "sandboxStartedAt" | "sandboxStatus" | "fileTree" | "fileTreeUpdatedAt", ExtArgs["result"]["repository"]>
+export type RepositoryOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "projectId" | "githubOwner" | "githubRepo" | "githubBranch" | "lastSyncedSha" | "lastSyncedAt" | "createdAt" | "lockedAt" | "lockedBy" | "lockedByTaskId" | "sandboxId" | "sandboxStartedAt" | "sandboxStatus" | "fileTree" | "fileTreeUpdatedAt" | "runScript", ExtArgs["result"]["repository"]>
 export type RepositoryInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   files?: boolean | Prisma.Repository$filesArgs<ExtArgs>
   project?: boolean | Prisma.ProjectDefaultArgs<ExtArgs>
@@ -944,6 +978,7 @@ export type $RepositoryPayload<ExtArgs extends runtime.Types.Extensions.Internal
     sandboxStatus: string | null
     fileTree: string | null
     fileTreeUpdatedAt: Date | null
+    runScript: string | null
   }, ExtArgs["result"]["repository"]>
   composites: {}
 }
@@ -1385,6 +1420,7 @@ export interface RepositoryFieldRefs {
   readonly sandboxStatus: Prisma.FieldRef<"Repository", 'String'>
   readonly fileTree: Prisma.FieldRef<"Repository", 'String'>
   readonly fileTreeUpdatedAt: Prisma.FieldRef<"Repository", 'DateTime'>
+  readonly runScript: Prisma.FieldRef<"Repository", 'String'>
 }
     
 

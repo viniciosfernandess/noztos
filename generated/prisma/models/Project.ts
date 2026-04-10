@@ -217,6 +217,7 @@ export type ProjectWhereInput = {
   buildSessions?: Prisma.BuildSessionListRelationFilter
   chatMessages?: Prisma.ChatMessageListRelationFilter
   chatSessions?: Prisma.ChatSessionListRelationFilter
+  worktrees?: Prisma.WorktreeListRelationFilter
   collaborators?: Prisma.CollaboratorListRelationFilter
   user?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>
   repository?: Prisma.XOR<Prisma.RepositoryNullableScalarRelationFilter, Prisma.RepositoryWhereInput> | null
@@ -240,6 +241,7 @@ export type ProjectOrderByWithRelationInput = {
   buildSessions?: Prisma.BuildSessionOrderByRelationAggregateInput
   chatMessages?: Prisma.ChatMessageOrderByRelationAggregateInput
   chatSessions?: Prisma.ChatSessionOrderByRelationAggregateInput
+  worktrees?: Prisma.WorktreeOrderByRelationAggregateInput
   collaborators?: Prisma.CollaboratorOrderByRelationAggregateInput
   user?: Prisma.UserOrderByWithRelationInput
   repository?: Prisma.RepositoryOrderByWithRelationInput
@@ -266,6 +268,7 @@ export type ProjectWhereUniqueInput = Prisma.AtLeast<{
   buildSessions?: Prisma.BuildSessionListRelationFilter
   chatMessages?: Prisma.ChatMessageListRelationFilter
   chatSessions?: Prisma.ChatSessionListRelationFilter
+  worktrees?: Prisma.WorktreeListRelationFilter
   collaborators?: Prisma.CollaboratorListRelationFilter
   user?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>
   repository?: Prisma.XOR<Prisma.RepositoryNullableScalarRelationFilter, Prisma.RepositoryWhereInput> | null
@@ -318,6 +321,7 @@ export type ProjectCreateInput = {
   buildSessions?: Prisma.BuildSessionCreateNestedManyWithoutProjectInput
   chatMessages?: Prisma.ChatMessageCreateNestedManyWithoutProjectInput
   chatSessions?: Prisma.ChatSessionCreateNestedManyWithoutProjectInput
+  worktrees?: Prisma.WorktreeCreateNestedManyWithoutProjectInput
   collaborators?: Prisma.CollaboratorCreateNestedManyWithoutProjectInput
   user: Prisma.UserCreateNestedOneWithoutProjectsInput
   repository?: Prisma.RepositoryCreateNestedOneWithoutProjectInput
@@ -341,6 +345,7 @@ export type ProjectUncheckedCreateInput = {
   buildSessions?: Prisma.BuildSessionUncheckedCreateNestedManyWithoutProjectInput
   chatMessages?: Prisma.ChatMessageUncheckedCreateNestedManyWithoutProjectInput
   chatSessions?: Prisma.ChatSessionUncheckedCreateNestedManyWithoutProjectInput
+  worktrees?: Prisma.WorktreeUncheckedCreateNestedManyWithoutProjectInput
   collaborators?: Prisma.CollaboratorUncheckedCreateNestedManyWithoutProjectInput
   repository?: Prisma.RepositoryUncheckedCreateNestedOneWithoutProjectInput
   resourceUsage?: Prisma.ResourceUsageUncheckedCreateNestedManyWithoutProjectInput
@@ -362,6 +367,7 @@ export type ProjectUpdateInput = {
   buildSessions?: Prisma.BuildSessionUpdateManyWithoutProjectNestedInput
   chatMessages?: Prisma.ChatMessageUpdateManyWithoutProjectNestedInput
   chatSessions?: Prisma.ChatSessionUpdateManyWithoutProjectNestedInput
+  worktrees?: Prisma.WorktreeUpdateManyWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUpdateManyWithoutProjectNestedInput
   user?: Prisma.UserUpdateOneRequiredWithoutProjectsNestedInput
   repository?: Prisma.RepositoryUpdateOneWithoutProjectNestedInput
@@ -385,6 +391,7 @@ export type ProjectUncheckedUpdateInput = {
   buildSessions?: Prisma.BuildSessionUncheckedUpdateManyWithoutProjectNestedInput
   chatMessages?: Prisma.ChatMessageUncheckedUpdateManyWithoutProjectNestedInput
   chatSessions?: Prisma.ChatSessionUncheckedUpdateManyWithoutProjectNestedInput
+  worktrees?: Prisma.WorktreeUncheckedUpdateManyWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUncheckedUpdateManyWithoutProjectNestedInput
   repository?: Prisma.RepositoryUncheckedUpdateOneWithoutProjectNestedInput
   resourceUsage?: Prisma.ResourceUsageUncheckedUpdateManyWithoutProjectNestedInput
@@ -575,6 +582,20 @@ export type ProjectUpdateOneRequiredWithoutTeamsNestedInput = {
   update?: Prisma.XOR<Prisma.XOR<Prisma.ProjectUpdateToOneWithWhereWithoutTeamsInput, Prisma.ProjectUpdateWithoutTeamsInput>, Prisma.ProjectUncheckedUpdateWithoutTeamsInput>
 }
 
+export type ProjectCreateNestedOneWithoutWorktreesInput = {
+  create?: Prisma.XOR<Prisma.ProjectCreateWithoutWorktreesInput, Prisma.ProjectUncheckedCreateWithoutWorktreesInput>
+  connectOrCreate?: Prisma.ProjectCreateOrConnectWithoutWorktreesInput
+  connect?: Prisma.ProjectWhereUniqueInput
+}
+
+export type ProjectUpdateOneRequiredWithoutWorktreesNestedInput = {
+  create?: Prisma.XOR<Prisma.ProjectCreateWithoutWorktreesInput, Prisma.ProjectUncheckedCreateWithoutWorktreesInput>
+  connectOrCreate?: Prisma.ProjectCreateOrConnectWithoutWorktreesInput
+  upsert?: Prisma.ProjectUpsertWithoutWorktreesInput
+  connect?: Prisma.ProjectWhereUniqueInput
+  update?: Prisma.XOR<Prisma.XOR<Prisma.ProjectUpdateToOneWithWhereWithoutWorktreesInput, Prisma.ProjectUpdateWithoutWorktreesInput>, Prisma.ProjectUncheckedUpdateWithoutWorktreesInput>
+}
+
 export type ProjectCreateNestedOneWithoutChatSessionsInput = {
   create?: Prisma.XOR<Prisma.ProjectCreateWithoutChatSessionsInput, Prisma.ProjectUncheckedCreateWithoutChatSessionsInput>
   connectOrCreate?: Prisma.ProjectCreateOrConnectWithoutChatSessionsInput
@@ -685,6 +706,7 @@ export type ProjectCreateWithoutUserInput = {
   buildSessions?: Prisma.BuildSessionCreateNestedManyWithoutProjectInput
   chatMessages?: Prisma.ChatMessageCreateNestedManyWithoutProjectInput
   chatSessions?: Prisma.ChatSessionCreateNestedManyWithoutProjectInput
+  worktrees?: Prisma.WorktreeCreateNestedManyWithoutProjectInput
   collaborators?: Prisma.CollaboratorCreateNestedManyWithoutProjectInput
   repository?: Prisma.RepositoryCreateNestedOneWithoutProjectInput
   resourceUsage?: Prisma.ResourceUsageCreateNestedManyWithoutProjectInput
@@ -706,6 +728,7 @@ export type ProjectUncheckedCreateWithoutUserInput = {
   buildSessions?: Prisma.BuildSessionUncheckedCreateNestedManyWithoutProjectInput
   chatMessages?: Prisma.ChatMessageUncheckedCreateNestedManyWithoutProjectInput
   chatSessions?: Prisma.ChatSessionUncheckedCreateNestedManyWithoutProjectInput
+  worktrees?: Prisma.WorktreeUncheckedCreateNestedManyWithoutProjectInput
   collaborators?: Prisma.CollaboratorUncheckedCreateNestedManyWithoutProjectInput
   repository?: Prisma.RepositoryUncheckedCreateNestedOneWithoutProjectInput
   resourceUsage?: Prisma.ResourceUsageUncheckedCreateNestedManyWithoutProjectInput
@@ -768,6 +791,7 @@ export type ProjectCreateWithoutRepositoryInput = {
   buildSessions?: Prisma.BuildSessionCreateNestedManyWithoutProjectInput
   chatMessages?: Prisma.ChatMessageCreateNestedManyWithoutProjectInput
   chatSessions?: Prisma.ChatSessionCreateNestedManyWithoutProjectInput
+  worktrees?: Prisma.WorktreeCreateNestedManyWithoutProjectInput
   collaborators?: Prisma.CollaboratorCreateNestedManyWithoutProjectInput
   user: Prisma.UserCreateNestedOneWithoutProjectsInput
   resourceUsage?: Prisma.ResourceUsageCreateNestedManyWithoutProjectInput
@@ -790,6 +814,7 @@ export type ProjectUncheckedCreateWithoutRepositoryInput = {
   buildSessions?: Prisma.BuildSessionUncheckedCreateNestedManyWithoutProjectInput
   chatMessages?: Prisma.ChatMessageUncheckedCreateNestedManyWithoutProjectInput
   chatSessions?: Prisma.ChatSessionUncheckedCreateNestedManyWithoutProjectInput
+  worktrees?: Prisma.WorktreeUncheckedCreateNestedManyWithoutProjectInput
   collaborators?: Prisma.CollaboratorUncheckedCreateNestedManyWithoutProjectInput
   resourceUsage?: Prisma.ResourceUsageUncheckedCreateNestedManyWithoutProjectInput
   slackLogs?: Prisma.SlackLogUncheckedCreateNestedManyWithoutProjectInput
@@ -826,6 +851,7 @@ export type ProjectUpdateWithoutRepositoryInput = {
   buildSessions?: Prisma.BuildSessionUpdateManyWithoutProjectNestedInput
   chatMessages?: Prisma.ChatMessageUpdateManyWithoutProjectNestedInput
   chatSessions?: Prisma.ChatSessionUpdateManyWithoutProjectNestedInput
+  worktrees?: Prisma.WorktreeUpdateManyWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUpdateManyWithoutProjectNestedInput
   user?: Prisma.UserUpdateOneRequiredWithoutProjectsNestedInput
   resourceUsage?: Prisma.ResourceUsageUpdateManyWithoutProjectNestedInput
@@ -848,6 +874,7 @@ export type ProjectUncheckedUpdateWithoutRepositoryInput = {
   buildSessions?: Prisma.BuildSessionUncheckedUpdateManyWithoutProjectNestedInput
   chatMessages?: Prisma.ChatMessageUncheckedUpdateManyWithoutProjectNestedInput
   chatSessions?: Prisma.ChatSessionUncheckedUpdateManyWithoutProjectNestedInput
+  worktrees?: Prisma.WorktreeUncheckedUpdateManyWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUncheckedUpdateManyWithoutProjectNestedInput
   resourceUsage?: Prisma.ResourceUsageUncheckedUpdateManyWithoutProjectNestedInput
   slackLogs?: Prisma.SlackLogUncheckedUpdateManyWithoutProjectNestedInput
@@ -868,6 +895,7 @@ export type ProjectCreateWithoutCollaboratorsInput = {
   buildSessions?: Prisma.BuildSessionCreateNestedManyWithoutProjectInput
   chatMessages?: Prisma.ChatMessageCreateNestedManyWithoutProjectInput
   chatSessions?: Prisma.ChatSessionCreateNestedManyWithoutProjectInput
+  worktrees?: Prisma.WorktreeCreateNestedManyWithoutProjectInput
   user: Prisma.UserCreateNestedOneWithoutProjectsInput
   repository?: Prisma.RepositoryCreateNestedOneWithoutProjectInput
   resourceUsage?: Prisma.ResourceUsageCreateNestedManyWithoutProjectInput
@@ -890,6 +918,7 @@ export type ProjectUncheckedCreateWithoutCollaboratorsInput = {
   buildSessions?: Prisma.BuildSessionUncheckedCreateNestedManyWithoutProjectInput
   chatMessages?: Prisma.ChatMessageUncheckedCreateNestedManyWithoutProjectInput
   chatSessions?: Prisma.ChatSessionUncheckedCreateNestedManyWithoutProjectInput
+  worktrees?: Prisma.WorktreeUncheckedCreateNestedManyWithoutProjectInput
   repository?: Prisma.RepositoryUncheckedCreateNestedOneWithoutProjectInput
   resourceUsage?: Prisma.ResourceUsageUncheckedCreateNestedManyWithoutProjectInput
   slackLogs?: Prisma.SlackLogUncheckedCreateNestedManyWithoutProjectInput
@@ -926,6 +955,7 @@ export type ProjectUpdateWithoutCollaboratorsInput = {
   buildSessions?: Prisma.BuildSessionUpdateManyWithoutProjectNestedInput
   chatMessages?: Prisma.ChatMessageUpdateManyWithoutProjectNestedInput
   chatSessions?: Prisma.ChatSessionUpdateManyWithoutProjectNestedInput
+  worktrees?: Prisma.WorktreeUpdateManyWithoutProjectNestedInput
   user?: Prisma.UserUpdateOneRequiredWithoutProjectsNestedInput
   repository?: Prisma.RepositoryUpdateOneWithoutProjectNestedInput
   resourceUsage?: Prisma.ResourceUsageUpdateManyWithoutProjectNestedInput
@@ -948,6 +978,7 @@ export type ProjectUncheckedUpdateWithoutCollaboratorsInput = {
   buildSessions?: Prisma.BuildSessionUncheckedUpdateManyWithoutProjectNestedInput
   chatMessages?: Prisma.ChatMessageUncheckedUpdateManyWithoutProjectNestedInput
   chatSessions?: Prisma.ChatSessionUncheckedUpdateManyWithoutProjectNestedInput
+  worktrees?: Prisma.WorktreeUncheckedUpdateManyWithoutProjectNestedInput
   repository?: Prisma.RepositoryUncheckedUpdateOneWithoutProjectNestedInput
   resourceUsage?: Prisma.ResourceUsageUncheckedUpdateManyWithoutProjectNestedInput
   slackLogs?: Prisma.SlackLogUncheckedUpdateManyWithoutProjectNestedInput
@@ -968,6 +999,7 @@ export type ProjectCreateWithoutTeamsInput = {
   buildSessions?: Prisma.BuildSessionCreateNestedManyWithoutProjectInput
   chatMessages?: Prisma.ChatMessageCreateNestedManyWithoutProjectInput
   chatSessions?: Prisma.ChatSessionCreateNestedManyWithoutProjectInput
+  worktrees?: Prisma.WorktreeCreateNestedManyWithoutProjectInput
   collaborators?: Prisma.CollaboratorCreateNestedManyWithoutProjectInput
   user: Prisma.UserCreateNestedOneWithoutProjectsInput
   repository?: Prisma.RepositoryCreateNestedOneWithoutProjectInput
@@ -990,6 +1022,7 @@ export type ProjectUncheckedCreateWithoutTeamsInput = {
   buildSessions?: Prisma.BuildSessionUncheckedCreateNestedManyWithoutProjectInput
   chatMessages?: Prisma.ChatMessageUncheckedCreateNestedManyWithoutProjectInput
   chatSessions?: Prisma.ChatSessionUncheckedCreateNestedManyWithoutProjectInput
+  worktrees?: Prisma.WorktreeUncheckedCreateNestedManyWithoutProjectInput
   collaborators?: Prisma.CollaboratorUncheckedCreateNestedManyWithoutProjectInput
   repository?: Prisma.RepositoryUncheckedCreateNestedOneWithoutProjectInput
   resourceUsage?: Prisma.ResourceUsageUncheckedCreateNestedManyWithoutProjectInput
@@ -1026,6 +1059,7 @@ export type ProjectUpdateWithoutTeamsInput = {
   buildSessions?: Prisma.BuildSessionUpdateManyWithoutProjectNestedInput
   chatMessages?: Prisma.ChatMessageUpdateManyWithoutProjectNestedInput
   chatSessions?: Prisma.ChatSessionUpdateManyWithoutProjectNestedInput
+  worktrees?: Prisma.WorktreeUpdateManyWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUpdateManyWithoutProjectNestedInput
   user?: Prisma.UserUpdateOneRequiredWithoutProjectsNestedInput
   repository?: Prisma.RepositoryUpdateOneWithoutProjectNestedInput
@@ -1048,12 +1082,117 @@ export type ProjectUncheckedUpdateWithoutTeamsInput = {
   buildSessions?: Prisma.BuildSessionUncheckedUpdateManyWithoutProjectNestedInput
   chatMessages?: Prisma.ChatMessageUncheckedUpdateManyWithoutProjectNestedInput
   chatSessions?: Prisma.ChatSessionUncheckedUpdateManyWithoutProjectNestedInput
+  worktrees?: Prisma.WorktreeUncheckedUpdateManyWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUncheckedUpdateManyWithoutProjectNestedInput
   repository?: Prisma.RepositoryUncheckedUpdateOneWithoutProjectNestedInput
   resourceUsage?: Prisma.ResourceUsageUncheckedUpdateManyWithoutProjectNestedInput
   slackLogs?: Prisma.SlackLogUncheckedUpdateManyWithoutProjectNestedInput
   tasks?: Prisma.TaskUncheckedUpdateManyWithoutProjectNestedInput
   teamRuns?: Prisma.TeamRunUncheckedUpdateManyWithoutProjectNestedInput
+}
+
+export type ProjectCreateWithoutWorktreesInput = {
+  id?: string
+  name: string
+  repositoryPath?: string | null
+  slackChannel?: string | null
+  slackWebhook?: string | null
+  createdAt?: Date | string
+  lastActivityAt?: Date | string | null
+  queueStatus?: string
+  buildSessions?: Prisma.BuildSessionCreateNestedManyWithoutProjectInput
+  chatMessages?: Prisma.ChatMessageCreateNestedManyWithoutProjectInput
+  chatSessions?: Prisma.ChatSessionCreateNestedManyWithoutProjectInput
+  collaborators?: Prisma.CollaboratorCreateNestedManyWithoutProjectInput
+  user: Prisma.UserCreateNestedOneWithoutProjectsInput
+  repository?: Prisma.RepositoryCreateNestedOneWithoutProjectInput
+  resourceUsage?: Prisma.ResourceUsageCreateNestedManyWithoutProjectInput
+  slackLogs?: Prisma.SlackLogCreateNestedManyWithoutProjectInput
+  tasks?: Prisma.TaskCreateNestedManyWithoutProjectInput
+  teamRuns?: Prisma.TeamRunCreateNestedManyWithoutProjectInput
+  teams?: Prisma.TeamCreateNestedManyWithoutProjectInput
+}
+
+export type ProjectUncheckedCreateWithoutWorktreesInput = {
+  id?: string
+  userId: string
+  name: string
+  repositoryPath?: string | null
+  slackChannel?: string | null
+  slackWebhook?: string | null
+  createdAt?: Date | string
+  lastActivityAt?: Date | string | null
+  queueStatus?: string
+  buildSessions?: Prisma.BuildSessionUncheckedCreateNestedManyWithoutProjectInput
+  chatMessages?: Prisma.ChatMessageUncheckedCreateNestedManyWithoutProjectInput
+  chatSessions?: Prisma.ChatSessionUncheckedCreateNestedManyWithoutProjectInput
+  collaborators?: Prisma.CollaboratorUncheckedCreateNestedManyWithoutProjectInput
+  repository?: Prisma.RepositoryUncheckedCreateNestedOneWithoutProjectInput
+  resourceUsage?: Prisma.ResourceUsageUncheckedCreateNestedManyWithoutProjectInput
+  slackLogs?: Prisma.SlackLogUncheckedCreateNestedManyWithoutProjectInput
+  tasks?: Prisma.TaskUncheckedCreateNestedManyWithoutProjectInput
+  teamRuns?: Prisma.TeamRunUncheckedCreateNestedManyWithoutProjectInput
+  teams?: Prisma.TeamUncheckedCreateNestedManyWithoutProjectInput
+}
+
+export type ProjectCreateOrConnectWithoutWorktreesInput = {
+  where: Prisma.ProjectWhereUniqueInput
+  create: Prisma.XOR<Prisma.ProjectCreateWithoutWorktreesInput, Prisma.ProjectUncheckedCreateWithoutWorktreesInput>
+}
+
+export type ProjectUpsertWithoutWorktreesInput = {
+  update: Prisma.XOR<Prisma.ProjectUpdateWithoutWorktreesInput, Prisma.ProjectUncheckedUpdateWithoutWorktreesInput>
+  create: Prisma.XOR<Prisma.ProjectCreateWithoutWorktreesInput, Prisma.ProjectUncheckedCreateWithoutWorktreesInput>
+  where?: Prisma.ProjectWhereInput
+}
+
+export type ProjectUpdateToOneWithWhereWithoutWorktreesInput = {
+  where?: Prisma.ProjectWhereInput
+  data: Prisma.XOR<Prisma.ProjectUpdateWithoutWorktreesInput, Prisma.ProjectUncheckedUpdateWithoutWorktreesInput>
+}
+
+export type ProjectUpdateWithoutWorktreesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  name?: Prisma.StringFieldUpdateOperationsInput | string
+  repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  buildSessions?: Prisma.BuildSessionUpdateManyWithoutProjectNestedInput
+  chatMessages?: Prisma.ChatMessageUpdateManyWithoutProjectNestedInput
+  chatSessions?: Prisma.ChatSessionUpdateManyWithoutProjectNestedInput
+  collaborators?: Prisma.CollaboratorUpdateManyWithoutProjectNestedInput
+  user?: Prisma.UserUpdateOneRequiredWithoutProjectsNestedInput
+  repository?: Prisma.RepositoryUpdateOneWithoutProjectNestedInput
+  resourceUsage?: Prisma.ResourceUsageUpdateManyWithoutProjectNestedInput
+  slackLogs?: Prisma.SlackLogUpdateManyWithoutProjectNestedInput
+  tasks?: Prisma.TaskUpdateManyWithoutProjectNestedInput
+  teamRuns?: Prisma.TeamRunUpdateManyWithoutProjectNestedInput
+  teams?: Prisma.TeamUpdateManyWithoutProjectNestedInput
+}
+
+export type ProjectUncheckedUpdateWithoutWorktreesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  userId?: Prisma.StringFieldUpdateOperationsInput | string
+  name?: Prisma.StringFieldUpdateOperationsInput | string
+  repositoryPath?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  slackChannel?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  slackWebhook?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  lastActivityAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
+  buildSessions?: Prisma.BuildSessionUncheckedUpdateManyWithoutProjectNestedInput
+  chatMessages?: Prisma.ChatMessageUncheckedUpdateManyWithoutProjectNestedInput
+  chatSessions?: Prisma.ChatSessionUncheckedUpdateManyWithoutProjectNestedInput
+  collaborators?: Prisma.CollaboratorUncheckedUpdateManyWithoutProjectNestedInput
+  repository?: Prisma.RepositoryUncheckedUpdateOneWithoutProjectNestedInput
+  resourceUsage?: Prisma.ResourceUsageUncheckedUpdateManyWithoutProjectNestedInput
+  slackLogs?: Prisma.SlackLogUncheckedUpdateManyWithoutProjectNestedInput
+  tasks?: Prisma.TaskUncheckedUpdateManyWithoutProjectNestedInput
+  teamRuns?: Prisma.TeamRunUncheckedUpdateManyWithoutProjectNestedInput
+  teams?: Prisma.TeamUncheckedUpdateManyWithoutProjectNestedInput
 }
 
 export type ProjectCreateWithoutChatSessionsInput = {
@@ -1067,6 +1206,7 @@ export type ProjectCreateWithoutChatSessionsInput = {
   queueStatus?: string
   buildSessions?: Prisma.BuildSessionCreateNestedManyWithoutProjectInput
   chatMessages?: Prisma.ChatMessageCreateNestedManyWithoutProjectInput
+  worktrees?: Prisma.WorktreeCreateNestedManyWithoutProjectInput
   collaborators?: Prisma.CollaboratorCreateNestedManyWithoutProjectInput
   user: Prisma.UserCreateNestedOneWithoutProjectsInput
   repository?: Prisma.RepositoryCreateNestedOneWithoutProjectInput
@@ -1089,6 +1229,7 @@ export type ProjectUncheckedCreateWithoutChatSessionsInput = {
   queueStatus?: string
   buildSessions?: Prisma.BuildSessionUncheckedCreateNestedManyWithoutProjectInput
   chatMessages?: Prisma.ChatMessageUncheckedCreateNestedManyWithoutProjectInput
+  worktrees?: Prisma.WorktreeUncheckedCreateNestedManyWithoutProjectInput
   collaborators?: Prisma.CollaboratorUncheckedCreateNestedManyWithoutProjectInput
   repository?: Prisma.RepositoryUncheckedCreateNestedOneWithoutProjectInput
   resourceUsage?: Prisma.ResourceUsageUncheckedCreateNestedManyWithoutProjectInput
@@ -1125,6 +1266,7 @@ export type ProjectUpdateWithoutChatSessionsInput = {
   queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
   buildSessions?: Prisma.BuildSessionUpdateManyWithoutProjectNestedInput
   chatMessages?: Prisma.ChatMessageUpdateManyWithoutProjectNestedInput
+  worktrees?: Prisma.WorktreeUpdateManyWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUpdateManyWithoutProjectNestedInput
   user?: Prisma.UserUpdateOneRequiredWithoutProjectsNestedInput
   repository?: Prisma.RepositoryUpdateOneWithoutProjectNestedInput
@@ -1147,6 +1289,7 @@ export type ProjectUncheckedUpdateWithoutChatSessionsInput = {
   queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
   buildSessions?: Prisma.BuildSessionUncheckedUpdateManyWithoutProjectNestedInput
   chatMessages?: Prisma.ChatMessageUncheckedUpdateManyWithoutProjectNestedInput
+  worktrees?: Prisma.WorktreeUncheckedUpdateManyWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUncheckedUpdateManyWithoutProjectNestedInput
   repository?: Prisma.RepositoryUncheckedUpdateOneWithoutProjectNestedInput
   resourceUsage?: Prisma.ResourceUsageUncheckedUpdateManyWithoutProjectNestedInput
@@ -1167,6 +1310,7 @@ export type ProjectCreateWithoutChatMessagesInput = {
   queueStatus?: string
   buildSessions?: Prisma.BuildSessionCreateNestedManyWithoutProjectInput
   chatSessions?: Prisma.ChatSessionCreateNestedManyWithoutProjectInput
+  worktrees?: Prisma.WorktreeCreateNestedManyWithoutProjectInput
   collaborators?: Prisma.CollaboratorCreateNestedManyWithoutProjectInput
   user: Prisma.UserCreateNestedOneWithoutProjectsInput
   repository?: Prisma.RepositoryCreateNestedOneWithoutProjectInput
@@ -1189,6 +1333,7 @@ export type ProjectUncheckedCreateWithoutChatMessagesInput = {
   queueStatus?: string
   buildSessions?: Prisma.BuildSessionUncheckedCreateNestedManyWithoutProjectInput
   chatSessions?: Prisma.ChatSessionUncheckedCreateNestedManyWithoutProjectInput
+  worktrees?: Prisma.WorktreeUncheckedCreateNestedManyWithoutProjectInput
   collaborators?: Prisma.CollaboratorUncheckedCreateNestedManyWithoutProjectInput
   repository?: Prisma.RepositoryUncheckedCreateNestedOneWithoutProjectInput
   resourceUsage?: Prisma.ResourceUsageUncheckedCreateNestedManyWithoutProjectInput
@@ -1225,6 +1370,7 @@ export type ProjectUpdateWithoutChatMessagesInput = {
   queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
   buildSessions?: Prisma.BuildSessionUpdateManyWithoutProjectNestedInput
   chatSessions?: Prisma.ChatSessionUpdateManyWithoutProjectNestedInput
+  worktrees?: Prisma.WorktreeUpdateManyWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUpdateManyWithoutProjectNestedInput
   user?: Prisma.UserUpdateOneRequiredWithoutProjectsNestedInput
   repository?: Prisma.RepositoryUpdateOneWithoutProjectNestedInput
@@ -1247,6 +1393,7 @@ export type ProjectUncheckedUpdateWithoutChatMessagesInput = {
   queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
   buildSessions?: Prisma.BuildSessionUncheckedUpdateManyWithoutProjectNestedInput
   chatSessions?: Prisma.ChatSessionUncheckedUpdateManyWithoutProjectNestedInput
+  worktrees?: Prisma.WorktreeUncheckedUpdateManyWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUncheckedUpdateManyWithoutProjectNestedInput
   repository?: Prisma.RepositoryUncheckedUpdateOneWithoutProjectNestedInput
   resourceUsage?: Prisma.ResourceUsageUncheckedUpdateManyWithoutProjectNestedInput
@@ -1268,6 +1415,7 @@ export type ProjectCreateWithoutTasksInput = {
   buildSessions?: Prisma.BuildSessionCreateNestedManyWithoutProjectInput
   chatMessages?: Prisma.ChatMessageCreateNestedManyWithoutProjectInput
   chatSessions?: Prisma.ChatSessionCreateNestedManyWithoutProjectInput
+  worktrees?: Prisma.WorktreeCreateNestedManyWithoutProjectInput
   collaborators?: Prisma.CollaboratorCreateNestedManyWithoutProjectInput
   user: Prisma.UserCreateNestedOneWithoutProjectsInput
   repository?: Prisma.RepositoryCreateNestedOneWithoutProjectInput
@@ -1290,6 +1438,7 @@ export type ProjectUncheckedCreateWithoutTasksInput = {
   buildSessions?: Prisma.BuildSessionUncheckedCreateNestedManyWithoutProjectInput
   chatMessages?: Prisma.ChatMessageUncheckedCreateNestedManyWithoutProjectInput
   chatSessions?: Prisma.ChatSessionUncheckedCreateNestedManyWithoutProjectInput
+  worktrees?: Prisma.WorktreeUncheckedCreateNestedManyWithoutProjectInput
   collaborators?: Prisma.CollaboratorUncheckedCreateNestedManyWithoutProjectInput
   repository?: Prisma.RepositoryUncheckedCreateNestedOneWithoutProjectInput
   resourceUsage?: Prisma.ResourceUsageUncheckedCreateNestedManyWithoutProjectInput
@@ -1326,6 +1475,7 @@ export type ProjectUpdateWithoutTasksInput = {
   buildSessions?: Prisma.BuildSessionUpdateManyWithoutProjectNestedInput
   chatMessages?: Prisma.ChatMessageUpdateManyWithoutProjectNestedInput
   chatSessions?: Prisma.ChatSessionUpdateManyWithoutProjectNestedInput
+  worktrees?: Prisma.WorktreeUpdateManyWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUpdateManyWithoutProjectNestedInput
   user?: Prisma.UserUpdateOneRequiredWithoutProjectsNestedInput
   repository?: Prisma.RepositoryUpdateOneWithoutProjectNestedInput
@@ -1348,6 +1498,7 @@ export type ProjectUncheckedUpdateWithoutTasksInput = {
   buildSessions?: Prisma.BuildSessionUncheckedUpdateManyWithoutProjectNestedInput
   chatMessages?: Prisma.ChatMessageUncheckedUpdateManyWithoutProjectNestedInput
   chatSessions?: Prisma.ChatSessionUncheckedUpdateManyWithoutProjectNestedInput
+  worktrees?: Prisma.WorktreeUncheckedUpdateManyWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUncheckedUpdateManyWithoutProjectNestedInput
   repository?: Prisma.RepositoryUncheckedUpdateOneWithoutProjectNestedInput
   resourceUsage?: Prisma.ResourceUsageUncheckedUpdateManyWithoutProjectNestedInput
@@ -1368,6 +1519,7 @@ export type ProjectCreateWithoutSlackLogsInput = {
   buildSessions?: Prisma.BuildSessionCreateNestedManyWithoutProjectInput
   chatMessages?: Prisma.ChatMessageCreateNestedManyWithoutProjectInput
   chatSessions?: Prisma.ChatSessionCreateNestedManyWithoutProjectInput
+  worktrees?: Prisma.WorktreeCreateNestedManyWithoutProjectInput
   collaborators?: Prisma.CollaboratorCreateNestedManyWithoutProjectInput
   user: Prisma.UserCreateNestedOneWithoutProjectsInput
   repository?: Prisma.RepositoryCreateNestedOneWithoutProjectInput
@@ -1390,6 +1542,7 @@ export type ProjectUncheckedCreateWithoutSlackLogsInput = {
   buildSessions?: Prisma.BuildSessionUncheckedCreateNestedManyWithoutProjectInput
   chatMessages?: Prisma.ChatMessageUncheckedCreateNestedManyWithoutProjectInput
   chatSessions?: Prisma.ChatSessionUncheckedCreateNestedManyWithoutProjectInput
+  worktrees?: Prisma.WorktreeUncheckedCreateNestedManyWithoutProjectInput
   collaborators?: Prisma.CollaboratorUncheckedCreateNestedManyWithoutProjectInput
   repository?: Prisma.RepositoryUncheckedCreateNestedOneWithoutProjectInput
   resourceUsage?: Prisma.ResourceUsageUncheckedCreateNestedManyWithoutProjectInput
@@ -1426,6 +1579,7 @@ export type ProjectUpdateWithoutSlackLogsInput = {
   buildSessions?: Prisma.BuildSessionUpdateManyWithoutProjectNestedInput
   chatMessages?: Prisma.ChatMessageUpdateManyWithoutProjectNestedInput
   chatSessions?: Prisma.ChatSessionUpdateManyWithoutProjectNestedInput
+  worktrees?: Prisma.WorktreeUpdateManyWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUpdateManyWithoutProjectNestedInput
   user?: Prisma.UserUpdateOneRequiredWithoutProjectsNestedInput
   repository?: Prisma.RepositoryUpdateOneWithoutProjectNestedInput
@@ -1448,6 +1602,7 @@ export type ProjectUncheckedUpdateWithoutSlackLogsInput = {
   buildSessions?: Prisma.BuildSessionUncheckedUpdateManyWithoutProjectNestedInput
   chatMessages?: Prisma.ChatMessageUncheckedUpdateManyWithoutProjectNestedInput
   chatSessions?: Prisma.ChatSessionUncheckedUpdateManyWithoutProjectNestedInput
+  worktrees?: Prisma.WorktreeUncheckedUpdateManyWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUncheckedUpdateManyWithoutProjectNestedInput
   repository?: Prisma.RepositoryUncheckedUpdateOneWithoutProjectNestedInput
   resourceUsage?: Prisma.ResourceUsageUncheckedUpdateManyWithoutProjectNestedInput
@@ -1468,6 +1623,7 @@ export type ProjectCreateWithoutResourceUsageInput = {
   buildSessions?: Prisma.BuildSessionCreateNestedManyWithoutProjectInput
   chatMessages?: Prisma.ChatMessageCreateNestedManyWithoutProjectInput
   chatSessions?: Prisma.ChatSessionCreateNestedManyWithoutProjectInput
+  worktrees?: Prisma.WorktreeCreateNestedManyWithoutProjectInput
   collaborators?: Prisma.CollaboratorCreateNestedManyWithoutProjectInput
   user: Prisma.UserCreateNestedOneWithoutProjectsInput
   repository?: Prisma.RepositoryCreateNestedOneWithoutProjectInput
@@ -1490,6 +1646,7 @@ export type ProjectUncheckedCreateWithoutResourceUsageInput = {
   buildSessions?: Prisma.BuildSessionUncheckedCreateNestedManyWithoutProjectInput
   chatMessages?: Prisma.ChatMessageUncheckedCreateNestedManyWithoutProjectInput
   chatSessions?: Prisma.ChatSessionUncheckedCreateNestedManyWithoutProjectInput
+  worktrees?: Prisma.WorktreeUncheckedCreateNestedManyWithoutProjectInput
   collaborators?: Prisma.CollaboratorUncheckedCreateNestedManyWithoutProjectInput
   repository?: Prisma.RepositoryUncheckedCreateNestedOneWithoutProjectInput
   slackLogs?: Prisma.SlackLogUncheckedCreateNestedManyWithoutProjectInput
@@ -1526,6 +1683,7 @@ export type ProjectUpdateWithoutResourceUsageInput = {
   buildSessions?: Prisma.BuildSessionUpdateManyWithoutProjectNestedInput
   chatMessages?: Prisma.ChatMessageUpdateManyWithoutProjectNestedInput
   chatSessions?: Prisma.ChatSessionUpdateManyWithoutProjectNestedInput
+  worktrees?: Prisma.WorktreeUpdateManyWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUpdateManyWithoutProjectNestedInput
   user?: Prisma.UserUpdateOneRequiredWithoutProjectsNestedInput
   repository?: Prisma.RepositoryUpdateOneWithoutProjectNestedInput
@@ -1548,6 +1706,7 @@ export type ProjectUncheckedUpdateWithoutResourceUsageInput = {
   buildSessions?: Prisma.BuildSessionUncheckedUpdateManyWithoutProjectNestedInput
   chatMessages?: Prisma.ChatMessageUncheckedUpdateManyWithoutProjectNestedInput
   chatSessions?: Prisma.ChatSessionUncheckedUpdateManyWithoutProjectNestedInput
+  worktrees?: Prisma.WorktreeUncheckedUpdateManyWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUncheckedUpdateManyWithoutProjectNestedInput
   repository?: Prisma.RepositoryUncheckedUpdateOneWithoutProjectNestedInput
   slackLogs?: Prisma.SlackLogUncheckedUpdateManyWithoutProjectNestedInput
@@ -1568,6 +1727,7 @@ export type ProjectCreateWithoutTeamRunsInput = {
   buildSessions?: Prisma.BuildSessionCreateNestedManyWithoutProjectInput
   chatMessages?: Prisma.ChatMessageCreateNestedManyWithoutProjectInput
   chatSessions?: Prisma.ChatSessionCreateNestedManyWithoutProjectInput
+  worktrees?: Prisma.WorktreeCreateNestedManyWithoutProjectInput
   collaborators?: Prisma.CollaboratorCreateNestedManyWithoutProjectInput
   user: Prisma.UserCreateNestedOneWithoutProjectsInput
   repository?: Prisma.RepositoryCreateNestedOneWithoutProjectInput
@@ -1590,6 +1750,7 @@ export type ProjectUncheckedCreateWithoutTeamRunsInput = {
   buildSessions?: Prisma.BuildSessionUncheckedCreateNestedManyWithoutProjectInput
   chatMessages?: Prisma.ChatMessageUncheckedCreateNestedManyWithoutProjectInput
   chatSessions?: Prisma.ChatSessionUncheckedCreateNestedManyWithoutProjectInput
+  worktrees?: Prisma.WorktreeUncheckedCreateNestedManyWithoutProjectInput
   collaborators?: Prisma.CollaboratorUncheckedCreateNestedManyWithoutProjectInput
   repository?: Prisma.RepositoryUncheckedCreateNestedOneWithoutProjectInput
   resourceUsage?: Prisma.ResourceUsageUncheckedCreateNestedManyWithoutProjectInput
@@ -1626,6 +1787,7 @@ export type ProjectUpdateWithoutTeamRunsInput = {
   buildSessions?: Prisma.BuildSessionUpdateManyWithoutProjectNestedInput
   chatMessages?: Prisma.ChatMessageUpdateManyWithoutProjectNestedInput
   chatSessions?: Prisma.ChatSessionUpdateManyWithoutProjectNestedInput
+  worktrees?: Prisma.WorktreeUpdateManyWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUpdateManyWithoutProjectNestedInput
   user?: Prisma.UserUpdateOneRequiredWithoutProjectsNestedInput
   repository?: Prisma.RepositoryUpdateOneWithoutProjectNestedInput
@@ -1648,6 +1810,7 @@ export type ProjectUncheckedUpdateWithoutTeamRunsInput = {
   buildSessions?: Prisma.BuildSessionUncheckedUpdateManyWithoutProjectNestedInput
   chatMessages?: Prisma.ChatMessageUncheckedUpdateManyWithoutProjectNestedInput
   chatSessions?: Prisma.ChatSessionUncheckedUpdateManyWithoutProjectNestedInput
+  worktrees?: Prisma.WorktreeUncheckedUpdateManyWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUncheckedUpdateManyWithoutProjectNestedInput
   repository?: Prisma.RepositoryUncheckedUpdateOneWithoutProjectNestedInput
   resourceUsage?: Prisma.ResourceUsageUncheckedUpdateManyWithoutProjectNestedInput
@@ -1667,6 +1830,7 @@ export type ProjectCreateWithoutBuildSessionsInput = {
   queueStatus?: string
   chatMessages?: Prisma.ChatMessageCreateNestedManyWithoutProjectInput
   chatSessions?: Prisma.ChatSessionCreateNestedManyWithoutProjectInput
+  worktrees?: Prisma.WorktreeCreateNestedManyWithoutProjectInput
   collaborators?: Prisma.CollaboratorCreateNestedManyWithoutProjectInput
   user: Prisma.UserCreateNestedOneWithoutProjectsInput
   repository?: Prisma.RepositoryCreateNestedOneWithoutProjectInput
@@ -1689,6 +1853,7 @@ export type ProjectUncheckedCreateWithoutBuildSessionsInput = {
   queueStatus?: string
   chatMessages?: Prisma.ChatMessageUncheckedCreateNestedManyWithoutProjectInput
   chatSessions?: Prisma.ChatSessionUncheckedCreateNestedManyWithoutProjectInput
+  worktrees?: Prisma.WorktreeUncheckedCreateNestedManyWithoutProjectInput
   collaborators?: Prisma.CollaboratorUncheckedCreateNestedManyWithoutProjectInput
   repository?: Prisma.RepositoryUncheckedCreateNestedOneWithoutProjectInput
   resourceUsage?: Prisma.ResourceUsageUncheckedCreateNestedManyWithoutProjectInput
@@ -1725,6 +1890,7 @@ export type ProjectUpdateWithoutBuildSessionsInput = {
   queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
   chatMessages?: Prisma.ChatMessageUpdateManyWithoutProjectNestedInput
   chatSessions?: Prisma.ChatSessionUpdateManyWithoutProjectNestedInput
+  worktrees?: Prisma.WorktreeUpdateManyWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUpdateManyWithoutProjectNestedInput
   user?: Prisma.UserUpdateOneRequiredWithoutProjectsNestedInput
   repository?: Prisma.RepositoryUpdateOneWithoutProjectNestedInput
@@ -1747,6 +1913,7 @@ export type ProjectUncheckedUpdateWithoutBuildSessionsInput = {
   queueStatus?: Prisma.StringFieldUpdateOperationsInput | string
   chatMessages?: Prisma.ChatMessageUncheckedUpdateManyWithoutProjectNestedInput
   chatSessions?: Prisma.ChatSessionUncheckedUpdateManyWithoutProjectNestedInput
+  worktrees?: Prisma.WorktreeUncheckedUpdateManyWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUncheckedUpdateManyWithoutProjectNestedInput
   repository?: Prisma.RepositoryUncheckedUpdateOneWithoutProjectNestedInput
   resourceUsage?: Prisma.ResourceUsageUncheckedUpdateManyWithoutProjectNestedInput
@@ -1779,6 +1946,7 @@ export type ProjectUpdateWithoutUserInput = {
   buildSessions?: Prisma.BuildSessionUpdateManyWithoutProjectNestedInput
   chatMessages?: Prisma.ChatMessageUpdateManyWithoutProjectNestedInput
   chatSessions?: Prisma.ChatSessionUpdateManyWithoutProjectNestedInput
+  worktrees?: Prisma.WorktreeUpdateManyWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUpdateManyWithoutProjectNestedInput
   repository?: Prisma.RepositoryUpdateOneWithoutProjectNestedInput
   resourceUsage?: Prisma.ResourceUsageUpdateManyWithoutProjectNestedInput
@@ -1800,6 +1968,7 @@ export type ProjectUncheckedUpdateWithoutUserInput = {
   buildSessions?: Prisma.BuildSessionUncheckedUpdateManyWithoutProjectNestedInput
   chatMessages?: Prisma.ChatMessageUncheckedUpdateManyWithoutProjectNestedInput
   chatSessions?: Prisma.ChatSessionUncheckedUpdateManyWithoutProjectNestedInput
+  worktrees?: Prisma.WorktreeUncheckedUpdateManyWithoutProjectNestedInput
   collaborators?: Prisma.CollaboratorUncheckedUpdateManyWithoutProjectNestedInput
   repository?: Prisma.RepositoryUncheckedUpdateOneWithoutProjectNestedInput
   resourceUsage?: Prisma.ResourceUsageUncheckedUpdateManyWithoutProjectNestedInput
@@ -1829,6 +1998,7 @@ export type ProjectCountOutputType = {
   buildSessions: number
   chatMessages: number
   chatSessions: number
+  worktrees: number
   collaborators: number
   resourceUsage: number
   slackLogs: number
@@ -1841,6 +2011,7 @@ export type ProjectCountOutputTypeSelect<ExtArgs extends runtime.Types.Extension
   buildSessions?: boolean | ProjectCountOutputTypeCountBuildSessionsArgs
   chatMessages?: boolean | ProjectCountOutputTypeCountChatMessagesArgs
   chatSessions?: boolean | ProjectCountOutputTypeCountChatSessionsArgs
+  worktrees?: boolean | ProjectCountOutputTypeCountWorktreesArgs
   collaborators?: boolean | ProjectCountOutputTypeCountCollaboratorsArgs
   resourceUsage?: boolean | ProjectCountOutputTypeCountResourceUsageArgs
   slackLogs?: boolean | ProjectCountOutputTypeCountSlackLogsArgs
@@ -1878,6 +2049,13 @@ export type ProjectCountOutputTypeCountChatMessagesArgs<ExtArgs extends runtime.
  */
 export type ProjectCountOutputTypeCountChatSessionsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   where?: Prisma.ChatSessionWhereInput
+}
+
+/**
+ * ProjectCountOutputType without action
+ */
+export type ProjectCountOutputTypeCountWorktreesArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  where?: Prisma.WorktreeWhereInput
 }
 
 /**
@@ -1936,6 +2114,7 @@ export type ProjectSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs 
   buildSessions?: boolean | Prisma.Project$buildSessionsArgs<ExtArgs>
   chatMessages?: boolean | Prisma.Project$chatMessagesArgs<ExtArgs>
   chatSessions?: boolean | Prisma.Project$chatSessionsArgs<ExtArgs>
+  worktrees?: boolean | Prisma.Project$worktreesArgs<ExtArgs>
   collaborators?: boolean | Prisma.Project$collaboratorsArgs<ExtArgs>
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
   repository?: boolean | Prisma.Project$repositoryArgs<ExtArgs>
@@ -1990,6 +2169,7 @@ export type ProjectInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs
   buildSessions?: boolean | Prisma.Project$buildSessionsArgs<ExtArgs>
   chatMessages?: boolean | Prisma.Project$chatMessagesArgs<ExtArgs>
   chatSessions?: boolean | Prisma.Project$chatSessionsArgs<ExtArgs>
+  worktrees?: boolean | Prisma.Project$worktreesArgs<ExtArgs>
   collaborators?: boolean | Prisma.Project$collaboratorsArgs<ExtArgs>
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
   repository?: boolean | Prisma.Project$repositoryArgs<ExtArgs>
@@ -2013,6 +2193,7 @@ export type $ProjectPayload<ExtArgs extends runtime.Types.Extensions.InternalArg
     buildSessions: Prisma.$BuildSessionPayload<ExtArgs>[]
     chatMessages: Prisma.$ChatMessagePayload<ExtArgs>[]
     chatSessions: Prisma.$ChatSessionPayload<ExtArgs>[]
+    worktrees: Prisma.$WorktreePayload<ExtArgs>[]
     collaborators: Prisma.$CollaboratorPayload<ExtArgs>[]
     user: Prisma.$UserPayload<ExtArgs>
     repository: Prisma.$RepositoryPayload<ExtArgs> | null
@@ -2429,6 +2610,7 @@ export interface Prisma__ProjectClient<T, Null = never, ExtArgs extends runtime.
   buildSessions<T extends Prisma.Project$buildSessionsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Project$buildSessionsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$BuildSessionPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   chatMessages<T extends Prisma.Project$chatMessagesArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Project$chatMessagesArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$ChatMessagePayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   chatSessions<T extends Prisma.Project$chatSessionsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Project$chatSessionsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$ChatSessionPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
+  worktrees<T extends Prisma.Project$worktreesArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Project$worktreesArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$WorktreePayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   collaborators<T extends Prisma.Project$collaboratorsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Project$collaboratorsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$CollaboratorPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   user<T extends Prisma.UserDefaultArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.UserDefaultArgs<ExtArgs>>): Prisma.Prisma__UserClient<runtime.Types.Result.GetResult<Prisma.$UserPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | Null, Null, ExtArgs, GlobalOmitOptions>
   repository<T extends Prisma.Project$repositoryArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Project$repositoryArgs<ExtArgs>>): Prisma.Prisma__RepositoryClient<runtime.Types.Result.GetResult<Prisma.$RepositoryPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
@@ -2945,6 +3127,30 @@ export type Project$chatSessionsArgs<ExtArgs extends runtime.Types.Extensions.In
   take?: number
   skip?: number
   distinct?: Prisma.ChatSessionScalarFieldEnum | Prisma.ChatSessionScalarFieldEnum[]
+}
+
+/**
+ * Project.worktrees
+ */
+export type Project$worktreesArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the Worktree
+   */
+  select?: Prisma.WorktreeSelect<ExtArgs> | null
+  /**
+   * Omit specific fields from the Worktree
+   */
+  omit?: Prisma.WorktreeOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.WorktreeInclude<ExtArgs> | null
+  where?: Prisma.WorktreeWhereInput
+  orderBy?: Prisma.WorktreeOrderByWithRelationInput | Prisma.WorktreeOrderByWithRelationInput[]
+  cursor?: Prisma.WorktreeWhereUniqueInput
+  take?: number
+  skip?: number
+  distinct?: Prisma.WorktreeScalarFieldEnum | Prisma.WorktreeScalarFieldEnum[]
 }
 
 /**

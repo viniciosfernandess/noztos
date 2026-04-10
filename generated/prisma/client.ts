@@ -72,6 +72,11 @@ export type Collaborator = Prisma.CollaboratorModel
  */
 export type Team = Prisma.TeamModel
 /**
+ * Model Worktree
+ * 
+ */
+export type Worktree = Prisma.WorktreeModel
+/**
  * Model ChatSession
  * 
  */

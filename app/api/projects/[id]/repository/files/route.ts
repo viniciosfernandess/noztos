@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db'
 import { verifyProjectAccess } from '@/lib/auth'
 import { ensureSandboxRunning } from '@/lib/sandbox-manager'
 import { E2BProvider } from '@/lib/compute-e2b'
+import { getAllProjectChanges } from '@/lib/worktree'
 
 const compute = new E2BProvider()
 
@@ -10,7 +11,12 @@ interface RouteParams {
   params: Promise<{ id: string }>
 }
 
-// GET — List all files from container
+// GET — List all files in the repository, enriched with cross-worktree
+// modification info. Each file gets:
+//   - isModified: any open chat has touched it
+//   - isNew:      file does not exist on main (only in some worktree)
+//   - chats:      [{id, name}] of every chat that touched it
+//   - added/removed: aggregated +/- across all chats touching it
 export async function GET(_request: NextRequest, { params }: RouteParams) {
   const { id } = await params
   const auth = await verifyProjectAccess(id)
@@ -23,23 +29,63 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
   if (!sandboxId) return NextResponse.json({ files: [], error: 'Container not available' })
 
   try {
-    // Get all tracked files from git + modified/untracked
-    const result = await compute.exec(sandboxId, `cd /home/user/project && find . -type f -not -path './.git/*' -not -path './node_modules/*' -not -path './__pycache__/*' -not -path './venv/*' -not -path './.next/*' -not -path './dist/*' | sed 's|^\\./||' | sort`)
+    // Run main file listing and worktree changes in parallel
+    const [listResult, changes] = await Promise.all([
+      compute.exec(sandboxId, `cd /home/user/project && find . -type f -not -path './.git/*' -not -path './node_modules/*' -not -path './__pycache__/*' -not -path './venv/*' -not -path './.next/*' -not -path './dist/*' | sed 's|^\\./||' | sort`),
+      getAllProjectChanges(id),
+    ])
 
-    // Get modified files from git
-    const modifiedResult = await compute.exec(sandboxId, `cd /home/user/project && git diff --name-only 2>/dev/null && git ls-files --others --exclude-standard 2>/dev/null`)
-    const modifiedFiles = new Set(modifiedResult.stdout.split('\n').filter(Boolean))
+    // Index changes by path for O(1) lookup
+    const changeByPath = new Map(changes.files.map((f) => [f.path, f]))
+    const mainFiles = listResult.stdout.split('\n').filter(Boolean)
+    const mainSet = new Set(mainFiles)
 
-    const files = result.stdout.split('\n').filter(Boolean).map((path, i) => ({
-      id: `file-${i}`,
-      path,
-      isModified: modifiedFiles.has(path),
-      isNew: false, // Could check with git ls-files --others
-      sizeBytes: 0,
-    }))
+    // Files that exist on main: enrich with change info if any worktree touched them
+    const files: Array<{
+      id: string
+      path: string
+      isModified: boolean
+      isNew: boolean
+      sizeBytes: number
+      added?: number
+      removed?: number
+      worktrees?: { id: string; name: string }[]
+    }> = mainFiles.map((path, i) => {
+      const change = changeByPath.get(path)
+      return {
+        id: `file-${i}`,
+        path,
+        isModified: !!change,
+        isNew: false,
+        sizeBytes: 0,
+        ...(change && {
+          added: change.added,
+          removed: change.removed,
+          worktrees: change.worktrees,
+        }),
+      }
+    })
 
+    // Files that DON'T exist on main but were created by some worktree
+    // — surface them too so the tree shows the full project state.
+    let extraIdx = 0
+    for (const f of changes.files) {
+      if (mainSet.has(f.path)) continue
+      files.push({
+        id: `new-${extraIdx++}`,
+        path: f.path,
+        isModified: true,
+        isNew: true,
+        sizeBytes: 0,
+        added: f.added,
+        removed: f.removed,
+        worktrees: f.worktrees,
+      })
+    }
+
+    files.sort((a, b) => a.path.localeCompare(b.path))
     return NextResponse.json({ files })
-  } catch (err) {
+  } catch {
     return NextResponse.json({ files: [], error: 'Failed to list files' })
   }
 }

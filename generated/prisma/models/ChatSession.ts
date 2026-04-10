@@ -31,6 +31,8 @@ export type ChatSessionMinAggregateOutputType = {
   name: string | null
   status: string | null
   permissionMode: $Enums.PermissionMode | null
+  worktreeId: string | null
+  trashedAt: Date | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -42,6 +44,8 @@ export type ChatSessionMaxAggregateOutputType = {
   name: string | null
   status: string | null
   permissionMode: $Enums.PermissionMode | null
+  worktreeId: string | null
+  trashedAt: Date | null
   createdAt: Date | null
   updatedAt: Date | null
 }
@@ -53,6 +57,9 @@ export type ChatSessionCountAggregateOutputType = {
   name: number
   status: number
   permissionMode: number
+  worktreeId: number
+  touchedPaths: number
+  trashedAt: number
   createdAt: number
   updatedAt: number
   _all: number
@@ -66,6 +73,8 @@ export type ChatSessionMinAggregateInputType = {
   name?: true
   status?: true
   permissionMode?: true
+  worktreeId?: true
+  trashedAt?: true
   createdAt?: true
   updatedAt?: true
 }
@@ -77,6 +86,8 @@ export type ChatSessionMaxAggregateInputType = {
   name?: true
   status?: true
   permissionMode?: true
+  worktreeId?: true
+  trashedAt?: true
   createdAt?: true
   updatedAt?: true
 }
@@ -88,6 +99,9 @@ export type ChatSessionCountAggregateInputType = {
   name?: true
   status?: true
   permissionMode?: true
+  worktreeId?: true
+  touchedPaths?: true
+  trashedAt?: true
   createdAt?: true
   updatedAt?: true
   _all?: true
@@ -172,6 +186,9 @@ export type ChatSessionGroupByOutputType = {
   name: string
   status: string
   permissionMode: $Enums.PermissionMode
+  worktreeId: string | null
+  touchedPaths: string[]
+  trashedAt: Date | null
   createdAt: Date
   updatedAt: Date
   _count: ChatSessionCountAggregateOutputType | null
@@ -204,10 +221,14 @@ export type ChatSessionWhereInput = {
   name?: Prisma.StringFilter<"ChatSession"> | string
   status?: Prisma.StringFilter<"ChatSession"> | string
   permissionMode?: Prisma.EnumPermissionModeFilter<"ChatSession"> | $Enums.PermissionMode
+  worktreeId?: Prisma.StringNullableFilter<"ChatSession"> | string | null
+  touchedPaths?: Prisma.StringNullableListFilter<"ChatSession">
+  trashedAt?: Prisma.DateTimeNullableFilter<"ChatSession"> | Date | string | null
   createdAt?: Prisma.DateTimeFilter<"ChatSession"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"ChatSession"> | Date | string
   messages?: Prisma.ChatMessageListRelationFilter
   project?: Prisma.XOR<Prisma.ProjectScalarRelationFilter, Prisma.ProjectWhereInput>
+  worktree?: Prisma.XOR<Prisma.WorktreeNullableScalarRelationFilter, Prisma.WorktreeWhereInput> | null
 }
 
 export type ChatSessionOrderByWithRelationInput = {
@@ -217,10 +238,14 @@ export type ChatSessionOrderByWithRelationInput = {
   name?: Prisma.SortOrder
   status?: Prisma.SortOrder
   permissionMode?: Prisma.SortOrder
+  worktreeId?: Prisma.SortOrderInput | Prisma.SortOrder
+  touchedPaths?: Prisma.SortOrder
+  trashedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   messages?: Prisma.ChatMessageOrderByRelationAggregateInput
   project?: Prisma.ProjectOrderByWithRelationInput
+  worktree?: Prisma.WorktreeOrderByWithRelationInput
 }
 
 export type ChatSessionWhereUniqueInput = Prisma.AtLeast<{
@@ -233,10 +258,14 @@ export type ChatSessionWhereUniqueInput = Prisma.AtLeast<{
   name?: Prisma.StringFilter<"ChatSession"> | string
   status?: Prisma.StringFilter<"ChatSession"> | string
   permissionMode?: Prisma.EnumPermissionModeFilter<"ChatSession"> | $Enums.PermissionMode
+  worktreeId?: Prisma.StringNullableFilter<"ChatSession"> | string | null
+  touchedPaths?: Prisma.StringNullableListFilter<"ChatSession">
+  trashedAt?: Prisma.DateTimeNullableFilter<"ChatSession"> | Date | string | null
   createdAt?: Prisma.DateTimeFilter<"ChatSession"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"ChatSession"> | Date | string
   messages?: Prisma.ChatMessageListRelationFilter
   project?: Prisma.XOR<Prisma.ProjectScalarRelationFilter, Prisma.ProjectWhereInput>
+  worktree?: Prisma.XOR<Prisma.WorktreeNullableScalarRelationFilter, Prisma.WorktreeWhereInput> | null
 }, "id">
 
 export type ChatSessionOrderByWithAggregationInput = {
@@ -246,6 +275,9 @@ export type ChatSessionOrderByWithAggregationInput = {
   name?: Prisma.SortOrder
   status?: Prisma.SortOrder
   permissionMode?: Prisma.SortOrder
+  worktreeId?: Prisma.SortOrderInput | Prisma.SortOrder
+  touchedPaths?: Prisma.SortOrder
+  trashedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   _count?: Prisma.ChatSessionCountOrderByAggregateInput
@@ -263,6 +295,9 @@ export type ChatSessionScalarWhereWithAggregatesInput = {
   name?: Prisma.StringWithAggregatesFilter<"ChatSession"> | string
   status?: Prisma.StringWithAggregatesFilter<"ChatSession"> | string
   permissionMode?: Prisma.EnumPermissionModeWithAggregatesFilter<"ChatSession"> | $Enums.PermissionMode
+  worktreeId?: Prisma.StringNullableWithAggregatesFilter<"ChatSession"> | string | null
+  touchedPaths?: Prisma.StringNullableListFilter<"ChatSession">
+  trashedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"ChatSession"> | Date | string | null
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"ChatSession"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"ChatSession"> | Date | string
 }
@@ -273,10 +308,13 @@ export type ChatSessionCreateInput = {
   name?: string
   status?: string
   permissionMode?: $Enums.PermissionMode
+  touchedPaths?: Prisma.ChatSessionCreatetouchedPathsInput | string[]
+  trashedAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   messages?: Prisma.ChatMessageCreateNestedManyWithoutSessionInput
   project: Prisma.ProjectCreateNestedOneWithoutChatSessionsInput
+  worktree?: Prisma.WorktreeCreateNestedOneWithoutSessionsInput
 }
 
 export type ChatSessionUncheckedCreateInput = {
@@ -286,6 +324,9 @@ export type ChatSessionUncheckedCreateInput = {
   name?: string
   status?: string
   permissionMode?: $Enums.PermissionMode
+  worktreeId?: string | null
+  touchedPaths?: Prisma.ChatSessionCreatetouchedPathsInput | string[]
+  trashedAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   messages?: Prisma.ChatMessageUncheckedCreateNestedManyWithoutSessionInput
@@ -297,10 +338,13 @@ export type ChatSessionUpdateInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string
   status?: Prisma.StringFieldUpdateOperationsInput | string
   permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
+  touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
+  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   messages?: Prisma.ChatMessageUpdateManyWithoutSessionNestedInput
   project?: Prisma.ProjectUpdateOneRequiredWithoutChatSessionsNestedInput
+  worktree?: Prisma.WorktreeUpdateOneWithoutSessionsNestedInput
 }
 
 export type ChatSessionUncheckedUpdateInput = {
@@ -310,6 +354,9 @@ export type ChatSessionUncheckedUpdateInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string
   status?: Prisma.StringFieldUpdateOperationsInput | string
   permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
+  worktreeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
+  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   messages?: Prisma.ChatMessageUncheckedUpdateManyWithoutSessionNestedInput
@@ -322,6 +369,9 @@ export type ChatSessionCreateManyInput = {
   name?: string
   status?: string
   permissionMode?: $Enums.PermissionMode
+  worktreeId?: string | null
+  touchedPaths?: Prisma.ChatSessionCreatetouchedPathsInput | string[]
+  trashedAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -332,6 +382,8 @@ export type ChatSessionUpdateManyMutationInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string
   status?: Prisma.StringFieldUpdateOperationsInput | string
   permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
+  touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
+  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -343,6 +395,9 @@ export type ChatSessionUncheckedUpdateManyInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string
   status?: Prisma.StringFieldUpdateOperationsInput | string
   permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
+  worktreeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
+  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -357,6 +412,14 @@ export type ChatSessionOrderByRelationAggregateInput = {
   _count?: Prisma.SortOrder
 }
 
+export type StringNullableListFilter<$PrismaModel = never> = {
+  equals?: string[] | Prisma.ListStringFieldRefInput<$PrismaModel> | null
+  has?: string | Prisma.StringFieldRefInput<$PrismaModel> | null
+  hasEvery?: string[] | Prisma.ListStringFieldRefInput<$PrismaModel>
+  hasSome?: string[] | Prisma.ListStringFieldRefInput<$PrismaModel>
+  isEmpty?: boolean
+}
+
 export type ChatSessionCountOrderByAggregateInput = {
   id?: Prisma.SortOrder
   projectId?: Prisma.SortOrder
@@ -364,6 +427,9 @@ export type ChatSessionCountOrderByAggregateInput = {
   name?: Prisma.SortOrder
   status?: Prisma.SortOrder
   permissionMode?: Prisma.SortOrder
+  worktreeId?: Prisma.SortOrder
+  touchedPaths?: Prisma.SortOrder
+  trashedAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -375,6 +441,8 @@ export type ChatSessionMaxOrderByAggregateInput = {
   name?: Prisma.SortOrder
   status?: Prisma.SortOrder
   permissionMode?: Prisma.SortOrder
+  worktreeId?: Prisma.SortOrder
+  trashedAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -386,6 +454,8 @@ export type ChatSessionMinOrderByAggregateInput = {
   name?: Prisma.SortOrder
   status?: Prisma.SortOrder
   permissionMode?: Prisma.SortOrder
+  worktreeId?: Prisma.SortOrder
+  trashedAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
 }
@@ -437,8 +507,59 @@ export type ChatSessionUncheckedUpdateManyWithoutProjectNestedInput = {
   deleteMany?: Prisma.ChatSessionScalarWhereInput | Prisma.ChatSessionScalarWhereInput[]
 }
 
+export type ChatSessionCreateNestedManyWithoutWorktreeInput = {
+  create?: Prisma.XOR<Prisma.ChatSessionCreateWithoutWorktreeInput, Prisma.ChatSessionUncheckedCreateWithoutWorktreeInput> | Prisma.ChatSessionCreateWithoutWorktreeInput[] | Prisma.ChatSessionUncheckedCreateWithoutWorktreeInput[]
+  connectOrCreate?: Prisma.ChatSessionCreateOrConnectWithoutWorktreeInput | Prisma.ChatSessionCreateOrConnectWithoutWorktreeInput[]
+  createMany?: Prisma.ChatSessionCreateManyWorktreeInputEnvelope
+  connect?: Prisma.ChatSessionWhereUniqueInput | Prisma.ChatSessionWhereUniqueInput[]
+}
+
+export type ChatSessionUncheckedCreateNestedManyWithoutWorktreeInput = {
+  create?: Prisma.XOR<Prisma.ChatSessionCreateWithoutWorktreeInput, Prisma.ChatSessionUncheckedCreateWithoutWorktreeInput> | Prisma.ChatSessionCreateWithoutWorktreeInput[] | Prisma.ChatSessionUncheckedCreateWithoutWorktreeInput[]
+  connectOrCreate?: Prisma.ChatSessionCreateOrConnectWithoutWorktreeInput | Prisma.ChatSessionCreateOrConnectWithoutWorktreeInput[]
+  createMany?: Prisma.ChatSessionCreateManyWorktreeInputEnvelope
+  connect?: Prisma.ChatSessionWhereUniqueInput | Prisma.ChatSessionWhereUniqueInput[]
+}
+
+export type ChatSessionUpdateManyWithoutWorktreeNestedInput = {
+  create?: Prisma.XOR<Prisma.ChatSessionCreateWithoutWorktreeInput, Prisma.ChatSessionUncheckedCreateWithoutWorktreeInput> | Prisma.ChatSessionCreateWithoutWorktreeInput[] | Prisma.ChatSessionUncheckedCreateWithoutWorktreeInput[]
+  connectOrCreate?: Prisma.ChatSessionCreateOrConnectWithoutWorktreeInput | Prisma.ChatSessionCreateOrConnectWithoutWorktreeInput[]
+  upsert?: Prisma.ChatSessionUpsertWithWhereUniqueWithoutWorktreeInput | Prisma.ChatSessionUpsertWithWhereUniqueWithoutWorktreeInput[]
+  createMany?: Prisma.ChatSessionCreateManyWorktreeInputEnvelope
+  set?: Prisma.ChatSessionWhereUniqueInput | Prisma.ChatSessionWhereUniqueInput[]
+  disconnect?: Prisma.ChatSessionWhereUniqueInput | Prisma.ChatSessionWhereUniqueInput[]
+  delete?: Prisma.ChatSessionWhereUniqueInput | Prisma.ChatSessionWhereUniqueInput[]
+  connect?: Prisma.ChatSessionWhereUniqueInput | Prisma.ChatSessionWhereUniqueInput[]
+  update?: Prisma.ChatSessionUpdateWithWhereUniqueWithoutWorktreeInput | Prisma.ChatSessionUpdateWithWhereUniqueWithoutWorktreeInput[]
+  updateMany?: Prisma.ChatSessionUpdateManyWithWhereWithoutWorktreeInput | Prisma.ChatSessionUpdateManyWithWhereWithoutWorktreeInput[]
+  deleteMany?: Prisma.ChatSessionScalarWhereInput | Prisma.ChatSessionScalarWhereInput[]
+}
+
+export type ChatSessionUncheckedUpdateManyWithoutWorktreeNestedInput = {
+  create?: Prisma.XOR<Prisma.ChatSessionCreateWithoutWorktreeInput, Prisma.ChatSessionUncheckedCreateWithoutWorktreeInput> | Prisma.ChatSessionCreateWithoutWorktreeInput[] | Prisma.ChatSessionUncheckedCreateWithoutWorktreeInput[]
+  connectOrCreate?: Prisma.ChatSessionCreateOrConnectWithoutWorktreeInput | Prisma.ChatSessionCreateOrConnectWithoutWorktreeInput[]
+  upsert?: Prisma.ChatSessionUpsertWithWhereUniqueWithoutWorktreeInput | Prisma.ChatSessionUpsertWithWhereUniqueWithoutWorktreeInput[]
+  createMany?: Prisma.ChatSessionCreateManyWorktreeInputEnvelope
+  set?: Prisma.ChatSessionWhereUniqueInput | Prisma.ChatSessionWhereUniqueInput[]
+  disconnect?: Prisma.ChatSessionWhereUniqueInput | Prisma.ChatSessionWhereUniqueInput[]
+  delete?: Prisma.ChatSessionWhereUniqueInput | Prisma.ChatSessionWhereUniqueInput[]
+  connect?: Prisma.ChatSessionWhereUniqueInput | Prisma.ChatSessionWhereUniqueInput[]
+  update?: Prisma.ChatSessionUpdateWithWhereUniqueWithoutWorktreeInput | Prisma.ChatSessionUpdateWithWhereUniqueWithoutWorktreeInput[]
+  updateMany?: Prisma.ChatSessionUpdateManyWithWhereWithoutWorktreeInput | Prisma.ChatSessionUpdateManyWithWhereWithoutWorktreeInput[]
+  deleteMany?: Prisma.ChatSessionScalarWhereInput | Prisma.ChatSessionScalarWhereInput[]
+}
+
+export type ChatSessionCreatetouchedPathsInput = {
+  set: string[]
+}
+
 export type EnumPermissionModeFieldUpdateOperationsInput = {
   set?: $Enums.PermissionMode
+}
+
+export type ChatSessionUpdatetouchedPathsInput = {
+  set?: string[]
+  push?: string | string[]
 }
 
 export type ChatSessionCreateNestedOneWithoutMessagesInput = {
@@ -463,9 +584,12 @@ export type ChatSessionCreateWithoutProjectInput = {
   name?: string
   status?: string
   permissionMode?: $Enums.PermissionMode
+  touchedPaths?: Prisma.ChatSessionCreatetouchedPathsInput | string[]
+  trashedAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   messages?: Prisma.ChatMessageCreateNestedManyWithoutSessionInput
+  worktree?: Prisma.WorktreeCreateNestedOneWithoutSessionsInput
 }
 
 export type ChatSessionUncheckedCreateWithoutProjectInput = {
@@ -474,6 +598,9 @@ export type ChatSessionUncheckedCreateWithoutProjectInput = {
   name?: string
   status?: string
   permissionMode?: $Enums.PermissionMode
+  worktreeId?: string | null
+  touchedPaths?: Prisma.ChatSessionCreatetouchedPathsInput | string[]
+  trashedAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   messages?: Prisma.ChatMessageUncheckedCreateNestedManyWithoutSessionInput
@@ -515,8 +642,65 @@ export type ChatSessionScalarWhereInput = {
   name?: Prisma.StringFilter<"ChatSession"> | string
   status?: Prisma.StringFilter<"ChatSession"> | string
   permissionMode?: Prisma.EnumPermissionModeFilter<"ChatSession"> | $Enums.PermissionMode
+  worktreeId?: Prisma.StringNullableFilter<"ChatSession"> | string | null
+  touchedPaths?: Prisma.StringNullableListFilter<"ChatSession">
+  trashedAt?: Prisma.DateTimeNullableFilter<"ChatSession"> | Date | string | null
   createdAt?: Prisma.DateTimeFilter<"ChatSession"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"ChatSession"> | Date | string
+}
+
+export type ChatSessionCreateWithoutWorktreeInput = {
+  id?: string
+  userId: string
+  name?: string
+  status?: string
+  permissionMode?: $Enums.PermissionMode
+  touchedPaths?: Prisma.ChatSessionCreatetouchedPathsInput | string[]
+  trashedAt?: Date | string | null
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  messages?: Prisma.ChatMessageCreateNestedManyWithoutSessionInput
+  project: Prisma.ProjectCreateNestedOneWithoutChatSessionsInput
+}
+
+export type ChatSessionUncheckedCreateWithoutWorktreeInput = {
+  id?: string
+  projectId: string
+  userId: string
+  name?: string
+  status?: string
+  permissionMode?: $Enums.PermissionMode
+  touchedPaths?: Prisma.ChatSessionCreatetouchedPathsInput | string[]
+  trashedAt?: Date | string | null
+  createdAt?: Date | string
+  updatedAt?: Date | string
+  messages?: Prisma.ChatMessageUncheckedCreateNestedManyWithoutSessionInput
+}
+
+export type ChatSessionCreateOrConnectWithoutWorktreeInput = {
+  where: Prisma.ChatSessionWhereUniqueInput
+  create: Prisma.XOR<Prisma.ChatSessionCreateWithoutWorktreeInput, Prisma.ChatSessionUncheckedCreateWithoutWorktreeInput>
+}
+
+export type ChatSessionCreateManyWorktreeInputEnvelope = {
+  data: Prisma.ChatSessionCreateManyWorktreeInput | Prisma.ChatSessionCreateManyWorktreeInput[]
+  skipDuplicates?: boolean
+}
+
+export type ChatSessionUpsertWithWhereUniqueWithoutWorktreeInput = {
+  where: Prisma.ChatSessionWhereUniqueInput
+  update: Prisma.XOR<Prisma.ChatSessionUpdateWithoutWorktreeInput, Prisma.ChatSessionUncheckedUpdateWithoutWorktreeInput>
+  create: Prisma.XOR<Prisma.ChatSessionCreateWithoutWorktreeInput, Prisma.ChatSessionUncheckedCreateWithoutWorktreeInput>
+}
+
+export type ChatSessionUpdateWithWhereUniqueWithoutWorktreeInput = {
+  where: Prisma.ChatSessionWhereUniqueInput
+  data: Prisma.XOR<Prisma.ChatSessionUpdateWithoutWorktreeInput, Prisma.ChatSessionUncheckedUpdateWithoutWorktreeInput>
+}
+
+export type ChatSessionUpdateManyWithWhereWithoutWorktreeInput = {
+  where: Prisma.ChatSessionScalarWhereInput
+  data: Prisma.XOR<Prisma.ChatSessionUpdateManyMutationInput, Prisma.ChatSessionUncheckedUpdateManyWithoutWorktreeInput>
 }
 
 export type ChatSessionCreateWithoutMessagesInput = {
@@ -525,9 +709,12 @@ export type ChatSessionCreateWithoutMessagesInput = {
   name?: string
   status?: string
   permissionMode?: $Enums.PermissionMode
+  touchedPaths?: Prisma.ChatSessionCreatetouchedPathsInput | string[]
+  trashedAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
   project: Prisma.ProjectCreateNestedOneWithoutChatSessionsInput
+  worktree?: Prisma.WorktreeCreateNestedOneWithoutSessionsInput
 }
 
 export type ChatSessionUncheckedCreateWithoutMessagesInput = {
@@ -537,6 +724,9 @@ export type ChatSessionUncheckedCreateWithoutMessagesInput = {
   name?: string
   status?: string
   permissionMode?: $Enums.PermissionMode
+  worktreeId?: string | null
+  touchedPaths?: Prisma.ChatSessionCreatetouchedPathsInput | string[]
+  trashedAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -563,9 +753,12 @@ export type ChatSessionUpdateWithoutMessagesInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string
   status?: Prisma.StringFieldUpdateOperationsInput | string
   permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
+  touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
+  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   project?: Prisma.ProjectUpdateOneRequiredWithoutChatSessionsNestedInput
+  worktree?: Prisma.WorktreeUpdateOneWithoutSessionsNestedInput
 }
 
 export type ChatSessionUncheckedUpdateWithoutMessagesInput = {
@@ -575,6 +768,9 @@ export type ChatSessionUncheckedUpdateWithoutMessagesInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string
   status?: Prisma.StringFieldUpdateOperationsInput | string
   permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
+  worktreeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
+  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -585,6 +781,9 @@ export type ChatSessionCreateManyProjectInput = {
   name?: string
   status?: string
   permissionMode?: $Enums.PermissionMode
+  worktreeId?: string | null
+  touchedPaths?: Prisma.ChatSessionCreatetouchedPathsInput | string[]
+  trashedAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
 }
@@ -595,9 +794,12 @@ export type ChatSessionUpdateWithoutProjectInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string
   status?: Prisma.StringFieldUpdateOperationsInput | string
   permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
+  touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
+  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   messages?: Prisma.ChatMessageUpdateManyWithoutSessionNestedInput
+  worktree?: Prisma.WorktreeUpdateOneWithoutSessionsNestedInput
 }
 
 export type ChatSessionUncheckedUpdateWithoutProjectInput = {
@@ -606,6 +808,9 @@ export type ChatSessionUncheckedUpdateWithoutProjectInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string
   status?: Prisma.StringFieldUpdateOperationsInput | string
   permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
+  worktreeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
+  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   messages?: Prisma.ChatMessageUncheckedUpdateManyWithoutSessionNestedInput
@@ -617,6 +822,63 @@ export type ChatSessionUncheckedUpdateManyWithoutProjectInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string
   status?: Prisma.StringFieldUpdateOperationsInput | string
   permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
+  worktreeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
+  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+}
+
+export type ChatSessionCreateManyWorktreeInput = {
+  id?: string
+  projectId: string
+  userId: string
+  name?: string
+  status?: string
+  permissionMode?: $Enums.PermissionMode
+  touchedPaths?: Prisma.ChatSessionCreatetouchedPathsInput | string[]
+  trashedAt?: Date | string | null
+  createdAt?: Date | string
+  updatedAt?: Date | string
+}
+
+export type ChatSessionUpdateWithoutWorktreeInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  userId?: Prisma.StringFieldUpdateOperationsInput | string
+  name?: Prisma.StringFieldUpdateOperationsInput | string
+  status?: Prisma.StringFieldUpdateOperationsInput | string
+  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
+  touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
+  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  messages?: Prisma.ChatMessageUpdateManyWithoutSessionNestedInput
+  project?: Prisma.ProjectUpdateOneRequiredWithoutChatSessionsNestedInput
+}
+
+export type ChatSessionUncheckedUpdateWithoutWorktreeInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  projectId?: Prisma.StringFieldUpdateOperationsInput | string
+  userId?: Prisma.StringFieldUpdateOperationsInput | string
+  name?: Prisma.StringFieldUpdateOperationsInput | string
+  status?: Prisma.StringFieldUpdateOperationsInput | string
+  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
+  touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
+  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  messages?: Prisma.ChatMessageUncheckedUpdateManyWithoutSessionNestedInput
+}
+
+export type ChatSessionUncheckedUpdateManyWithoutWorktreeInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  projectId?: Prisma.StringFieldUpdateOperationsInput | string
+  userId?: Prisma.StringFieldUpdateOperationsInput | string
+  name?: Prisma.StringFieldUpdateOperationsInput | string
+  status?: Prisma.StringFieldUpdateOperationsInput | string
+  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
+  touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
+  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -659,10 +921,14 @@ export type ChatSessionSelect<ExtArgs extends runtime.Types.Extensions.InternalA
   name?: boolean
   status?: boolean
   permissionMode?: boolean
+  worktreeId?: boolean
+  touchedPaths?: boolean
+  trashedAt?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   messages?: boolean | Prisma.ChatSession$messagesArgs<ExtArgs>
   project?: boolean | Prisma.ProjectDefaultArgs<ExtArgs>
+  worktree?: boolean | Prisma.ChatSession$worktreeArgs<ExtArgs>
   _count?: boolean | Prisma.ChatSessionCountOutputTypeDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["chatSession"]>
 
@@ -673,9 +939,13 @@ export type ChatSessionSelectCreateManyAndReturn<ExtArgs extends runtime.Types.E
   name?: boolean
   status?: boolean
   permissionMode?: boolean
+  worktreeId?: boolean
+  touchedPaths?: boolean
+  trashedAt?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   project?: boolean | Prisma.ProjectDefaultArgs<ExtArgs>
+  worktree?: boolean | Prisma.ChatSession$worktreeArgs<ExtArgs>
 }, ExtArgs["result"]["chatSession"]>
 
 export type ChatSessionSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -685,9 +955,13 @@ export type ChatSessionSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.E
   name?: boolean
   status?: boolean
   permissionMode?: boolean
+  worktreeId?: boolean
+  touchedPaths?: boolean
+  trashedAt?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   project?: boolean | Prisma.ProjectDefaultArgs<ExtArgs>
+  worktree?: boolean | Prisma.ChatSession$worktreeArgs<ExtArgs>
 }, ExtArgs["result"]["chatSession"]>
 
 export type ChatSessionSelectScalar = {
@@ -697,21 +971,27 @@ export type ChatSessionSelectScalar = {
   name?: boolean
   status?: boolean
   permissionMode?: boolean
+  worktreeId?: boolean
+  touchedPaths?: boolean
+  trashedAt?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }
 
-export type ChatSessionOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "projectId" | "userId" | "name" | "status" | "permissionMode" | "createdAt" | "updatedAt", ExtArgs["result"]["chatSession"]>
+export type ChatSessionOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "projectId" | "userId" | "name" | "status" | "permissionMode" | "worktreeId" | "touchedPaths" | "trashedAt" | "createdAt" | "updatedAt", ExtArgs["result"]["chatSession"]>
 export type ChatSessionInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   messages?: boolean | Prisma.ChatSession$messagesArgs<ExtArgs>
   project?: boolean | Prisma.ProjectDefaultArgs<ExtArgs>
+  worktree?: boolean | Prisma.ChatSession$worktreeArgs<ExtArgs>
   _count?: boolean | Prisma.ChatSessionCountOutputTypeDefaultArgs<ExtArgs>
 }
 export type ChatSessionIncludeCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   project?: boolean | Prisma.ProjectDefaultArgs<ExtArgs>
+  worktree?: boolean | Prisma.ChatSession$worktreeArgs<ExtArgs>
 }
 export type ChatSessionIncludeUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   project?: boolean | Prisma.ProjectDefaultArgs<ExtArgs>
+  worktree?: boolean | Prisma.ChatSession$worktreeArgs<ExtArgs>
 }
 
 export type $ChatSessionPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
@@ -719,6 +999,7 @@ export type $ChatSessionPayload<ExtArgs extends runtime.Types.Extensions.Interna
   objects: {
     messages: Prisma.$ChatMessagePayload<ExtArgs>[]
     project: Prisma.$ProjectPayload<ExtArgs>
+    worktree: Prisma.$WorktreePayload<ExtArgs> | null
   }
   scalars: runtime.Types.Extensions.GetPayloadResult<{
     id: string
@@ -727,6 +1008,9 @@ export type $ChatSessionPayload<ExtArgs extends runtime.Types.Extensions.Interna
     name: string
     status: string
     permissionMode: $Enums.PermissionMode
+    worktreeId: string | null
+    touchedPaths: string[]
+    trashedAt: Date | null
     createdAt: Date
     updatedAt: Date
   }, ExtArgs["result"]["chatSession"]>
@@ -1125,6 +1409,7 @@ export interface Prisma__ChatSessionClient<T, Null = never, ExtArgs extends runt
   readonly [Symbol.toStringTag]: "PrismaPromise"
   messages<T extends Prisma.ChatSession$messagesArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.ChatSession$messagesArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$ChatMessagePayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   project<T extends Prisma.ProjectDefaultArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.ProjectDefaultArgs<ExtArgs>>): Prisma.Prisma__ProjectClient<runtime.Types.Result.GetResult<Prisma.$ProjectPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | Null, Null, ExtArgs, GlobalOmitOptions>
+  worktree<T extends Prisma.ChatSession$worktreeArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.ChatSession$worktreeArgs<ExtArgs>>): Prisma.Prisma__WorktreeClient<runtime.Types.Result.GetResult<Prisma.$WorktreePayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
   /**
    * Attaches callbacks for the resolution and/or rejection of the Promise.
    * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -1160,6 +1445,9 @@ export interface ChatSessionFieldRefs {
   readonly name: Prisma.FieldRef<"ChatSession", 'String'>
   readonly status: Prisma.FieldRef<"ChatSession", 'String'>
   readonly permissionMode: Prisma.FieldRef<"ChatSession", 'PermissionMode'>
+  readonly worktreeId: Prisma.FieldRef<"ChatSession", 'String'>
+  readonly touchedPaths: Prisma.FieldRef<"ChatSession", 'String[]'>
+  readonly trashedAt: Prisma.FieldRef<"ChatSession", 'DateTime'>
   readonly createdAt: Prisma.FieldRef<"ChatSession", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"ChatSession", 'DateTime'>
 }
@@ -1584,6 +1872,25 @@ export type ChatSession$messagesArgs<ExtArgs extends runtime.Types.Extensions.In
   take?: number
   skip?: number
   distinct?: Prisma.ChatMessageScalarFieldEnum | Prisma.ChatMessageScalarFieldEnum[]
+}
+
+/**
+ * ChatSession.worktree
+ */
+export type ChatSession$worktreeArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the Worktree
+   */
+  select?: Prisma.WorktreeSelect<ExtArgs> | null
+  /**
+   * Omit specific fields from the Worktree
+   */
+  omit?: Prisma.WorktreeOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.WorktreeInclude<ExtArgs> | null
+  where?: Prisma.WorktreeWhereInput
 }
 
 /**

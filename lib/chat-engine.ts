@@ -2,8 +2,8 @@ import { prisma } from '@/lib/db'
 import { callAnthropic, callAnthropicWithTools, MODELS } from '@/lib/anthropic'
 import { REPO_TOOLS, READ_TOOLS, executeTool } from '@/lib/tools'
 import type { ContentBlock, ToolCallMessage, ToolDefinition } from '@/lib/anthropic'
-import type { ChatReport, ReportEtapa, ReportStep, ReportBuildDetails, ReportToolCall } from '@/lib/report-types'
-import { getRepoLockStatus, getLockerTaskName, acquireRepoLock, releaseRepoLock, touchProjectActivity } from '@/lib/repo-lock'
+import type { ChatReport, ReportEtapa, ReportStep, ReportBuildDetails, ReportToolCall, ReportFileChange } from '@/lib/report-types'
+import { touchProjectActivity } from '@/lib/repo-lock'
 import {
   buildChatPrompt,
   buildSkillChatPrompt,
@@ -75,6 +75,7 @@ interface ChatRequest {
   permissionMode?: PermissionMode
   projectName?: string
   repoName?: string
+  contextPaths?: string[]
 }
 
 interface ChatReply {
@@ -435,13 +436,37 @@ async function prefetchContext(req: ChatRequest, keywords: string[], classifierM
 
   const sections: string[] = []
 
+  // Pinned files — injected first, highest priority context
+  if (req.contextPaths && req.contextPaths.length > 0) {
+    const sessionId = req.sessionId ?? req.projectId
+    const pinnedResults = await Promise.all(
+      req.contextPaths.map(async (filePath) => {
+        const cached = getCachedFile(sessionId, filePath)
+        if (cached) return { filePath, content: cached }
+        // Pass sessionId so the read happens inside the chat's worktree.
+        // Pinned files reflect the chat's current state, not main.
+        const file = await executeTool(repo.id, 'read_file', { path: filePath }, req.projectId, req.sessionId)
+        if (!file.isError && file.result.trim()) {
+          setCachedFile(sessionId, filePath, file.result)
+          return { filePath, content: file.result }
+        }
+        return null
+      })
+    )
+    for (const entry of pinnedResults) {
+      if (entry) sections.push(`## ${entry.filePath} [pinned]\n\`\`\`\n${entry.content}\n\`\`\``)
+    }
+    console.log(`[prefetch] pinned: ${pinnedResults.filter(Boolean).length} files`)
+  }
+
   // fileTree — always injected as the project map
   let fileTree = repo.fileTree
   if (!fileTree) {
     try {
+      // run_command_readonly auto-cds into the worktree if sessionId is set
       const treeResult = await executeTool(repo.id, 'run_command_readonly', {
-        command: `find /home/user/project -type f -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' -not -path '*/.next/*' -not -path '*/dist/*' | sed 's|/home/user/project/||' | sort`
-      }, req.projectId)
+        command: `find . -type f -not -path './.git/*' -not -path './node_modules/*' -not -path './__pycache__/*' -not -path './.next/*' -not -path './dist/*' | sed 's|^\\./||' | sort`
+      }, req.projectId, req.sessionId)
       if (!treeResult.isError && treeResult.result.trim()) {
         fileTree = treeResult.result.trim()
         prisma.repository.update({
@@ -473,7 +498,10 @@ async function prefetchContext(req: ChatRequest, keywords: string[], classifierM
         ? `${req.content}\n\nKeywords: ${keywords.join(', ')}`
         : req.content
 
-      const chunks = await retrieveChunks(repo.id, query, classifierMode ?? null)
+      const pinnedSet = new Set(req.contextPaths ?? [])
+      const allChunks = await retrieveChunks(repo.id, query, classifierMode ?? null)
+      // Remove chunks from pinned files — already in context complete
+      const chunks = allChunks.filter(c => !pinnedSet.has(c.filePath))
 
       if (chunks.length > 0) {
         // Group by file — show each file once with all its relevant chunks
@@ -491,7 +519,8 @@ async function prefetchContext(req: ChatRequest, keywords: string[], classifierM
         const fileCount = byFile.size
         const chunkCount = chunks.length
         const topScore = chunks[0]?.score.toFixed(3)
-        console.log(`[prefetch] vector: ${chunkCount} chunks from ${fileCount} files | top score: ${topScore}`)
+        const skipped = allChunks.length - chunks.length
+        console.log(`[prefetch] vector: ${chunkCount} chunks from ${fileCount} files | top score: ${topScore}${skipped > 0 ? ` | skipped ${skipped} pinned` : ''}`)
         return sections.join('\n\n')
       }
     }
@@ -503,12 +532,15 @@ async function prefetchContext(req: ChatRequest, keywords: string[], classifierM
   // ── Grep fallback (no index yet) ────────────────────────────────────────
   if (keywords.length === 0) return sections.join('\n\n')
 
-  const fileScores = new Map<string, number>()
-  for (const keyword of keywords.slice(0, 3)) {
-    const result = await executeTool(repo.id, 'search_files', { query: keyword }, req.projectId)
-    if (result.isError || !result.result.trim()) continue
+  // All keyword searches fire in parallel — scoped to the chat's worktree
+  const searchResults = await Promise.all(
+    keywords.slice(0, 3).map(kw => executeTool(repo.id, 'search_files', { query: kw }, req.projectId, req.sessionId).then(r => ({ kw, r })))
+  )
 
-    for (const line of result.result.split('\n')) {
+  const fileScores = new Map<string, number>()
+  for (const { kw, r } of searchResults) {
+    if (r.isError || !r.result.trim()) continue
+    for (const line of r.result.split('\n')) {
       const match = line.match(/^\.?\/?([^:]+\.[a-z]+):\d+:/)
       if (!match) continue
       const filePath = match[1].replace(/^\//, '')
@@ -518,7 +550,7 @@ async function prefetchContext(req: ChatRequest, keywords: string[], classifierM
       let score = fileScores.get(filePath) || 0
       if (/\.(ts|tsx)$/.test(filePath)) score += 2
       else if (/\.(js|jsx)$/.test(filePath)) score += 1
-      if (filePath.toLowerCase().includes(keyword.toLowerCase())) score += 3
+      if (filePath.toLowerCase().includes(kw.toLowerCase())) score += 3
       if (/^(lib|app|src|middleware|components|hooks|utils)\//.test(filePath)) score += 1
       fileScores.set(filePath, score + 1)
     }
@@ -531,18 +563,23 @@ async function prefetchContext(req: ChatRequest, keywords: string[], classifierM
 
   console.log(`[prefetch] grep fallback: [${topFiles.join(', ')}]`)
 
+  // All file reads fire in parallel — scoped to the chat's worktree
   const sessionId = req.sessionId ?? req.projectId
-  for (const filePath of topFiles) {
-    const cached = getCachedFile(sessionId, filePath)
-    if (cached) {
-      sections.push(`## ${filePath}\n\`\`\`\n${cached}\n\`\`\``)
-      continue
-    }
-    const file = await executeTool(repo.id, 'read_file', { path: filePath }, req.projectId)
-    if (!file.isError && file.result.trim()) {
-      setCachedFile(sessionId, filePath, file.result)
-      sections.push(`## ${filePath}\n\`\`\`\n${file.result}\n\`\`\``)
-    }
+  const fileResults = await Promise.all(
+    topFiles.map(async filePath => {
+      const cached = getCachedFile(sessionId, filePath)
+      if (cached) return { filePath, content: cached }
+      const file = await executeTool(repo.id, 'read_file', { path: filePath }, req.projectId, req.sessionId)
+      if (!file.isError && file.result.trim()) {
+        setCachedFile(sessionId, filePath, file.result)
+        return { filePath, content: file.result }
+      }
+      return null
+    })
+  )
+
+  for (const entry of fileResults) {
+    if (entry) sections.push(`## ${entry.filePath}\n\`\`\`\n${entry.content}\n\`\`\``)
   }
 
   return sections.join('\n\n')
@@ -623,18 +660,8 @@ async function handleEdit(req: ChatRequest, token: string, userMessage: ChatRepl
     return { userMessage, replies: [reply] }
   }
 
-  // Check repo lock
-  const lockStatus = await getRepoLockStatus(req.projectId)
-  if (lockStatus.locked && lockStatus.lockedBy === 'task') {
-    const taskName = await getLockerTaskName(req.projectId)
-    const reply = await saveMessage(req, 'system',
-      `Cannot edit — a task is currently running${taskName ? ` ("${taskName}")` : ''} and has the repository locked. Wait for it to finish or pause it in the Tasks tab.`
-    )
-    return { userMessage, replies: [reply] }
-  }
-
-  await acquireRepoLock(req.projectId, 'chat')
-
+  // Each chat works in its own worktree — no need to acquire a global repo
+  // lock. Concurrent chats can run in parallel without conflicting.
   try {
     // Classify + build prompt (same as Ask — mode-aware, cached blocks)
     const recentMessages = await getRecentMessagesForClassifier(req)
@@ -694,7 +721,7 @@ async function handleEdit(req: ChatRequest, token: string, userMessage: ChatRepl
 
     return { userMessage, replies: [reply] }
   } finally {
-    await releaseRepoLock(req.projectId, 'chat')
+    // Worktree-based isolation — no global lock to release
   }
 }
 
@@ -726,10 +753,10 @@ async function runEditToolLoop(options: {
   projectId: string
   chatReq: ChatRequest
   compactSummary?: string | null
-}): Promise<{ summary: string; fileActions: { path: string; action: 'write' | 'delete' }[]; toolCalls: ReportToolCall[]; iterationCount: number }> {
+}): Promise<{ summary: string; fileActions: ReportFileChange[]; toolCalls: ReportToolCall[]; iterationCount: number }> {
   const messages: ToolCallMessage[] = [{ role: 'user', content: options.userContent }]
   const allText: string[] = []
-  const fileActions: { path: string; action: 'write' | 'delete' }[] = []
+  const fileActions: ReportFileChange[] = []
   const reportToolCalls: ReportToolCall[] = []
   let iterationCount = 0
 
@@ -763,7 +790,7 @@ async function runEditToolLoop(options: {
     ))
 
     const toolResults = await Promise.all(toolUseBlocks.map(async toolCall => {
-      const result = await executeTool(options.repositoryId, toolCall.name, toolCall.input, options.projectId)
+      const result = await executeTool(options.repositoryId, toolCall.name, toolCall.input, options.projectId, options.chatReq.sessionId)
 
       const toolPath = toolCall.input.path as string | undefined
       reportToolCalls.push({ tool: toolCall.name, path: toolPath, action: `${toolCall.name}${toolPath ? ` → ${toolPath}` : ''}` })
@@ -771,7 +798,14 @@ async function runEditToolLoop(options: {
       if (toolCall.name === 'write_file' || toolCall.name === 'edit_file' || toolCall.name === 'delete_file') {
         const filePath = toolCall.input.path as string
         const action = toolCall.name === 'delete_file' ? 'delete' : 'write'
-        fileActions.push({ path: filePath, action })
+        let diff: string | undefined
+        try {
+          const diffResult = await executeTool(options.repositoryId, 'run_command_readonly', {
+            command: `git diff HEAD -- '${filePath}' 2>/dev/null || git diff -- '${filePath}' 2>/dev/null`
+          }, options.projectId, options.chatReq.sessionId)
+          if (!diffResult.isError && diffResult.result.trim()) diff = diffResult.result.trim()
+        } catch {}
+        fileActions.push({ path: filePath, action, diff })
       }
 
       return { type: 'tool_result' as const, tool_use_id: toolCall.id, content: result.result, is_error: result.isError || undefined }
@@ -869,9 +903,10 @@ async function handleNoSkill(req: ChatRequest, token: string, userMessage: ChatR
     const totalPromptSize = systemParts.reduce((s, p) => s + p.length, 0)
     console.log(`[prompt] Mode: ${classification.mode} → File: ${modeFile || 'none'} | Permission: ${req.permissionMode ?? 'leitura'} | Parts: ${systemParts.length} | Prompt size: ${totalPromptSize} chars`)
 
-    // All modes — base.md + when-*.md (null if none) + tools from permission mode
+    // Tools always follow permission mode — greeting/offtopic only skip prefetch
     const tools = getToolsForMode(req.permissionMode, req.isBuild)
-    const context = await prefetchContext(req, classification.keywords, classification.mode)
+    const isGreeting = classification.mode === 'greeting' || classification.mode === 'offtopic'
+    const context = isGreeting ? '' : await prefetchContext(req, classification.keywords, classification.mode)
     const userContent = context
       ? `${req.content}\n\n---\nRelevant code from the repository:\n${context}`
       : req.content
@@ -1177,11 +1212,12 @@ CONVERSATION only. Do NOT write or edit any code. Only analyze, discuss, and adv
                 if (memberToolBlocks.length === 0) break
 
                 memberMessages.push({ role: 'assistant', content: response.content })
-                const memberToolResults: { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean }[] = []
-                for (const tc of memberToolBlocks) {
-                  const r = await executeTool(memberRepo.id, tc.name, tc.input, req.projectId)
-                  memberToolResults.push({ type: 'tool_result', tool_use_id: tc.id, content: r.result, is_error: r.isError || undefined })
-                }
+                const memberToolResults = await Promise.all(
+                  memberToolBlocks.map(async tc => {
+                    const r = await executeTool(memberRepo.id, tc.name, tc.input, req.projectId, req.sessionId)
+                    return { type: 'tool_result' as const, tool_use_id: tc.id, content: r.result, is_error: r.isError || undefined }
+                  })
+                )
                 memberMessages.push({ role: 'user', content: memberToolResults as unknown as ContentBlock[] })
               }
 
@@ -1349,7 +1385,6 @@ async function handleBuildDirect(req: ChatRequest, token: string, userMessage: C
     totalDurationMs: Date.now() - buildStart,
   }
 
-  await releaseRepoLock(req.projectId, 'chat')
   const reply = await saveMessage(req, 'builder', result.summary, report)
   return { userMessage, replies: [reply] }
 }
@@ -1401,7 +1436,6 @@ async function handleBuildWithSkill(req: ChatRequest, token: string, userMessage
     totalDurationMs: Date.now() - buildStart,
   }
 
-  await releaseRepoLock(req.projectId, 'chat')
   const reply = await saveMessage(req, skillBuildName, `${skillBuildName}: ${result.summary}`, report)
   return { userMessage, replies: [reply] }
 }
@@ -1417,13 +1451,13 @@ async function runBuildToolLoop(options: {
   repositoryId: string
   projectId: string
   chatReq: ChatRequest
-}): Promise<{ summary: string; filesTouched: string[]; fileActions: { path: string; action: 'write' | 'delete' }[]; toolCalls: ReportToolCall[]; iterationCount: number }> {
+}): Promise<{ summary: string; filesTouched: string[]; fileActions: ReportFileChange[]; toolCalls: ReportToolCall[]; iterationCount: number }> {
   const messages: ToolCallMessage[] = [
     { role: 'user', content: options.userMessage },
   ]
   const allText: string[] = []
   const filesTouched = new Set<string>()
-  const fileActions: { path: string; action: 'write' | 'delete' }[] = []
+  const fileActions: ReportFileChange[] = []
   const reportToolCalls: ReportToolCall[] = []
   let iterationCount = 0
 
@@ -1452,37 +1486,46 @@ async function runBuildToolLoop(options: {
 
     messages.push({ role: 'assistant', content: response.content })
 
-    const toolResults: { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean }[] = []
+    // All tool calls fire in parallel
+    const toolResults = await Promise.all(
+      toolUseBlocks.map(async toolCall => {
+        const result = await executeTool(options.repositoryId, toolCall.name, toolCall.input, options.projectId, options.chatReq.sessionId)
 
-    for (const toolCall of toolUseBlocks) {
-      const result = await executeTool(options.repositoryId, toolCall.name, toolCall.input, options.projectId)
-      toolResults.push({
-        type: 'tool_result',
-        tool_use_id: toolCall.id,
-        content: result.result,
-        is_error: result.isError || undefined,
+        const toolPath = toolCall.input.path as string | undefined
+        reportToolCalls.push({
+          tool: toolCall.name,
+          path: toolPath,
+          action: `${toolCall.name}${toolPath ? ` → ${toolPath}` : ''}`,
+        })
+
+        if (toolCall.name === 'write_file' || toolCall.name === 'delete_file') {
+          const filePath = toolCall.input.path as string
+          filesTouched.add(filePath)
+          const action = toolCall.name === 'delete_file' ? 'delete' : 'write'
+          let diff: string | undefined
+          try {
+            const diffResult = await executeTool(options.repositoryId, 'run_command_readonly', {
+              command: `git diff HEAD -- '${filePath}' 2>/dev/null || git diff -- '${filePath}' 2>/dev/null`
+            }, options.projectId, options.chatReq.sessionId)
+            if (!diffResult.isError && diffResult.result.trim()) diff = diffResult.result.trim()
+          } catch {}
+          fileActions.push({ path: filePath, action, diff })
+          saveMessage(options.chatReq, 'step', JSON.stringify({
+            type: 'file_changed',
+            path: toolCall.input.path,
+            action: toolCall.name,
+            diff,
+          })).catch(() => {})
+        }
+
+        return {
+          type: 'tool_result' as const,
+          tool_use_id: toolCall.id,
+          content: result.result,
+          is_error: result.isError || undefined,
+        }
       })
-
-      // Track for report
-      const toolPath = toolCall.input.path as string | undefined
-      reportToolCalls.push({
-        tool: toolCall.name,
-        path: toolPath,
-        action: `${toolCall.name}${toolPath ? ` → ${toolPath}` : ''}`,
-      })
-
-      if (toolCall.name === 'write_file' || toolCall.name === 'delete_file') {
-        const filePath = toolCall.input.path as string
-        filesTouched.add(filePath)
-        fileActions.push({ path: filePath, action: toolCall.name === 'delete_file' ? 'delete' : 'write' })
-        // Log file change in chat
-        await saveMessage(options.chatReq, 'step', JSON.stringify({
-          type: 'file_changed',
-          path: toolCall.input.path,
-          action: toolCall.name,
-        }))
-      }
-    }
+    )
 
     messages.push({ role: 'user', content: toolResults as unknown as ContentBlock[] })
   }
@@ -1650,7 +1693,11 @@ function toolStepLabel(toolName: string, input: Record<string, unknown>): string
 
 // ── Read-only tool loop (for conversation modes) ──────────────────────────
 
-const MAX_READ_ITERATIONS = 10
+const MAX_READ_ITERATIONS: Record<string, number> = {
+  leitura: 10,
+  planejamento: 15,
+  edicao: 10,
+}
 
 async function processReadToolLoop(
   token: string,
@@ -1695,7 +1742,7 @@ async function processReadToolLoop(
       saveMessage(req, 'step', JSON.stringify({ type: 'tool_call', label: toolStepLabel(tc.name, tc.input) }))
     ))
     return Promise.all(blocks.map(async tc => {
-      const result = await executeTool(repo.id, tc.name, tc.input, req.projectId)
+      const result = await executeTool(repo.id, tc.name, tc.input, req.projectId, req.sessionId)
       return { type: 'tool_result' as const, tool_use_id: tc.id, content: result.result, is_error: result.isError || undefined }
     }))
   }
@@ -1704,8 +1751,10 @@ async function processReadToolLoop(
   messages.push({ role: 'user', content: toolResults as unknown as ContentBlock[] })
 
   let finalText = ''
+  let hitLimit = false
 
-  for (let i = 0; i < MAX_READ_ITERATIONS; i++) {
+  const maxIter = MAX_READ_ITERATIONS[req.permissionMode ?? 'leitura'] ?? 10
+  for (let i = 0; i < maxIter; i++) {
     const response = await callAnthropicWithTools({
       encryptedToken: token,
       systemParts: parts,
@@ -1730,22 +1779,22 @@ async function processReadToolLoop(
       break
     }
 
-    // Keep last non-empty text as fallback in case we hit max iterations
-    if (roundText) finalText = roundText
-
     messages.push({ role: 'assistant', content: response.content })
     const newResults = await execBatch(newToolBlocks)
     messages.push({ role: 'user', content: newResults as unknown as ContentBlock[] })
+
+    // Last iteration — force synthesis on next step
+    if (i === maxIter - 1) hitLimit = true
   }
 
-  // If the loop ended without a real response (model only used tools, never wrote text),
-  // make one final call without tools to force synthesis of what was found.
-  if (!finalText) {
+  // Synthesis call — fires when loop hit the limit OR model never produced a final answer
+  if (hitLimit || !finalText) {
+    console.log('[read-loop] Forcing synthesis after max iterations')
     const synthesis = await callAnthropicWithTools({
       encryptedToken: token,
       systemParts: parts,
       compactSummary,
-      messages,
+      messages: [...messages, { role: 'user', content: 'Based on everything you have read, provide your complete answer now.' }],
       tools: [],
       maxTokens: 8192,
     })

@@ -390,6 +390,7 @@ export const ModelName = {
   RepoFile: 'RepoFile',
   Collaborator: 'Collaborator',
   Team: 'Team',
+  Worktree: 'Worktree',
   ChatSession: 'ChatSession',
   ChatMessage: 'ChatMessage',
   Task: 'Task',
@@ -416,7 +417,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "user" | "project" | "repository" | "repoFile" | "collaborator" | "team" | "chatSession" | "chatMessage" | "task" | "taskIteration" | "taskSkillLog" | "taskBuildLog" | "taskSuggestion" | "slackLog" | "resourceUsage" | "teamRun" | "buildSession"
+    modelProps: "user" | "project" | "repository" | "repoFile" | "collaborator" | "team" | "worktree" | "chatSession" | "chatMessage" | "task" | "taskIteration" | "taskSkillLog" | "taskBuildLog" | "taskSuggestion" | "slackLog" | "resourceUsage" | "teamRun" | "buildSession"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -861,6 +862,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.TeamCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.TeamCountAggregateOutputType> | number
+        }
+      }
+    }
+    Worktree: {
+      payload: Prisma.$WorktreePayload<ExtArgs>
+      fields: Prisma.WorktreeFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.WorktreeFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WorktreePayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.WorktreeFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WorktreePayload>
+        }
+        findFirst: {
+          args: Prisma.WorktreeFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WorktreePayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.WorktreeFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WorktreePayload>
+        }
+        findMany: {
+          args: Prisma.WorktreeFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WorktreePayload>[]
+        }
+        create: {
+          args: Prisma.WorktreeCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WorktreePayload>
+        }
+        createMany: {
+          args: Prisma.WorktreeCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.WorktreeCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WorktreePayload>[]
+        }
+        delete: {
+          args: Prisma.WorktreeDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WorktreePayload>
+        }
+        update: {
+          args: Prisma.WorktreeUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WorktreePayload>
+        }
+        deleteMany: {
+          args: Prisma.WorktreeDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.WorktreeUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.WorktreeUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WorktreePayload>[]
+        }
+        upsert: {
+          args: Prisma.WorktreeUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$WorktreePayload>
+        }
+        aggregate: {
+          args: Prisma.WorktreeAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateWorktree>
+        }
+        groupBy: {
+          args: Prisma.WorktreeGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.WorktreeGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.WorktreeCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.WorktreeCountAggregateOutputType> | number
         }
       }
     }
@@ -1767,7 +1842,8 @@ export const RepositoryScalarFieldEnum = {
   sandboxStartedAt: 'sandboxStartedAt',
   sandboxStatus: 'sandboxStatus',
   fileTree: 'fileTree',
-  fileTreeUpdatedAt: 'fileTreeUpdatedAt'
+  fileTreeUpdatedAt: 'fileTreeUpdatedAt',
+  runScript: 'runScript'
 } as const
 
 export type RepositoryScalarFieldEnum = (typeof RepositoryScalarFieldEnum)[keyof typeof RepositoryScalarFieldEnum]
@@ -1820,6 +1896,24 @@ export const TeamScalarFieldEnum = {
 export type TeamScalarFieldEnum = (typeof TeamScalarFieldEnum)[keyof typeof TeamScalarFieldEnum]
 
 
+export const WorktreeScalarFieldEnum = {
+  id: 'id',
+  projectId: 'projectId',
+  userId: 'userId',
+  name: 'name',
+  status: 'status',
+  branchName: 'branchName',
+  worktreePath: 'worktreePath',
+  baseCommit: 'baseCommit',
+  portBase: 'portBase',
+  trashedAt: 'trashedAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type WorktreeScalarFieldEnum = (typeof WorktreeScalarFieldEnum)[keyof typeof WorktreeScalarFieldEnum]
+
+
 export const ChatSessionScalarFieldEnum = {
   id: 'id',
   projectId: 'projectId',
@@ -1827,6 +1921,9 @@ export const ChatSessionScalarFieldEnum = {
   name: 'name',
   status: 'status',
   permissionMode: 'permissionMode',
+  worktreeId: 'worktreeId',
+  touchedPaths: 'touchedPaths',
+  trashedAt: 'trashedAt',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
@@ -2280,6 +2377,7 @@ export type GlobalOmitConfig = {
   repoFile?: Prisma.RepoFileOmit
   collaborator?: Prisma.CollaboratorOmit
   team?: Prisma.TeamOmit
+  worktree?: Prisma.WorktreeOmit
   chatSession?: Prisma.ChatSessionOmit
   chatMessage?: Prisma.ChatMessageOmit
   task?: Prisma.TaskOmit

@@ -30,6 +30,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       mode: true,
       activeSkillId: true,
       report: true,
+      sessionId: true,
       createdAt: true,
     },
     orderBy: { createdAt: 'asc' },

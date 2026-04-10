@@ -176,6 +176,9 @@ export function buildEnvironmentBlock(modelKey?: string, permissionMode?: Permis
 
   const projectLine = projectName ? `\n- Project: ${projectName}${repoName ? ` (${repoName})` : ''}` : ''
 
+  // Mode context — last instruction, reinforces current mode behavior
+  const modeContext = getModeContextPrompt(permissionMode)
+
   return `# Environment
 
 - Model: ${modelName}
@@ -184,7 +187,11 @@ export function buildEnvironmentBlock(modelKey?: string, permissionMode?: Permis
 
 # Permission Mode
 
-${modeDesc}${permissionInstructions}`
+${modeDesc}${permissionInstructions}
+
+---
+
+${modeContext}`
 }
 
 // ── Classified Prompt Builder ─────────────────────────────────────────────
@@ -223,6 +230,13 @@ export function buildClassifiedPrompt(modeFileName: string | null, isExecution: 
 
   builtPromptCache.set(cacheKey, parts)
   return parts
+}
+
+/** Returns the small mode-context prompt based on permission mode — always the last system block */
+export function getModeContextPrompt(permissionMode?: PermissionMode): string {
+  if (permissionMode === 'edicao') return load(join(MODES_DIR, 'when-mode-agent.md'))
+  if (permissionMode === 'planejamento') return load(join(MODES_DIR, 'when-mode-plan.md'))
+  return load(join(MODES_DIR, 'when-mode-ask.md'))
 }
 
 // ── Skill Name Map ────────────────────────────────────────────────────────

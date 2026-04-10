@@ -153,11 +153,33 @@ export async function stopSandbox(projectId: string): Promise<void> {
 
 /**
  * Execute a command in the project's sandbox. Auto-starts if needed.
+ *
+ * Optionally runs the command in a specific working directory (`cwd`) and
+ * with extra environment variables. Used by per-chat terminals to isolate
+ * shells inside their own worktree and inject BORNASTAR_PORT.
  */
-export async function execInSandbox(projectId: string, command: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+export async function execInSandbox(
+  projectId: string,
+  command: string,
+  options?: { cwd?: string; env?: Record<string, string> },
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const sandboxId = await ensureSandboxRunning(projectId)
   if (!sandboxId) throw new Error('No repository connected or sandbox failed to start')
-  return provider.exec(sandboxId, command)
+
+  // Build the wrapped command. Env vars come first as `KEY=value` exports,
+  // then optional `cd`, then the user command. Everything inside one bash -c
+  // so the variables are visible to the command itself.
+  const envParts = options?.env
+    ? Object.entries(options.env).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(' ')
+    : ''
+  const cdPart = options?.cwd ? `cd ${options.cwd} && ` : ''
+
+  if (!envParts && !cdPart) {
+    return provider.exec(sandboxId, command)
+  }
+
+  const wrapped = `${envParts ? `export ${envParts} && ` : ''}${cdPart}${command}`
+  return provider.exec(sandboxId, wrapped)
 }
 
 /**

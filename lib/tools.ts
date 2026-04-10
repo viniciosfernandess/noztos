@@ -147,21 +147,11 @@ export const WRITE_TOOLS_DEFS = [
 // Full tools — read + write (for build modes)
 export const REPO_TOOLS = [...READ_TOOLS, ...WRITE_TOOLS_DEFS]
 
-// ── Build Session Management ──────────────────────────────────────────────
-
-export async function checkBuildAuthorization(projectId: string): Promise<boolean> {
-  const session = await prisma.buildSession.findFirst({ where: { projectId, active: true } })
-  return !!session
-}
-
-export async function createBuildSession(projectId: string, userId: string, buildWith: string): Promise<void> {
-  await prisma.buildSession.updateMany({ where: { projectId, active: true }, data: { active: false } })
-  await prisma.buildSession.create({ data: { projectId, userId, buildWith } })
-}
-
-export async function endBuildSession(projectId: string): Promise<void> {
-  await prisma.buildSession.updateMany({ where: { projectId, active: true }, data: { active: false } })
-}
+// Note: previous "build session" gating was a global per-project lock used
+// before worktree isolation existed. With per-chat worktrees, every chat's
+// permission mode (Ask/Plan/Agent) already controls which tools are exposed
+// to the model — so the gate is no longer needed and would block parallel
+// work. The functions are kept as no-ops to avoid breaking external callers.
 
 // ── Tool Executor ─────────────────────────────────────────────────────────
 
@@ -178,24 +168,74 @@ const READONLY_BLOCKED = /\b(npm install|npm i |yarn add|pnpm add|pip install|ap
 // Output cap for run_command — prevents context bloat from large build logs
 const RUN_COMMAND_MAX_CHARS = 30_000
 
+// In-memory cache: sessionId → worktreePath. A chat's worktree assignment
+// only changes when the chat is created or moved between worktrees, both
+// rare events. Caching avoids a Prisma query on every single tool call.
+const WORKTREE_CACHE = new Map<string, { path: string; expiresAt: number }>()
+const WORKTREE_CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
+
+export function invalidateWorktreeCache(sessionId: string): void {
+  WORKTREE_CACHE.delete(sessionId)
+}
+
+// Record that a chat session touched a particular file. Used to attribute
+// per-chat diff stats on main, where multiple chats share the same working
+// tree. Idempotent (skips push if the path is already recorded). Fire and
+// forget — never blocks the tool result.
+async function recordTouchedPath(sessionId: string, path: string): Promise<void> {
+  try {
+    const session = await prisma.chatSession.findUnique({
+      where: { id: sessionId },
+      select: { touchedPaths: true },
+    })
+    if (!session) return
+    if (session.touchedPaths.includes(path)) return
+    await prisma.chatSession.update({
+      where: { id: sessionId },
+      data: { touchedPaths: { push: path } },
+    })
+  } catch (err) {
+    console.warn('[tools] failed to record touched path:', err)
+  }
+}
+
+// Resolves the working directory for a tool call. If the chat session lives
+// inside a worktree, returns that worktree's path. Otherwise (chat on main
+// branch) falls back to the shared project root.
+async function resolveProjectRoot(sessionId?: string): Promise<string> {
+  if (!sessionId) return DEFAULT_PROJECT_ROOT
+
+  const cached = WORKTREE_CACHE.get(sessionId)
+  if (cached && Date.now() < cached.expiresAt) return cached.path
+
+  try {
+    const session = await prisma.chatSession.findUnique({
+      where: { id: sessionId },
+      select: {
+        worktree: { select: { worktreePath: true } },
+      },
+    })
+    const path = session?.worktree?.worktreePath ?? DEFAULT_PROJECT_ROOT
+    WORKTREE_CACHE.set(sessionId, { path, expiresAt: Date.now() + WORKTREE_CACHE_TTL_MS })
+    return path
+  } catch {
+    return DEFAULT_PROJECT_ROOT
+  }
+}
+
 export async function executeTool(
   repositoryId: string,
   toolName: string,
   input: Record<string, unknown>,
-  projectId?: string
+  projectId?: string,
+  sessionId?: string,
 ): Promise<ToolResult> {
   if (!projectId) return { result: 'No project context', isError: true }
 
-  // Gate: write operations require active build session
-  if (WRITE_TOOLS.has(toolName)) {
-    const authorized = await checkBuildAuthorization(projectId)
-    if (!authorized) {
-      return {
-        result: 'BUILD NOT AUTHORIZED. Ask the user for confirmation before writing or deleting files.',
-        isError: true,
-      }
-    }
-  }
+  // Write authorization is enforced by the tool definitions exposed to Claude:
+  // Ask/Plan modes only see READ_TOOLS, Agent mode sees REPO_TOOLS. The model
+  // physically cannot call write_file/edit_file/delete_file outside Agent mode.
+  const projectRoot = await resolveProjectRoot(sessionId)
 
   // Ensure sandbox is running for ALL operations — with retry on sandbox death
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -205,13 +245,17 @@ export async function executeTool(
     let result: ToolResult
     switch (toolName) {
       case 'read_file':
-        result = await readFile(sandboxId, input.path as string); break
+        result = await readFile(sandboxId, input.path as string, projectRoot); break
       case 'edit_file':
-        result = await editFile(sandboxId, input.path as string, input.old_string as string, input.new_string as string, input.replace_all as boolean | undefined); break
+        result = await editFile(sandboxId, input.path as string, input.old_string as string, input.new_string as string, input.replace_all as boolean | undefined, projectRoot)
+        if (!result.isError && sessionId) recordTouchedPath(sessionId, input.path as string).catch(() => {})
+        break
       case 'write_file':
-        result = await writeFile(sandboxId, input.path as string, input.content as string); break
+        result = await writeFile(sandboxId, input.path as string, input.content as string, projectRoot)
+        if (!result.isError && sessionId) recordTouchedPath(sessionId, input.path as string).catch(() => {})
+        break
       case 'list_dir':
-        result = await listDir(sandboxId, input.path as string); break
+        result = await listDir(sandboxId, input.path as string, projectRoot); break
       case 'search_files':
         result = await searchFiles(sandboxId, {
           query: input.query as string,
@@ -221,17 +265,19 @@ export async function executeTool(
           headLimit: input.head_limit as number | undefined,
           offset: input.offset as number | undefined,
           caseInsensitive: input.case_insensitive as boolean | undefined,
-        }); break
+        }, projectRoot); break
       case 'glob':
-        result = await globFiles(sandboxId, input.pattern as string, input.path as string | undefined); break
+        result = await globFiles(sandboxId, input.pattern as string, input.path as string | undefined, projectRoot); break
       case 'web_fetch':
         return await webFetch(input.url as string, input.max_chars as number | undefined)
       case 'delete_file':
-        result = await deleteFile(sandboxId, input.path as string); break
+        result = await deleteFile(sandboxId, input.path as string, projectRoot)
+        if (!result.isError && sessionId) recordTouchedPath(sessionId, input.path as string).catch(() => {})
+        break
       case 'run_command':
-        result = await runCommand(sandboxId, input.command as string); break
+        result = await runCommand(sandboxId, input.command as string, projectRoot); break
       case 'run_command_readonly':
-        result = await runCommandReadonly(sandboxId, input.command as string); break
+        result = await runCommandReadonly(sandboxId, input.command as string, projectRoot); break
       default:
         return { result: `Unknown tool: ${toolName}`, isError: true }
     }
@@ -252,13 +298,13 @@ export async function executeTool(
 
 // ── All operations go to container ────────────────────────────────────────
 
-const PROJECT_ROOT = '/home/user/project'
+export const DEFAULT_PROJECT_ROOT = '/home/user/project'
 
 const READ_FILE_MAX_CHARS = 100_000 // ~25K tokens — prevents context explosion on large files
 
-async function readFile(sandboxId: string, path: string): Promise<ToolResult> {
+async function readFile(sandboxId: string, path: string, projectRoot: string): Promise<ToolResult> {
   try {
-    const content = await compute.readFile(sandboxId, `${PROJECT_ROOT}/${path}`)
+    const content = await compute.readFile(sandboxId, `${projectRoot}/${path}`)
     if (content.length > READ_FILE_MAX_CHARS) {
       const preview = content.slice(0, READ_FILE_MAX_CHARS)
       const totalKB = Math.round(content.length / 1024)
@@ -279,9 +325,10 @@ async function editFile(
   oldString: string,
   newString: string,
   replaceAll = false,
+  projectRoot: string = DEFAULT_PROJECT_ROOT,
 ): Promise<ToolResult> {
   try {
-    const content = await compute.readFile(sandboxId, `${PROJECT_ROOT}/${path}`)
+    const content = await compute.readFile(sandboxId, `${projectRoot}/${path}`)
 
     if (!content.includes(oldString)) {
       // Give a useful hint — show the first 200 chars of the file so Claude can fix its old_string
@@ -297,8 +344,8 @@ async function editFile(
       : content.replace(oldString, newString)
 
     const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
-    if (dir) await compute.exec(sandboxId, `mkdir -p ${PROJECT_ROOT}/${dir}`)
-    await compute.writeFile(sandboxId, `${PROJECT_ROOT}/${path}`, updated)
+    if (dir) await compute.exec(sandboxId, `mkdir -p ${projectRoot}/${dir}`)
+    await compute.writeFile(sandboxId, `${projectRoot}/${path}`, updated)
 
     const occurrences = replaceAll
       ? content.split(oldString).length - 1
@@ -309,22 +356,22 @@ async function editFile(
   }
 }
 
-async function writeFile(sandboxId: string, path: string, content: string): Promise<ToolResult> {
+async function writeFile(sandboxId: string, path: string, content: string, projectRoot: string): Promise<ToolResult> {
   try {
     const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
     if (dir) {
-      await compute.exec(sandboxId, `mkdir -p ${PROJECT_ROOT}/${dir}`)
+      await compute.exec(sandboxId, `mkdir -p ${projectRoot}/${dir}`)
     }
-    await compute.writeFile(sandboxId, `${PROJECT_ROOT}/${path}`, content)
+    await compute.writeFile(sandboxId, `${projectRoot}/${path}`, content)
     return { result: `File written: ${path}`, isError: false }
   } catch (err) {
     return { result: `Failed to write ${path}: ${err instanceof Error ? err.message : 'Unknown'}`, isError: true }
   }
 }
 
-async function listDir(sandboxId: string, dirPath: string): Promise<ToolResult> {
+async function listDir(sandboxId: string, dirPath: string, projectRoot: string): Promise<ToolResult> {
   try {
-    const fullPath = dirPath && dirPath !== '/' ? `${PROJECT_ROOT}/${dirPath}` : PROJECT_ROOT
+    const fullPath = dirPath && dirPath !== '/' ? `${projectRoot}/${dirPath}` : projectRoot
     const result = await compute.exec(sandboxId, `ls -la ${fullPath}`)
     return { result: result.stdout || '(empty)', isError: false }
   } catch {
@@ -342,7 +389,7 @@ interface SearchOptions {
   caseInsensitive?: boolean
 }
 
-async function searchFiles(sandboxId: string, opts: SearchOptions): Promise<ToolResult> {
+async function searchFiles(sandboxId: string, opts: SearchOptions, projectRoot: string): Promise<ToolResult> {
   try {
     const {
       query,
@@ -372,7 +419,7 @@ async function searchFiles(sandboxId: string, opts: SearchOptions): Promise<Tool
         : '--type-add "web:*.{ts,tsx,js,jsx,json,md,css,html,py,go,rs}" --type web'
 
       const escapedQuery = query.replace(/"/g, '\\"').replace(/`/g, '\\`')
-      cmd = `cd ${PROJECT_ROOT} && rg ${flags.join(' ')} ${typeFlags} -e "${escapedQuery}" 2>/dev/null`
+      cmd = `cd ${projectRoot} && rg ${flags.join(' ')} ${typeFlags} -e "${escapedQuery}" 2>/dev/null`
     } else {
       // grep fallback
       const flags = ['-rn', caseInsensitive ? '-i' : ''].filter(Boolean)
@@ -381,7 +428,7 @@ async function searchFiles(sandboxId: string, opts: SearchOptions): Promise<Tool
       if (contextLines > 0) flags.push(`-C ${Math.min(contextLines, 5)}`)
       const include = glob ? `--include="${glob}"` : '--include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --include="*.json" --include="*.md" --include="*.css" --include="*.html"'
       const escapedQuery = query.replace(/"/g, '\\"').replace(/`/g, '\\`')
-      cmd = `cd ${PROJECT_ROOT} && grep ${flags.join(' ')} ${include} "${escapedQuery}" . 2>/dev/null`
+      cmd = `cd ${projectRoot} && grep ${flags.join(' ')} ${include} "${escapedQuery}" . 2>/dev/null`
     }
 
     // Apply pagination
@@ -407,9 +454,9 @@ async function searchFiles(sandboxId: string, opts: SearchOptions): Promise<Tool
   }
 }
 
-async function globFiles(sandboxId: string, pattern: string, searchPath?: string): Promise<ToolResult> {
+async function globFiles(sandboxId: string, pattern: string, searchPath: string | undefined, projectRoot: string): Promise<ToolResult> {
   try {
-    const basePath = searchPath ? `${PROJECT_ROOT}/${searchPath}` : PROJECT_ROOT
+    const basePath = searchPath ? `${projectRoot}/${searchPath}` : projectRoot
 
     // Use find with proper glob support via -path for ** patterns
     // Convert glob pattern to find-compatible expression:
@@ -443,13 +490,13 @@ async function globFiles(sandboxId: string, pattern: string, searchPath?: string
   }
 }
 
-async function deleteFile(sandboxId: string, path: string): Promise<ToolResult> {
+async function deleteFile(sandboxId: string, path: string, projectRoot: string): Promise<ToolResult> {
   try {
     // Sanitize: block path traversal attempts
     if (path.includes('..') || path.startsWith('/')) {
       return { result: `Invalid path: ${path}. Use relative paths within the project.`, isError: true }
     }
-    const fullPath = `${PROJECT_ROOT}/${path}`
+    const fullPath = `${projectRoot}/${path}`
     // Check file exists before deleting — rm -f silently succeeds on missing files
     const check = await compute.exec(sandboxId, `test -f ${fullPath} && echo exists || echo missing`)
     if (check.stdout?.trim() === 'missing') {
@@ -500,10 +547,12 @@ async function webFetch(url: string, maxChars = 20_000): Promise<ToolResult> {
 
 const RUN_COMMAND_TIMEOUT_MS = 120_000 // 2 min — prevents infinite loops from hanging commands
 
-async function runCommand(sandboxId: string, command: string): Promise<ToolResult> {
+async function runCommand(sandboxId: string, command: string, projectRoot: string): Promise<ToolResult> {
   try {
-    // Wrap command with timeout to prevent indefinite hangs
-    const timedCmd = `timeout ${RUN_COMMAND_TIMEOUT_MS / 1000}s bash -c ${JSON.stringify(command)}`
+    // Wrap command with timeout to prevent indefinite hangs. Auto-cd into the
+    // chat's worktree so commands always operate in the right directory.
+    const wrapped = `cd ${projectRoot} && ${command}`
+    const timedCmd = `timeout ${RUN_COMMAND_TIMEOUT_MS / 1000}s bash -c ${JSON.stringify(wrapped)}`
     const result = await compute.exec(sandboxId, timedCmd)
 
     const raw = [result.stdout, result.stderr].filter(Boolean).join('\n')
@@ -534,7 +583,7 @@ async function runCommand(sandboxId: string, command: string): Promise<ToolResul
   }
 }
 
-async function runCommandReadonly(sandboxId: string, command: string): Promise<ToolResult> {
+async function runCommandReadonly(sandboxId: string, command: string, projectRoot: string): Promise<ToolResult> {
   if (READONLY_BLOCKED.test(command)) {
     return {
       result: `Command blocked in read-only mode: "${command}". Only inspection commands are allowed (git log, git diff, git status, cat, ls, find, etc.).`,
@@ -542,7 +591,8 @@ async function runCommandReadonly(sandboxId: string, command: string): Promise<T
     }
   }
   // Use a shorter timeout for read-only commands — they should be fast
-  const timedCmd = `timeout 30s bash -c ${JSON.stringify(command)}`
+  const wrapped = `cd ${projectRoot} && ${command}`
+  const timedCmd = `timeout 30s bash -c ${JSON.stringify(wrapped)}`
   try {
     const result = await compute.exec(sandboxId, timedCmd)
     const raw = [result.stdout, result.stderr].filter(Boolean).join('\n')

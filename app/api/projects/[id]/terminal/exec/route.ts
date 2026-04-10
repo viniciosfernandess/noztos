@@ -7,7 +7,16 @@ interface RouteContext {
   params: Promise<{ id: string }>
 }
 
-// POST — execute a command (auto-starts sandbox if needed)
+// POST — execute a command in the sandbox.
+//
+// Behavior:
+//   - Without query params → runs in /home/user/project (shared main tree)
+//   - With ?worktree=ID    → runs inside that worktree's directory
+//   - With ?session=ID     → resolves to the parent worktree of that chat
+//                            (if any), otherwise main
+//
+// When a worktree is resolved, BORNASTAR_PORT (and PORT alias) are injected
+// so dev servers don't collide across worktrees.
 export async function POST(request: NextRequest, context: RouteContext) {
   const { id } = await context.params
   const access = await verifyProjectAccess(id)
@@ -18,10 +27,51 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: 'Command is required' }, { status: 400 })
   }
 
-  try {
-    const result = await execInSandbox(id, body.command)
+  // Resolve worktree from explicit ?worktree= or via ?session= → chat.worktree
+  const worktreeIdParam = request.nextUrl.searchParams.get('worktree')
+  const sessionId = request.nextUrl.searchParams.get('session')
 
-    // Track resource usage
+  let cwd: string | undefined
+  let env: Record<string, string> | undefined
+
+  if (worktreeIdParam) {
+    const wt = await prisma.worktree.findUnique({
+      where: { id: worktreeIdParam },
+      select: { projectId: true, worktreePath: true, portBase: true },
+    })
+    if (wt && wt.projectId === id) {
+      if (wt.worktreePath) cwd = wt.worktreePath
+      if (wt.portBase != null) {
+        env = {
+          BORNASTAR_PORT: String(wt.portBase),
+          BORNASTAR_PORT_END: String(wt.portBase + 9),
+          PORT: String(wt.portBase),
+        }
+      }
+    }
+  } else if (sessionId) {
+    const session = await prisma.chatSession.findUnique({
+      where: { id: sessionId },
+      select: {
+        projectId: true,
+        worktree: { select: { worktreePath: true, portBase: true } },
+      },
+    })
+    if (session && session.projectId === id && session.worktree) {
+      if (session.worktree.worktreePath) cwd = session.worktree.worktreePath
+      if (session.worktree.portBase != null) {
+        env = {
+          BORNASTAR_PORT: String(session.worktree.portBase),
+          BORNASTAR_PORT_END: String(session.worktree.portBase + 9),
+          PORT: String(session.worktree.portBase),
+        }
+      }
+    }
+  }
+
+  try {
+    const result = await execInSandbox(id, body.command, { cwd, env })
+
     await prisma.resourceUsage.create({
       data: {
         userId: access.userId,

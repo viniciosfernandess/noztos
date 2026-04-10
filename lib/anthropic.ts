@@ -56,6 +56,18 @@ interface AnthropicResponse {
   }
 }
 
+async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
+  let res!: Response
+  for (let attempt = 0; attempt < 3; attempt++) {
+    res = await fetch(url, init)
+    if (res.ok || res.status !== 529) break
+    const wait = (attempt + 1) * 3000
+    console.warn(`[anthropic] 529 overloaded — retrying in ${wait / 1000}s (attempt ${attempt + 1}/3)`)
+    await new Promise(r => setTimeout(r, wait))
+  }
+  return res
+}
+
 /**
  * Call the Anthropic Messages API with a system prompt and user message.
  * Returns the text response content.
@@ -108,7 +120,7 @@ export async function callAnthropic(options: CallOptions): Promise<{
     body.max_tokens = Math.max(options.maxTokens ?? MAX_TOKENS, options.thinkingBudget + MAX_TOKENS)
   }
 
-  const res = await fetch(ANTHROPIC_API_URL, {
+  const res = await fetchWithRetry(ANTHROPIC_API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -246,7 +258,7 @@ export async function callAnthropicWithTools(options: ToolCallOptions): Promise<
     body.max_tokens = Math.max(options.maxTokens ?? MAX_TOKENS, options.thinkingBudget + MAX_TOKENS)
   }
 
-  const res = await fetch(ANTHROPIC_API_URL, {
+  const res = await fetchWithRetry(ANTHROPIC_API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

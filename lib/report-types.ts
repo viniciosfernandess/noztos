@@ -23,6 +23,7 @@ export interface ReportEtapa {
 export interface ReportFileChange {
   path: string
   action: 'write' | 'delete'
+  diff?: string  // unified diff output (git diff), optional
 }
 
 export interface ReportToolCall {

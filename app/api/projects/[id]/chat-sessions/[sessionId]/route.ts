@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyProjectAccess } from '@/lib/auth'
+import { invalidateWorktreeCache } from '@/lib/tools'
 
 interface RouteContext {
   params: Promise<{ id: string; sessionId: string }>
 }
 
-// PATCH — rename or close a chat session
+// PATCH — rename or close a chat session.
+//
+// Closing a chat is purely a session-level operation now: chats live inside
+// a Worktree (or directly on main), so closing a single chat never destroys
+// a worktree. Worktree lifecycle is handled by /worktrees/[id] endpoints.
 export async function PATCH(request: NextRequest, context: RouteContext) {
   const { id, sessionId } = await context.params
   const access = await verifyProjectAccess(id)
@@ -21,8 +26,11 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   const session = await prisma.chatSession.update({
     where: { id: sessionId },
     data,
-    select: { id: true, name: true, status: true },
+    select: { id: true, name: true, status: true, worktreeId: true },
   })
+
+  // Clear the cached worktree resolution so subsequent tool calls re-read.
+  invalidateWorktreeCache(sessionId)
 
   return NextResponse.json(session)
 }

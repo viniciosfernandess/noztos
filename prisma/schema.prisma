@@ -41,6 +41,7 @@ model Project {
   buildSessions  BuildSession[]
   chatMessages   ChatMessage[]
   chatSessions   ChatSession[]
+  worktrees      Worktree[]
   collaborators  Collaborator[]
   user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   repository     Repository?
@@ -71,6 +72,9 @@ model Repository {
   sandboxStatus    String?
   fileTree         String?
   fileTreeUpdatedAt DateTime?
+  // Project-level run script (e.g. "PORT=$BORNASTAR_PORT npm run dev").
+  // When set, the user can start the dev server for any chat with one click.
+  runScript        String?
   files            RepoFile[]
   project          Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -131,6 +135,32 @@ model Team {
   @@map("teams")
 }
 
+// A Worktree is an isolated git branch + working directory inside the project's
+// sandbox. Multiple chat sessions can live inside the same worktree, sharing
+// the working files (just like multiple chats on main share the project root).
+//
+// When worktreeId on a ChatSession is null, the chat operates directly on
+// the project's main directory (no isolation — the "Cursor local mode").
+model Worktree {
+  id           String        @id @default(cuid())
+  projectId    String
+  userId       String
+  name         String        @default("New Worktree")
+  status       String        @default("open") // open, archived, trashed, deleted, merged
+  branchName   String
+  worktreePath String
+  baseCommit   String
+  portBase     Int?
+  trashedAt    DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  sessions     ChatSession[]
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, status])
+  @@map("worktrees")
+}
+
 model ChatSession {
   id             String         @id @default(cuid())
   projectId      String
@@ -138,12 +168,23 @@ model ChatSession {
   name           String         @default("New Chat")
   status         String         @default("open")
   permissionMode PermissionMode @default(leitura)
+  // worktreeId — when null, this chat lives on main (the project root).
+  // When set, the chat lives inside the parent Worktree (its branch + dir).
+  worktreeId     String?
+  // Files this chat has touched (write/edit/delete tool calls). Used to
+  // attribute diff stats per chat on main, where multiple chats share the
+  // same working tree. Always relative paths from the project root.
+  touchedPaths   String[]       @default([])
+  // Lifecycle helper for the trash flow
+  trashedAt      DateTime?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
   messages       ChatMessage[]
   project        Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  worktree       Worktree?      @relation(fields: [worktreeId], references: [id], onDelete: Cascade)
 
   @@index([projectId, status])
+  @@index([worktreeId])
   @@map("chat_sessions")
 }
 

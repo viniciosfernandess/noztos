@@ -56,6 +56,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     model?: string
     thinkingBudget?: number
     permissionMode?: 'leitura' | 'planejamento' | 'edicao'
+    contextPaths?: string[]
   }
   try {
     body = await request.json()
@@ -85,6 +86,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     model: body.model,
     thinkingBudget: body.thinkingBudget,
     permissionMode: body.permissionMode ?? 'leitura',
+    contextPaths: Array.isArray(body.contextPaths) ? body.contextPaths as string[] : undefined,
   }
 
   if (body.mode === 'team') {

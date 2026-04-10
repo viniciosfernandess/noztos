@@ -57,6 +57,7 @@ export const ModelName = {
   RepoFile: 'RepoFile',
   Collaborator: 'Collaborator',
   Team: 'Team',
+  Worktree: 'Worktree',
   ChatSession: 'ChatSession',
   ChatMessage: 'ChatMessage',
   Task: 'Task',
@@ -136,7 +137,8 @@ export const RepositoryScalarFieldEnum = {
   sandboxStartedAt: 'sandboxStartedAt',
   sandboxStatus: 'sandboxStatus',
   fileTree: 'fileTree',
-  fileTreeUpdatedAt: 'fileTreeUpdatedAt'
+  fileTreeUpdatedAt: 'fileTreeUpdatedAt',
+  runScript: 'runScript'
 } as const
 
 export type RepositoryScalarFieldEnum = (typeof RepositoryScalarFieldEnum)[keyof typeof RepositoryScalarFieldEnum]
@@ -189,6 +191,24 @@ export const TeamScalarFieldEnum = {
 export type TeamScalarFieldEnum = (typeof TeamScalarFieldEnum)[keyof typeof TeamScalarFieldEnum]
 
 
+export const WorktreeScalarFieldEnum = {
+  id: 'id',
+  projectId: 'projectId',
+  userId: 'userId',
+  name: 'name',
+  status: 'status',
+  branchName: 'branchName',
+  worktreePath: 'worktreePath',
+  baseCommit: 'baseCommit',
+  portBase: 'portBase',
+  trashedAt: 'trashedAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type WorktreeScalarFieldEnum = (typeof WorktreeScalarFieldEnum)[keyof typeof WorktreeScalarFieldEnum]
+
+
 export const ChatSessionScalarFieldEnum = {
   id: 'id',
   projectId: 'projectId',
@@ -196,6 +216,9 @@ export const ChatSessionScalarFieldEnum = {
   name: 'name',
   status: 'status',
   permissionMode: 'permissionMode',
+  worktreeId: 'worktreeId',
+  touchedPaths: 'touchedPaths',
+  trashedAt: 'trashedAt',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const

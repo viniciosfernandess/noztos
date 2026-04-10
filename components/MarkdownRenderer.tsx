@@ -124,7 +124,7 @@ export function MarkdownRenderer({ content }: { content: string }) {
         },
         // Paragraphs
         p({ children }) {
-          return <p className="my-3 leading-relaxed text-zinc-200">{children}</p>
+          return <p className="my-3 text-sm leading-relaxed text-zinc-200">{children}</p>
         },
         // Bold
         strong({ children }) {
