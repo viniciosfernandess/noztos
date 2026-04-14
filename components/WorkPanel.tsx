@@ -1589,9 +1589,12 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
     setActiveTeamId(null)
   }
 
-  // Count changed files for the Changes tab badge — sum of all worktree + chat stats files
-  const changedFilesCount = Object.values(worktreeStats).reduce((sum, s) => sum + s.files, 0)
+  // Count changed files for the Changes tab badge — sum of all worktree +
+  // chat stats files. Falls back to MOCK_CHANGES.length while the backend
+  // isn't wired up, so the badge still reflects the rows the user sees.
+  const realChangedCount = Object.values(worktreeStats).reduce((sum, s) => sum + s.files, 0)
     + Object.values(chatStats).reduce((sum, s) => sum + s.files, 0)
+  const changedFilesCount = realChangedCount > 0 ? realChangedCount : MOCK_CHANGES.length
 
   const hasOpenChat = activeSessionId !== null
 
@@ -2066,7 +2069,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
             >
               Changes
               {changedFilesCount > 0 && (
-                <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] tabular-nums text-zinc-300">
+                <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-400">
                   {changedFilesCount}
                 </span>
               )}
@@ -2087,9 +2090,6 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                 <span className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full bg-white" />
               )}
             </button>
-            {/* Spacer — pushes Checks away from Explorer/Changes so it reads
-                as a separate group of actions, like Conductor does. */}
-            <div className="ml-4" />
             <button
               onClick={() => setRightPanelTab('checks')}
               className={`relative flex items-center gap-1.5 px-3 py-2.5 text-[12px] font-medium transition-colors ${
@@ -2100,7 +2100,10 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
             >
               Checks
               {statusBadge && (
-                <span className={`h-1.5 w-1.5 rounded-full ${statusBadge.color}`} title={statusBadge.label} />
+                // Amber whenever there's anything pending (uncommitted,
+                // unpushed, PR open, behind main). Keeps the tab badge
+                // simple — either "work pending" or nothing.
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-500" title={statusBadge.label} />
               )}
               {rightPanelTab === 'checks' && (
                 <span className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full bg-white" />

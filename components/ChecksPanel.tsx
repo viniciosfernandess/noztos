@@ -89,6 +89,10 @@ export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive }: Che
   // time. Otherwise we skip the modal and archive immediately.
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
   const [prDraft, setPrDraft] = useState(false)
+  // Live "Current changes" summary — re-fetched alongside git status.
+  // Renders below the PR body once a PR exists so the user can see what
+  // the branch currently contains (including pushes after the PR opened).
+  const [currentChangesSummary, setCurrentChangesSummary] = useState('')
 
   const qs = useCallback(() => {
     const p = new URLSearchParams()
@@ -113,27 +117,15 @@ export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive }: Che
 
   // ── PR draft — load on mount, debounce save on edit ────────────────────
   useEffect(() => {
-    // Drafts live on the worktree only — main chats skip this.
+    // Drafts live on the worktree only — main chats skip this. We only
+    // load what the user (or a previous Create PR) typed; we never
+    // auto-fill from the branch diff on first view. The summary is only
+    // surfaced later, as part of the PR body once the PR exists.
     if (!worktreeId) { setPrTitle(''); setPrBody(''); return }
     fetch(`/api/projects/${projectId}/worktrees/${worktreeId}/pr-draft`)
       .then((r) => r.ok ? r.json() : null)
-      .then(async (d) => {
-        const hasDraft = d && (d.title?.length || d.body?.length)
-        if (hasDraft) {
-          setPrTitle(d.title ?? '')
-          setPrBody(d.body ?? '')
-          return
-        }
-        // No draft yet — try to suggest one from the branch diff so the
-        // fields aren't empty when the user first lands here.
-        try {
-          const s = await fetch(`/api/projects/${projectId}/worktrees/${worktreeId}/pr-suggestion`)
-          if (s.ok) {
-            const sug = await s.json()
-            if (sug.title) setPrTitle(sug.title)
-            if (sug.body) setPrBody(sug.body)
-          }
-        } catch {}
+      .then((d) => {
+        if (d) { setPrTitle(d.title ?? ''); setPrBody(d.body ?? '') }
       })
       .catch(() => {})
   }, [projectId, worktreeId])
@@ -165,6 +157,19 @@ export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive }: Che
   }, [projectId, qs, worktreeId, sessionId])
 
   useEffect(() => { refreshTodos() }, [refreshTodos])
+
+  // Pull the live "Current changes" summary while a PR is open — lets the
+  // user see every push that landed after PR creation. Polled on the same
+  // 15s cadence as git status via the status change.
+  useEffect(() => {
+    const pr = status?.pr
+    const hasOpen = !!pr && pr.state === 'open'
+    if (!worktreeId || !hasOpen) { setCurrentChangesSummary(''); return }
+    fetch(`/api/projects/${projectId}/worktrees/${worktreeId}/pr-suggestion`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d?.body) setCurrentChangesSummary(d.body) })
+      .catch(() => {})
+  }, [projectId, worktreeId, status])
 
   async function addTodo() {
     const content = newTodoContent.trim()
@@ -251,6 +256,23 @@ export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive }: Che
     if (!status) return
     setBusy('pr')
     try {
+      // Pull a fresh suggestion right before creating — gives us a decent
+      // title + body even when the user didn't type anything. If they DID
+      // type, we respect their wording.
+      let title = prTitle.trim()
+      let body = prBody
+      if (!title || !body) {
+        try {
+          const s = await fetch(`/api/projects/${projectId}/worktrees/${worktreeId}/pr-suggestion`)
+          if (s.ok) {
+            const sug = await s.json()
+            if (!title) title = sug.title || `Changes from ${status.branch}`
+            if (!body) body = sug.body || ''
+          }
+        } catch {}
+      }
+      if (!title) title = `Changes from ${status.branch}`
+
       // If the working tree is dirty or there are unpushed commits, the
       // backend auto-commits + pushes before opening the PR. That's the
       // Conductor-style "one-click PR" flow — no need to commit first.
@@ -258,15 +280,22 @@ export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive }: Che
       const res = await fetch(`/api/projects/${projectId}/worktrees/${worktreeId}/pr`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: prTitle.trim() || `Changes from ${status.branch}`,
-          body: prBody,
-          draft: prDraft,
-          autoCommit: needsAutoCommit,
-          commitMessage: prTitle.trim() || undefined,
-        }),
+        body: JSON.stringify({ title, body, draft: prDraft, autoCommit: needsAutoCommit, commitMessage: title }),
       })
       if (!res.ok) { const t = await res.json().catch(() => ({})); throw new Error(t.error || 'create PR failed') }
+
+      // Sync worktree name to the PR title so the sidebar reflects what
+      // the PR is about. Chats inside the worktree keep their own names.
+      fetch(`/api/projects/${projectId}/worktrees/${worktreeId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: title.slice(0, 80) }),
+      }).then(() => window.dispatchEvent(new CustomEvent('bornastar-refresh-worktrees'))).catch(() => {})
+
+      // Mirror locally so the PR read-only view shows the real data
+      // immediately without waiting for the next poll.
+      setPrTitle(title)
+      setPrBody(body)
       await refreshStatus()
     } catch (e) { setError(e instanceof Error ? e.message : 'Create PR failed') }
     finally { setBusy(null) }
@@ -354,8 +383,19 @@ export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive }: Che
         rows={Math.max(2, displayBody.split('\n').length)}
         placeholder="PR description"
         readOnly={lockFields}
-        className="mb-6 w-full resize-none border-0 bg-transparent p-0 text-[12px] text-zinc-300 placeholder-zinc-600 outline-none"
+        className="mb-4 w-full resize-none border-0 bg-transparent p-0 text-[12px] text-zinc-300 placeholder-zinc-600 outline-none"
       />
+
+      {/* Current changes — live diff summary, only once a PR is open. The
+          PR body above is frozen at PR-creation time; this block shows
+          what the branch actually holds right now so the user can see
+          pushes that landed after the PR opened. */}
+      {hasOpenPr && currentChangesSummary && (
+        <div className="mb-6 rounded border border-[#2B2B2B] px-3 py-2" style={{ backgroundColor: 'rgba(255,255,255,0.02)' }}>
+          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Current changes</div>
+          <pre className="whitespace-pre-wrap break-words font-sans text-[11px] text-zinc-400">{currentChangesSummary}</pre>
+        </div>
+      )}
 
       {/* ── Git status (conditional) ─────────────────────────────────────── */}
       {showGitSection && (
