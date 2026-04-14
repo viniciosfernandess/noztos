@@ -34,7 +34,11 @@
       "WebFetch(domain:cursor.com)",
       "WebFetch(domain:www.gitworktree.org)",
       "WebFetch(domain:forum.cursor.com)",
-      "Bash(kill 70876)"
+      "Bash(kill 70876)",
+      "WebFetch(domain:hiretop.com)",
+      "WebFetch(domain:www.omnara.com)",
+      "Bash(git -C /Users/viniciosfernandes/Desktop/projects/bornastar status --short)",
+      "Bash(grep -n \"^]$\\\\|^const STATUS_ICONS\" /Users/viniciosfernandes/Desktop/projects/bornastar/components/WorkPanel.tsx)"
     ],
     "additionalDirectories": [
       "/Users/viniciosfernandes/Desktop/projects/bornastar/app/api/projects/[id]",

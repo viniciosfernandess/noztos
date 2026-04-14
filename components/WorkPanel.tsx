@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { ChatTabs } from './ChatTabs'
+import { CodeMirrorFileView, type CodeMirrorFileViewHandle } from './CodeMirrorFileView'
 import { ReportBadge } from './ChatReport'
 import type { ChatReport } from '@/lib/report-types'
 
@@ -193,6 +194,7 @@ function ChatsSidebar({
   activeWorktreeId,
   unreadIds,
   unreadWorktreeIds,
+  busySessions,
   worktreeStats,
   chatStats,
   onSelectMainChat,
@@ -214,6 +216,7 @@ function ChatsSidebar({
   activeWorktreeId: string | null
   unreadIds: Set<string>
   unreadWorktreeIds: Set<string>
+  busySessions: Set<string>
   worktreeStats: Record<string, { added: number; removed: number; files: number }>
   chatStats: Record<string, { added: number; removed: number; files: number }>
   onSelectMainChat: (id: string) => void
@@ -380,6 +383,7 @@ function ChatsSidebar({
                     active={active}
                     unread={unread}
                     stats={chatStats[s.id]}
+                    busy={busySessions.has(s.id)}
                     editing={editingId === s.id}
                     editValue={editValue}
                     setEditValue={setEditValue}
@@ -403,6 +407,8 @@ function ChatsSidebar({
                 const isUnread =
                   !isActiveWorktree &&
                   (unreadWorktreeIds.has(w.id) || w.sessions.some((s) => unreadIds.has(s.id)))
+                // Worktree is "busy" if ANY of its nested sessions is busy
+                const isWorktreeBusy = w.sessions.some((s) => busySessions.has(s.id))
                 return (
                   <div
                     key={w.id}
@@ -411,6 +417,9 @@ function ChatsSidebar({
                       isActiveWorktree ? 'bg-white/[0.05]' : 'hover:bg-white/[0.025]'
                     }`}
                   >
+                    {isWorktreeBusy ? (
+                      <LoadingSpinner className={`h-3.5 w-3.5 shrink-0 ${isActiveWorktree ? 'text-violet-300' : 'text-violet-400'}`} />
+                    ) : (
                     <svg
                       className={`h-3.5 w-3.5 shrink-0 ${
                         isActiveWorktree
@@ -428,6 +437,7 @@ function ChatsSidebar({
                       <circle cx="12" cy="12" r="1.5" fill="currentColor" />
                       <path d="M4 5.5 L4 9 Q4 12 7 12 L10.5 12" strokeLinecap="round" />
                     </svg>
+                    )}
 
                     {editingId === w.id ? (
                       <input
@@ -582,10 +592,22 @@ function ChatsSidebar({
 
 // ── Reusable chat row ─────────────────────────────────────────────────────
 
+// Animated loading spinner — used as a session "busy" indicator in the
+// sidebar and tab bar when an agent is processing a message.
+function LoadingSpinner({ className = '' }: { className?: string }) {
+  return (
+    <svg className={`animate-spin ${className}`} fill="none" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2.5" strokeOpacity="0.2" />
+      <path d="M22 12a10 10 0 00-10-10" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 function ChatRow({
   chat,
   active,
   unread,
+  busy,
   stats,
   editing,
   editValue,
@@ -603,6 +625,7 @@ function ChatRow({
   chat: SidebarChat
   active: boolean
   unread: boolean
+  busy: boolean
   stats?: { added: number; removed: number; files: number }
   editing: boolean
   editValue: string
@@ -624,6 +647,9 @@ function ChatRow({
         active ? 'bg-white/[0.05]' : 'hover:bg-white/[0.025]'
       }`}
     >
+      {busy ? (
+        <LoadingSpinner className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-violet-300' : 'text-violet-400'}`} />
+      ) : (
       <svg
         className={`h-3.5 w-3.5 shrink-0 ${active ? 'text-zinc-200' : unread ? 'text-yellow-400' : 'text-zinc-500'}`}
         fill="none"
@@ -633,6 +659,7 @@ function ChatRow({
       >
         <path strokeLinejoin="round" d="M2.75 4.25 Q2.75 2.75 4.25 2.75 L11.75 2.75 Q13.25 2.75 13.25 4.25 L13.25 9.5 Q13.25 11 11.75 11 L7 11 L4.25 13.5 L4.25 11 Q2.75 11 2.75 9.5 Z" />
       </svg>
+      )}
 
       {editing ? (
         <input
@@ -1058,6 +1085,57 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
   const [rightPanelTab, setRightPanelTab] = useState<'explorer' | 'changes'>('explorer')
   const [changesSearchOpen, setChangesSearchOpen] = useState(false)
   const [changesSearchQuery, setChangesSearchQuery] = useState('')
+  const [rightPanelExpanded, setRightPanelExpanded] = useState(false)
+  const [showTargetBranchPicker, setShowTargetBranchPicker] = useState(false)
+  const [targetBranchSearch, setTargetBranchSearch] = useState('')
+  // Scratchpad — per-project free-form notes, referenced via @notes in chat
+  const [showScratchpad, setShowScratchpad] = useState(false)
+  const [scratchpadContent, setScratchpadContent] = useState('')
+  // Sessions that are currently processing (agent is working) — shown as
+  // spinner icons in the sidebar + worktree tab bar
+  const [busySessions, setBusySessions] = useState<Set<string>>(new Set())
+
+  // Hunk attachment from Changes panel → injected into next chat message
+  const [pendingHunkAttachment, setPendingHunkAttachment] = useState<{
+    filePath: string
+    fileStatus: 'M' | 'A' | 'D'
+    focusStart: number
+    focusEnd: number
+    // Pre-formatted content that will be prepended to the user's message
+    formattedContent: string
+    // Simple label for the pill
+    lineRange: string
+  } | null>(null)
+
+  // Stable callback passed to ChatPanel — prevents infinite re-renders by
+  // keeping the reference identity across parent renders.
+  const handleBusyChange = useCallback((sid: string, busy: boolean) => {
+    setBusySessions((prev) => {
+      const alreadyHas = prev.has(sid)
+      if (busy && alreadyHas) return prev
+      if (!busy && !alreadyHas) return prev
+      const next = new Set(prev)
+      if (busy) next.add(sid)
+      else next.delete(sid)
+      return next
+    })
+  }, [])
+
+  // Load scratchpad from localStorage on mount (per-project)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`bornastar:scratchpad:${projectId}`)
+      if (saved !== null) setScratchpadContent(saved)
+    } catch { /* ignore */ }
+  }, [projectId])
+
+  // Debounced save to localStorage whenever content changes
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try { localStorage.setItem(`bornastar:scratchpad:${projectId}`, scratchpadContent) } catch { /* ignore */ }
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [projectId, scratchpadContent])
   const [activeMode, setActiveMode] = useState<ChatMode>('no_skill')
   const [activeSkillId, setActiveSkillId] = useState<string | null>(null)
   const [activeTeamId, setActiveTeamId] = useState<string | null>(null)
@@ -1299,6 +1377,80 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
     }
   }
 
+  // ── Hunk attach handlers ────────────────────────────────────────────────
+  //
+  // When the user clicks "Attach to current chat" or "Attach to new chat" on
+  // a diff hunk card, we build a formatted snippet that will be prepended to
+  // their next chat message (with a "focused on lines X-Y" marker).
+
+  function buildHunkAttachmentPayload(
+    filePath: string,
+    fileStatus: 'M' | 'A' | 'D',
+    hunk: DiffHunk,
+  ): {
+    filePath: string
+    fileStatus: 'M' | 'A' | 'D'
+    focusStart: number
+    focusEnd: number
+    formattedContent: string
+    lineRange: string
+  } {
+    // Compute focus range from hunk — min..max of any line number present
+    const oldNums = hunk.lines.map((l) => l.oldLine).filter((n): n is number => typeof n === 'number')
+    const newNums = hunk.lines.map((l) => l.newLine).filter((n): n is number => typeof n === 'number')
+    const allNums = [...oldNums, ...newNums]
+    const focusStart = allNums.length > 0 ? Math.min(...allNums) : hunk.newStart
+    const focusEnd = allNums.length > 0 ? Math.max(...allNums) : hunk.newStart
+
+    // Format: file header + diff block with markers around the focused hunk.
+    // TODO: when the real git diff API is wired, include the full file here
+    // with the hunk lines highlighted. For now we send the hunk diff itself.
+    const diffLines = hunk.lines.map((l) => {
+      const marker = l.type === 'add' ? '+' : l.type === 'remove' ? '-' : ' '
+      return `${marker}${l.content}`
+    }).join('\n')
+
+    const formattedContent = [
+      `📎 Attached from Changes — ${filePath} (${fileStatus})`,
+      `Focus: lines ${focusStart}–${focusEnd}`,
+      '```diff',
+      diffLines,
+      '```',
+      '',
+    ].join('\n')
+
+    return {
+      filePath,
+      fileStatus,
+      focusStart,
+      focusEnd,
+      formattedContent,
+      lineRange: focusStart === focusEnd ? `line ${focusStart}` : `lines ${focusStart}-${focusEnd}`,
+    }
+  }
+
+  async function handleAttachHunkToCurrentChat(filePath: string, fileStatus: 'M' | 'A' | 'D', hunk: DiffHunk) {
+    const payload = buildHunkAttachmentPayload(filePath, fileStatus, hunk)
+    // If no chat is active, create a new main chat first (user is implicitly
+    // viewing main changes when they have no worktree/chat open)
+    if (!activeSessionId && !activeWorktreeId) {
+      await handleNewMainChat()
+    }
+    setPendingHunkAttachment(payload)
+  }
+
+  async function handleAttachHunkToNewChat(filePath: string, fileStatus: 'M' | 'A' | 'D', hunk: DiffHunk) {
+    const payload = buildHunkAttachmentPayload(filePath, fileStatus, hunk)
+    // New chat follows the current context: inside a worktree → add chat to
+    // that worktree. Otherwise (main or empty) → new main chat.
+    if (activeWorktreeId) {
+      await handleAddChatToWorktree(activeWorktreeId)
+    } else {
+      await handleNewMainChat()
+    }
+    setPendingHunkAttachment(payload)
+  }
+
   async function handleCloseWorktreeChat(worktreeId: string, sessionId: string) {
     // Close the chat (status → closed, messages preserved in DB)
     await fetch(`/api/projects/${projectId}/chat-sessions/${sessionId}`, {
@@ -1381,6 +1533,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
           activeWorktreeId={activeWorktreeId}
           unreadIds={unreadSessionIds}
           unreadWorktreeIds={unreadWorktreeIds}
+          busySessions={busySessions}
           worktreeStats={worktreeStats}
           chatStats={chatStats}
           onSelectMainChat={(id) => {
@@ -1452,8 +1605,9 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                 if (!wt) return null
                 return (
                   <>
-                    {/* Top bar — worktree name + branch + history */}
+                    {/* Top bar — worktree name + branch + target selector + actions */}
                     <div className="flex shrink-0 items-center gap-2 border-b border-[#2B2B2B] px-4 py-2" style={{ backgroundColor: '#1F1F1F' }}>
+                      {/* Branch icon */}
                       <svg
                         className="h-3.5 w-3.5 shrink-0 text-zinc-500"
                         fill="none"
@@ -1465,9 +1619,92 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                         <circle cx="12" cy="12" r="1.5" fill="currentColor" />
                         <path d="M4 5.5 L4 9 Q4 12 7 12 L10.5 12" strokeLinecap="round" />
                       </svg>
+
+                      {/* Worktree name + (branch) */}
                       <span className="min-w-0 truncate text-[12px] font-medium text-zinc-300">{wt.name}</span>
-                      <span className="text-[10px] text-zinc-600">({wt.branchName})</span>
+                      <span className="text-[10px] text-zinc-600">(branch)</span>
+
+                      {/* Arrow → */}
+                      <svg className="h-3 w-3 shrink-0 text-zinc-600" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                      </svg>
+
+                      {/* Target branch pill — clickable dropdown */}
+                      <div className="relative">
+                        <button
+                          onClick={() => { setShowTargetBranchPicker(!showTargetBranchPicker); setTargetBranchSearch('') }}
+                          className="flex items-center gap-1 rounded-md border border-[#3C3C3C] px-2 py-0.5 transition-colors hover:border-zinc-500 hover:bg-white/5"
+                          style={{ backgroundColor: '#2A2A2A' }}
+                        >
+                          <span className="font-mono text-[11px] text-zinc-300">origin/main</span>
+                          <svg className="h-2.5 w-2.5 text-zinc-500" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                          </svg>
+                        </button>
+
+                        {/* Target branch picker dropdown */}
+                        {showTargetBranchPicker && (
+                          <>
+                            <div className="fixed inset-0 z-40" onClick={() => setShowTargetBranchPicker(false)} />
+                            <div
+                              className="absolute left-0 top-full z-50 mt-1 w-64 overflow-hidden rounded-xl border border-white/15 shadow-2xl shadow-black/50"
+                              style={{ backgroundColor: '#252526' }}
+                            >
+                              {/* Search input */}
+                              <div className="flex items-center gap-2 border-b border-[#2B2B2B] px-3 py-2">
+                                <svg className="h-3 w-3 shrink-0 text-zinc-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                                </svg>
+                                <input
+                                  autoFocus
+                                  value={targetBranchSearch}
+                                  onChange={(e) => setTargetBranchSearch(e.target.value)}
+                                  placeholder="Select target branch..."
+                                  className="min-w-0 flex-1 bg-transparent text-[11px] text-zinc-200 placeholder-zinc-600 outline-none"
+                                />
+                              </div>
+                              {/* Branch list */}
+                              <div className="max-h-48 overflow-y-auto py-1">
+                                {['main', 'develop', 'staging'].filter(
+                                  (b) => !targetBranchSearch || b.includes(targetBranchSearch.toLowerCase())
+                                ).map((branch) => (
+                                  <button
+                                    key={branch}
+                                    onClick={() => setShowTargetBranchPicker(false)}
+                                    className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] transition-colors hover:bg-white/5 ${
+                                      branch === 'main' ? 'text-zinc-100' : 'text-zinc-400'
+                                    }`}
+                                  >
+                                    {branch === 'main' && (
+                                      <svg className="h-3 w-3 shrink-0 text-violet-400" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                                      </svg>
+                                    )}
+                                    {branch !== 'main' && <div className="h-3 w-3 shrink-0" />}
+                                    <span className="font-mono">{branch}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+
                       <div className="flex-1" />
+
+                      {/* Scratchpad */}
+                      <button
+                        type="button"
+                        onClick={() => setShowScratchpad(true)}
+                        title="Scratchpad"
+                        className="text-zinc-500 transition-colors hover:text-zinc-300"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zM19.5 14.25v4.75A2.25 2.25 0 0117.25 21H5.25A2.25 2.25 0 013 18.75V6.75A2.25 2.25 0 015.25 4.5h4.75" />
+                        </svg>
+                      </button>
+
+                      {/* History */}
                       <button
                         type="button"
                         title="Session history"
@@ -1480,7 +1717,8 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                           <path strokeLinecap="round" strokeLinejoin="round" d="M3 4.5v4h4" />
                         </svg>
                       </button>
-                      {/* Minimize — go back to main context */}
+
+                      {/* Minimize */}
                       <button
                         onClick={() => {
                           setActiveWorktreeId(null)
@@ -1502,6 +1740,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                         {wt.sessions.map((s) => {
                           const tabActive = activeSessionId === s.id
                           const tabUnread = !tabActive && unreadSessionIds.has(s.id)
+                          const tabBusy = busySessions.has(s.id)
                           const isRenaming = renamingTabId === s.id
                           return (
                             <div
@@ -1528,6 +1767,9 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                                 }}
                                 className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 pl-3 pr-1.5 py-2.5 text-[11px]"
                               >
+                                {tabBusy ? (
+                                  <LoadingSpinner className={`h-3 w-3 shrink-0 ${tabActive ? 'text-violet-300' : 'text-violet-400'}`} />
+                                ) : (
                                 <svg
                                   className={`h-3 w-3 shrink-0 ${
                                     tabActive ? 'text-zinc-200' : tabUnread ? 'text-yellow-400' : 'text-zinc-500'
@@ -1539,6 +1781,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                                 >
                                   <path strokeLinejoin="round" d="M2.75 4.25 Q2.75 2.75 4.25 2.75 L11.75 2.75 Q13.25 2.75 13.25 4.25 L13.25 9.5 Q13.25 11 11.75 11 L7 11 L4.25 13.5 L4.25 11 Q2.75 11 2.75 9.5 Z" />
                                 </svg>
+                                )}
                                 {isRenaming ? (
                                   <input
                                     autoFocus
@@ -1638,6 +1881,10 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                     setActiveWorktreeId(null)
                     setChatMessages([])
                   }}
+                  onOpenScratchpad={() => setShowScratchpad(true)}
+                  onBusyChange={handleBusyChange}
+                  hunkAttachment={pendingHunkAttachment}
+                  onClearHunkAttachment={() => setPendingHunkAttachment(null)}
                 />
               </div>
             </div>
@@ -1729,7 +1976,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
       </div>
 
         {/* Right: Explorer / Changes / Terminal panel */}
-        <div className="flex w-[30%] min-w-0 shrink-0 flex-col border-l border-[#2B2B2B]" style={{ backgroundColor: '#1F1F1F' }}>
+        <div className={`flex min-w-0 shrink-0 flex-col border-l border-[#2B2B2B] transition-all duration-200 ${rightPanelExpanded ? 'w-[50%]' : 'w-[30%]'}`} style={{ backgroundColor: '#1F1F1F' }}>
           {/* Tabs: Changes | Explorer + context label */}
           <div className="flex shrink-0 items-center border-b border-[#2B2B2B] px-3" style={{ backgroundColor: '#1F1F1F' }}>
             <button
@@ -1776,11 +2023,22 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
               </button>
             )}
             <div className="flex-1" />
-            <span className="text-[11px] font-medium text-zinc-500">
+            <span className="mr-2 text-[11px] font-medium text-zinc-500">
               {activeWorktreeId
                 ? `${worktrees.find((w) => w.id === activeWorktreeId)?.branchName ?? 'branch'} (branch)`
                 : 'main'}
             </span>
+            {/* Expand/collapse panel toggle */}
+            <button
+              onClick={() => setRightPanelExpanded(!rightPanelExpanded)}
+              title={rightPanelExpanded ? 'Collapse panel' : 'Expand panel'}
+              className="text-zinc-500 transition-colors hover:text-zinc-300"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <path d={rightPanelExpanded ? 'M15 3v18' : 'M9 3v18'} />
+              </svg>
+            </button>
           </div>
 
           {/* Search bar — only when Changes tab + search open */}
@@ -1816,9 +2074,19 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
               <FileTree projectId={projectId} hasActiveSession={!!activeSessionId} />
             )}
             {rightPanelTab === 'changes' && (
-              <div className="flex h-full items-center justify-center">
-                <p className="text-[11px] text-zinc-500">No changes yet.</p>
-              </div>
+              <ChangesList
+                searchQuery={changesSearchQuery}
+                onAttachToCurrent={handleAttachHunkToCurrentChat}
+                onAttachToNew={handleAttachHunkToNewChat}
+                onOpenFile={(path) => {
+                  setRightPanelTab('explorer')
+                  // Dispatch AFTER the Explorer tab is mounted — setState is
+                  // async and FileTree listens only while mounted.
+                  setTimeout(() => {
+                    window.dispatchEvent(new CustomEvent('explorer-open-file', { detail: path }))
+                  }, 50)
+                }}
+              />
             )}
           </div>
 
@@ -1924,6 +2192,64 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
         )
       })()}
 
+      {/* Scratchpad modal — per-project free-form notes */}
+      {showScratchpad && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          onClick={() => setShowScratchpad(false)}
+        >
+          <div
+            className="flex h-[70vh] max-h-[620px] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-white/15 shadow-2xl shadow-black/60"
+            style={{ backgroundColor: '#1F1F1F' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex shrink-0 items-center gap-2 border-b border-[#2B2B2B] px-5 py-3">
+              <svg className="h-4 w-4 text-zinc-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zM19.5 14.25v4.75A2.25 2.25 0 0117.25 21H5.25A2.25 2.25 0 013 18.75V6.75A2.25 2.25 0 015.25 4.5h4.75" />
+              </svg>
+              <h3 className="text-[13px] font-semibold text-zinc-100">Scratchpad</h3>
+              <span className="text-[11px] text-zinc-600">
+                Reference with <span className="rounded bg-white/10 px-1 py-0.5 font-mono text-[10px] text-zinc-300">@notes</span> in chat
+              </span>
+              <div className="flex-1" />
+              <button
+                onClick={() => setShowScratchpad(false)}
+                className="text-zinc-500 transition-colors hover:text-zinc-300"
+                title="Close"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Textarea */}
+            <textarea
+              autoFocus
+              value={scratchpadContent}
+              onChange={(e) => setScratchpadContent(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Escape') setShowScratchpad(false) }}
+              placeholder="Use this as a scratchpad. Reference with @notes in chat to inject it as context for the agent."
+              className="min-h-0 flex-1 resize-none bg-transparent px-5 py-4 text-[13px] leading-relaxed text-zinc-200 placeholder-zinc-600 outline-none"
+              style={{ backgroundColor: '#181818' }}
+            />
+
+            {/* Footer — autosave hint */}
+            <div className="flex shrink-0 items-center justify-between border-t border-[#2B2B2B] px-5 py-2">
+              <span className="text-[10px] text-zinc-600">
+                {scratchpadContent.length > 0
+                  ? `${scratchpadContent.length.toLocaleString()} characters · auto-saved`
+                  : 'Empty · auto-saved'}
+              </span>
+              <span className="text-[10px] text-zinc-600">
+                Press <kbd className="rounded bg-white/10 px-1 font-mono text-[9px] text-zinc-400">Esc</kbd> to close
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Close worktree chat confirmation */}
       {closingWorktreeChat && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setClosingWorktreeChat(null)}>
@@ -1990,6 +2316,102 @@ const EXT_TO_LANG: Record<string, string> = {
 function getLanguage(filename: string): string {
   const ext = filename.split('.').pop()?.toLowerCase() ?? ''
   return EXT_TO_LANG[ext] ?? 'typescript'
+}
+
+// ── Shiki integration ────────────────────────────────────────────────────
+// Uses shiki (TextMate grammars + VS Code Dark+ theme) for syntax highlighting
+// — same engine as VS Code, so colors match Cursor/Conductor exactly.
+import { highlightLines, getLanguageFromFilename } from '@/lib/shiki'
+
+/**
+ * React hook that highlights a whole file with shiki and returns one HTML
+ * string per line. While loading, returns the escaped plain lines as a
+ * fallback so the UI renders immediately.
+ */
+/** Visible indent in spaces (tabs counted as 2). */
+function getLineIndent(content: string): number {
+  const match = content.match(/^([ \t]*)/)
+  if (!match) return 0
+  let indent = 0
+  for (const ch of match[1]) indent += ch === '\t' ? 2 : 1
+  return indent
+}
+
+/**
+ * Style for a code line:
+ *  1. Wrap long lines (pre-wrap + break-all)
+ *  2. Hanging indent: wrapped continuation lines start at the original
+ *     indent column (via padding-left + negative text-indent). Keeps
+ *     shiki's HTML untouched — safe, doesn't strip any colored spans.
+ *  3. Indent guides — subtle vertical lines at each 2-space level.
+ */
+// Empty lines have no leading whitespace of their own, which makes indent
+// guides "break" visually on blank rows. VS Code / Cursor paper over this
+// by inheriting the indent of the nearest non-empty line. We do the same:
+// an empty line gets the indent of the next non-empty line (falling back to
+// the previous one at end-of-file).
+function getEffectiveIndents(lines: string[]): number[] {
+  const raw = lines.map((l) => ({ empty: l.trim().length === 0, indent: getLineIndent(l) }))
+  const eff = raw.map((r) => (r.empty ? 0 : r.indent))
+  // Forward pass: empty lines borrow from the next non-empty line
+  for (let i = raw.length - 1; i >= 0; i--) {
+    if (raw[i].empty) eff[i] = eff[i + 1] ?? 0
+  }
+  // Backward pass: trailing empties borrow from previous non-empty
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i].empty && eff[i] === 0) eff[i] = eff[i - 1] ?? 0
+  }
+  return eff
+}
+
+function getCodeLineStyle(content: string, effectiveIndent?: number): React.CSSProperties {
+  const base: React.CSSProperties = {
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-all',
+    overflowWrap: 'anywhere',
+  }
+  const ownIndent = getLineIndent(content)
+  const isEmpty = content.trim().length === 0
+  const indent = isEmpty && effectiveIndent !== undefined ? effectiveIndent : ownIndent
+  if (indent < 2) return base
+
+  const step = 2
+  const guideSpan = Math.floor(indent / step) * step
+  return {
+    ...base,
+    // Hanging indent trick: padding pushes wrapped lines right, text-indent
+    // pulls only the first line back so the leading whitespace (already in
+    // shiki's HTML) renders at col 0 — visually identical to no-hanging.
+    paddingLeft: `${indent}ch`,
+    textIndent: `-${indent}ch`,
+    // Indent guides drawn in the padding zone.
+    backgroundImage:
+      'repeating-linear-gradient(to right, rgba(255,255,255,0.13) 0 1px, transparent 1px 2ch)',
+    backgroundSize: `${guideSpan}ch 100%`,
+    backgroundRepeat: 'no-repeat',
+    backgroundPosition: '0 0',
+  }
+}
+
+// No-op — shiki HTML is passed through untouched, hanging indent is done
+// purely with CSS (see getCodeLineStyle).
+function stripLeadingWhitespaceHtml(html: string): string {
+  return html
+}
+
+function useShikiLines(content: string, filename: string): string[] {
+  const [lines, setLines] = useState<string[]>(() =>
+    content.split('\n').map((l) => l.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'))
+  )
+  useEffect(() => {
+    let cancelled = false
+    const lang = getLanguageFromFilename(filename)
+    highlightLines(content, lang).then((result) => {
+      if (!cancelled) setLines(result)
+    }).catch(() => { /* keep plain fallback */ })
+    return () => { cancelled = true }
+  }, [content, filename])
+  return lines
 }
 
 function IndentGuides({ line }: { line: string }) {
@@ -2084,13 +2506,554 @@ function FileIcon({ name, size = 20 }: { name: string; size?: number }) {
 }
 
 
+// ── Changes List ─────────────────────────────────────────────────────────
+// ⚠️ MOCK data for visual testing. Replace with real git diff data later.
+
+interface DiffLine {
+  type: 'context' | 'add' | 'remove'
+  content: string
+  // Line numbers — oldLine for context/remove, newLine for context/add
+  oldLine?: number
+  newLine?: number
+}
+
+interface DiffHunk {
+  // Starting line in the old file, for display
+  oldStart: number
+  newStart: number
+  lines: DiffLine[]
+}
+
+interface MockChangedFile {
+  path: string
+  status: 'M' | 'A' | 'D'
+  added: number
+  removed: number
+  hunks: DiffHunk[]
+  // Optional: full file content with diff markers for the "Open file" view.
+  // Each line is a DiffLine so unchanged lines show as context and
+  // modified/added/removed lines render with highlight.
+  fullDiff?: DiffLine[]
+}
+
+// Helper — find a mock change by path (used by the Explorer "Open file" flow
+// to render the file in diff view instead of the raw file viewer).
+function getMockChangeForPath(path: string): MockChangedFile | null {
+  return MOCK_CHANGES.find((f) => f.path === path) ?? null
+}
+
+// ⚠️ MOCK data — simulates one chat "Add loading state to Button" having
+// produced two file changes (one modified + one added). Replace with real
+// git diff data from the active chat session when the backend lands.
+//
+// The data here is hand-crafted so every piece of the review flow can be
+// walked through in the UI: the list row, the hunk card, and the full-file
+// diff view that opens when the user clicks "Open file".
+const MOCK_CHAT_ID = 'mock-chat-loading-button'
+const MOCK_CHAT_NAME = 'Add loading state to Button'
+
+// ── Change 1 ────────────────────────────────────────────────────────────────
+// components/Button.tsx — Modified: add `loading` prop with spinner + disabled
+// while loading. A single hunk spanning the function signature and JSX.
+const MOCK_BUTTON_HUNK: DiffHunk = {
+  oldStart: 1,
+  newStart: 1,
+  lines: [
+    { type: 'context', content: "import { ReactNode } from 'react'", oldLine: 1, newLine: 1 },
+    { type: 'context', content: '', oldLine: 2, newLine: 2 },
+    { type: 'context', content: 'interface ButtonProps {', oldLine: 3, newLine: 3 },
+    { type: 'context', content: '  children: ReactNode', oldLine: 4, newLine: 4 },
+    { type: 'context', content: '  onClick?: () => void', oldLine: 5, newLine: 5 },
+    { type: 'context', content: "  variant?: 'primary' | 'secondary'", oldLine: 6, newLine: 6 },
+    { type: 'add',     content: '  loading?: boolean', newLine: 7 },
+    { type: 'context', content: '}', oldLine: 7, newLine: 8 },
+    { type: 'context', content: '', oldLine: 8, newLine: 9 },
+    { type: 'remove',  content: "export function Button({ children, onClick, variant = 'primary' }: ButtonProps) {", oldLine: 9 },
+    { type: 'add',     content: "export function Button({ children, onClick, variant = 'primary', loading = false }: ButtonProps) {", newLine: 10 },
+    { type: 'context', content: '  return (', oldLine: 10, newLine: 11 },
+    { type: 'remove',  content: '    <button onClick={onClick} className={`btn btn-${variant}`}>', oldLine: 11 },
+    { type: 'add',     content: '    <button onClick={onClick} disabled={loading} className={`btn btn-${variant} ${loading ? "btn-loading" : ""}`}>', newLine: 12 },
+    { type: 'add',     content: '      {loading && <span className="spinner" aria-hidden />}', newLine: 13 },
+    { type: 'context', content: '      {children}', oldLine: 12, newLine: 14 },
+    { type: 'context', content: '    </button>', oldLine: 13, newLine: 15 },
+    { type: 'context', content: '  )', oldLine: 14, newLine: 16 },
+    { type: 'context', content: '}', oldLine: 15, newLine: 17 },
+  ],
+}
+
+// ── Change 2 ────────────────────────────────────────────────────────────────
+// lib/useAsyncAction.ts — Added: new hook that wraps async handlers so the
+// Button can show a loading state during the call. Pure-add hunk (no context
+// lines since the file didn't exist before).
+const MOCK_HOOK_HUNK: DiffHunk = {
+  oldStart: 0,
+  newStart: 1,
+  lines: [
+    { type: 'add', content: "import { useCallback, useState } from 'react'", newLine: 1 },
+    { type: 'add', content: '', newLine: 2 },
+    { type: 'add', content: '// Wraps an async handler so callers get back a `pending` flag alongside', newLine: 3 },
+    { type: 'add', content: '// the bound action — useful for driving Button `loading` props without', newLine: 4 },
+    { type: 'add', content: '// each caller having to manage its own useState.', newLine: 5 },
+    { type: 'add', content: 'export function useAsyncAction<T extends unknown[]>(fn: (...args: T) => Promise<void>) {', newLine: 6 },
+    { type: 'add', content: '  const [pending, setPending] = useState(false)', newLine: 7 },
+    { type: 'add', content: '  const run = useCallback(async (...args: T) => {', newLine: 8 },
+    { type: 'add', content: '    setPending(true)', newLine: 9 },
+    { type: 'add', content: '    try { await fn(...args) } finally { setPending(false) }', newLine: 10 },
+    { type: 'add', content: '  }, [fn])', newLine: 11 },
+    { type: 'add', content: '  return { run, pending }', newLine: 12 },
+    { type: 'add', content: '}', newLine: 13 },
+  ],
+}
+
+const MOCK_CHANGES: MockChangedFile[] = [
+  {
+    path: 'components/Button.tsx',
+    status: 'M',
+    added: 4,
+    removed: 2,
+    hunks: [MOCK_BUTTON_HUNK],
+    // Full-file diff mirrors the hunk here because the file is small enough
+    // to show in its entirety. For longer files we'd pad with context lines.
+    fullDiff: MOCK_BUTTON_HUNK.lines,
+  },
+  {
+    path: 'lib/useAsyncAction.ts',
+    status: 'A',
+    added: 13,
+    removed: 0,
+    hunks: [MOCK_HOOK_HUNK],
+    fullDiff: MOCK_HOOK_HUNK.lines,
+  },
+]
+
+// Exposed so future integration can check "did this come from the mock chat"
+// and keep the two flows from cross-polluting.
+void MOCK_CHAT_ID
+void MOCK_CHAT_NAME
+
+const STATUS_ICONS: Record<string, { symbol: string; text: string; bg: string; border: string }> = {
+  M: { symbol: '•', text: 'text-amber-400', bg: 'bg-amber-400/10', border: 'border-amber-400/30' },
+  A: { symbol: '+', text: 'text-emerald-400', bg: 'bg-emerald-400/10', border: 'border-emerald-400/30' },
+  D: { symbol: '−', text: 'text-red-400', bg: 'bg-red-400/10', border: 'border-red-400/30' },
+}
+
+function ChangesList({
+  searchQuery,
+  onAttachToCurrent,
+  onAttachToNew,
+  onOpenFile,
+}: {
+  searchQuery: string
+  onAttachToCurrent: (filePath: string, fileStatus: 'M' | 'A' | 'D', hunk: DiffHunk) => void
+  onAttachToNew: (filePath: string, fileStatus: 'M' | 'A' | 'D', hunk: DiffHunk) => void
+  onOpenFile: (filePath: string) => void
+}) {
+  const [openedPath, setOpenedPath] = useState<string | null>(null)
+  const filtered = searchQuery
+    ? MOCK_CHANGES.filter((f) => f.path.toLowerCase().includes(searchQuery.toLowerCase()))
+    : MOCK_CHANGES
+
+  function formatPath(fullPath: string) {
+    const parts = fullPath.split('/')
+    const fileName = parts.pop()!
+    const dir = parts.join('/')
+    return { dir, fileName }
+  }
+
+  // If a file is opened, show its diff view (takes over the whole panel)
+  const openedFile = openedPath ? MOCK_CHANGES.find((f) => f.path === openedPath) : null
+  if (openedFile) {
+    const { dir, fileName } = formatPath(openedFile.path)
+    const st = STATUS_ICONS[openedFile.status]
+    // Navigate to prev/next file in the filtered list — no wrap-around
+    const currentIndex = filtered.findIndex((f) => f.path === openedFile.path)
+    const prevFile = currentIndex > 0 ? filtered[currentIndex - 1] : null
+    const nextFile = currentIndex >= 0 && currentIndex < filtered.length - 1
+      ? filtered[currentIndex + 1]
+      : null
+    return (
+      <div className="flex h-full flex-col">
+        {/* Back header */}
+        <div className="flex shrink-0 items-center gap-1 border-b border-[#2B2B2B] px-2 py-2" style={{ backgroundColor: '#1F1F1F' }}>
+          <button
+            onClick={() => setOpenedPath(null)}
+            title="Back to changes"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-300"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+            </svg>
+          </button>
+          {/* Prev / next file nav — no wrap, disables at boundaries */}
+          <button
+            onClick={() => prevFile && setOpenedPath(prevFile.path)}
+            disabled={!prevFile}
+            title={prevFile ? `Previous: ${prevFile.path}` : 'No previous file'}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-300 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-zinc-500"
+          >
+            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+            </svg>
+          </button>
+          <button
+            onClick={() => nextFile && setOpenedPath(nextFile.path)}
+            disabled={!nextFile}
+            title={nextFile ? `Next: ${nextFile.path}` : 'No next file'}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-300 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-zinc-500"
+          >
+            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+            </svg>
+          </button>
+          <div className="flex min-w-0 flex-1 items-baseline gap-1 pl-1">
+            {dir && <span className="shrink-0 text-[11px] text-zinc-600">{dir}/</span>}
+            <span className="truncate text-[12px] font-medium text-zinc-200">{fileName}</span>
+          </div>
+          {/* Open file in Explorer */}
+          <button
+            onClick={() => onOpenFile(openedFile.path)}
+            className="shrink-0 rounded border border-[#3C3C3C] px-2 py-0.5 text-[10px] font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-white/5"
+            style={{ backgroundColor: '#2A2A2A' }}
+          >
+            Open file
+          </button>
+          <span className="shrink-0 font-mono text-[10px] tabular-nums">
+            {openedFile.added > 0 && <span className="text-emerald-400">+{openedFile.added}</span>}
+            {openedFile.removed > 0 && <span className="ml-1 text-red-400">-{openedFile.removed}</span>}
+          </span>
+          <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[11px] font-bold leading-none ${st.text} ${st.bg} ${st.border}`}>
+            {st.symbol}
+          </span>
+        </div>
+
+        {/* Diff hunks */}
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
+          {openedFile.hunks.map((hunk, hi) => (
+            <DiffHunkView
+              key={hi}
+              hunk={hunk}
+              filePath={openedFile.path}
+              onCopy={() => {
+                const text = hunk.lines.map((l) => {
+                  const marker = l.type === 'add' ? '+' : l.type === 'remove' ? '-' : ' '
+                  return `${marker}${l.content}`
+                }).join('\n')
+                navigator.clipboard?.writeText(text).catch(() => {})
+              }}
+              onAttachToCurrent={() => onAttachToCurrent(openedFile.path, openedFile.status, hunk)}
+              onAttachToNew={() => onAttachToNew(openedFile.path, openedFile.status, hunk)}
+            />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (filtered.length === 0) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <p className="text-[11px] text-zinc-500">
+          {searchQuery ? 'No matches found.' : 'No changes yet.'}
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="py-1">
+      {filtered.map((file) => {
+        const { dir, fileName } = formatPath(file.path)
+        const st = STATUS_ICONS[file.status]
+        return (
+          <button
+            key={file.path}
+            onClick={() => setOpenedPath(file.path)}
+            className="group flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-white/[0.04]"
+          >
+            {/* File path — dir small, then filename */}
+            <div className="flex min-w-0 flex-1 items-baseline gap-1">
+              {dir && <span className="shrink-0 text-[11px] text-zinc-600">{dir}/</span>}
+              <span className="truncate text-[13px] font-medium text-zinc-200">{fileName}</span>
+            </div>
+
+            {/* +/- stats */}
+            <span className="shrink-0 font-mono text-[10px] tabular-nums">
+              {file.added > 0 && <span className="text-emerald-400">+{file.added}</span>}
+              {file.removed > 0 && <span className="ml-1 text-red-400">-{file.removed}</span>}
+            </span>
+
+            {/* Status indicator — colored square with symbol */}
+            <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[11px] font-bold leading-none ${st.text} ${st.bg} ${st.border}`}>
+              {st.symbol}
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// Action button with custom tooltip that fades in on hover.
+function HunkActionButton({
+  onClick,
+  tooltip,
+  children,
+}: {
+  onClick: () => void
+  tooltip: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="group/hba relative">
+      <button
+        onClick={onClick}
+        className="flex h-6 w-6 items-center justify-center rounded text-zinc-400 transition-colors hover:bg-white/10 hover:text-zinc-100"
+      >
+        {children}
+      </button>
+      {/* Tooltip */}
+      <div className="pointer-events-none absolute right-0 top-full z-30 mt-1 whitespace-nowrap rounded-md border border-white/10 px-2 py-1 text-[10px] text-zinc-200 opacity-0 shadow-lg transition-opacity duration-150 group-hover/hba:opacity-100"
+        style={{ backgroundColor: '#252526' }}
+      >
+        {tooltip}
+      </div>
+    </div>
+  )
+}
+
+// Plain file viewer using shiki (VS Code Dark+ theme) — shown when the
+// user opens a file without diff data. Wraps long lines, keeps line numbers
+// sticky, and inherits color from the theme.
+function ShikiFileView({
+  path,
+  content,
+  onClose,
+}: {
+  path: string
+  content: string
+  onClose: () => void
+}) {
+  const htmlLines = useShikiLines(content, path)
+  const plainLines = content.split('\n')
+  return (
+    <div className="absolute inset-0 z-10 flex flex-col" style={{ backgroundColor: '#181818' }}>
+      <div className="flex shrink-0 items-center justify-between border-b border-[#2B2B2B] px-3 py-1.5" style={{ backgroundColor: '#313131' }}>
+        <div className="flex items-center gap-1.5">
+          <FileIcon name={path.split('/').pop() ?? ''} size={14} />
+          <span className="text-[10px] font-medium text-zinc-300">{path}</span>
+        </div>
+        <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300">
+          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto overflow-x-hidden text-[13px] leading-[1.5] font-mono" style={{ backgroundColor: '#1F1F1F' }}>
+        {(() => { const effIndents = getEffectiveIndents(plainLines); return htmlLines.map((lineHtml, i) => (
+          <div key={i} className="flex w-full min-w-0 hover:bg-white/5">
+            <span className="w-12 shrink-0 select-none pr-3 text-right align-top text-[11px] text-zinc-500">
+              {i + 1}
+            </span>
+            <code
+              className="min-w-0 flex-1 block pr-4"
+              style={getCodeLineStyle(plainLines[i] ?? '', effIndents[i])}
+              dangerouslySetInnerHTML={{ __html: stripLeadingWhitespaceHtml(lineHtml) || '&nbsp;' }}
+            />
+          </div>
+        )) })()}
+      </div>
+    </div>
+  )
+}
+
+// Full-file diff view — shown in the Explorer when the user opens a file
+// that has mock changes. Renders the whole file with added/removed lines
+// highlighted inline (Cursor / VS Code style).
+function FullFileDiffView({
+  filePath,
+  lines,
+  onClose,
+}: {
+  filePath: string
+  lines: DiffLine[]
+  onClose: () => void
+}) {
+  // Highlight all lines in a single pass so shiki can track multi-line
+  // context (template literals, JSX tags, etc). We join with \n, highlight,
+  // then split back.
+  const joinedContent = lines.map((l) => l.content).join('\n')
+  const highlightedLines = useShikiLines(joinedContent, filePath)
+
+  return (
+    <div className="absolute inset-0 z-10 flex flex-col" style={{ backgroundColor: '#181818' }}>
+      {/* Header */}
+      <div className="flex shrink-0 items-center justify-between border-b border-[#2B2B2B] px-3 py-1.5" style={{ backgroundColor: '#313131' }}>
+        <div className="flex items-center gap-1.5">
+          <FileIcon name={filePath.split('/').pop() ?? ''} size={14} />
+          <span className="text-[10px] font-medium text-zinc-300">{filePath}</span>
+          <span className="rounded bg-amber-400/10 px-1 text-[9px] font-bold text-amber-400">diff</span>
+        </div>
+        <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300" title="Close">
+          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Body — full file with diff markers inline. NO horizontal scroll. */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden font-mono text-[13px] leading-[1.5]" style={{ backgroundColor: '#1F1F1F' }}>
+        {(() => { const effIndents = getEffectiveIndents(lines.map((l) => l.content)); return lines.map((line, i) => {
+          const bg =
+            line.type === 'add' ? 'bg-emerald-500/10'
+            : line.type === 'remove' ? 'bg-red-500/10'
+            : ''
+          const marker =
+            line.type === 'add' ? '+' : line.type === 'remove' ? '−' : ' '
+          const markerColor =
+            line.type === 'add' ? 'text-emerald-400'
+            : line.type === 'remove' ? 'text-red-400'
+            : 'text-zinc-700'
+          const displayLine = line.type === 'remove' ? line.oldLine : (line.newLine ?? line.oldLine)
+          const html = highlightedLines[i] || ''
+          return (
+            <div key={i} className={`flex w-full min-w-0 hover:bg-white/[0.03] ${bg}`}>
+              <span className="w-12 shrink-0 select-none pr-3 pt-0 text-right text-[11px] text-zinc-700">
+                {displayLine ?? ''}
+              </span>
+              <span className={`w-4 shrink-0 select-none text-center ${markerColor}`}>{marker}</span>
+              <code
+                className="min-w-0 flex-1 block pr-4"
+                style={getCodeLineStyle(line.content, effIndents[i])}
+                dangerouslySetInnerHTML={{ __html: stripLeadingWhitespaceHtml(html) || '&nbsp;' }}
+              />
+            </div>
+          )
+        }) })()}
+      </div>
+    </div>
+  )
+}
+
+// Renders a single diff hunk as a card with line numbers + colored rows
+function DiffHunkView({
+  hunk,
+  filePath,
+  onCopy,
+  onAttachToCurrent,
+  onAttachToNew,
+}: {
+  hunk: DiffHunk
+  filePath?: string
+  onCopy: () => void
+  onAttachToCurrent: () => void
+  onAttachToNew: () => void
+}) {
+  const [copied, setCopied] = useState(false)
+  // Highlight all lines together so shiki keeps context (strings, etc.).
+  const joined = hunk.lines.map((l) => l.content).join('\n')
+  const hlLines = useShikiLines(joined, filePath || 'file.txt')
+  function handleCopy() {
+    onCopy()
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1400)
+  }
+  return (
+    <div className="overflow-hidden rounded-md border border-[#2B2B2B]" style={{ backgroundColor: '#1F1F1F' }}>
+      {/* Action bar — always visible */}
+      <div className="flex items-center justify-end gap-1 border-b border-[#2B2B2B] px-1.5 py-1" style={{ backgroundColor: '#252526' }}>
+        {/* Copy block */}
+        <HunkActionButton
+          onClick={handleCopy}
+          tooltip={copied ? 'Copied!' : 'Copy block'}
+        >
+          {copied ? (
+            <svg className="h-3.5 w-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+            </svg>
+          ) : (
+            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <rect x="9" y="9" width="11" height="11" rx="2" ry="2" />
+              <path d="M5 15V6a2 2 0 012-2h9" />
+            </svg>
+          )}
+        </HunkActionButton>
+
+        {/* Attach to current chat — chat bubble (same style as sidebar) */}
+        <HunkActionButton onClick={onAttachToCurrent} tooltip="Attach to current chat">
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth="1.5">
+            <path strokeLinejoin="round" d="M2.75 4.25 Q2.75 2.75 4.25 2.75 L11.75 2.75 Q13.25 2.75 13.25 4.25 L13.25 9.5 Q13.25 11 11.75 11 L7 11 L4.25 13.5 L4.25 11 Q2.75 11 2.75 9.5 Z" />
+          </svg>
+        </HunkActionButton>
+
+        {/* Attach to new chat — chat bubble with + inside */}
+        <HunkActionButton onClick={onAttachToNew} tooltip="Attach to new chat">
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 16 16" stroke="currentColor" strokeWidth="1.5">
+            <path strokeLinejoin="round" d="M2.75 4.25 Q2.75 2.75 4.25 2.75 L11.75 2.75 Q13.25 2.75 13.25 4.25 L13.25 9.5 Q13.25 11 11.75 11 L7 11 L4.25 13.5 L4.25 11 Q2.75 11 2.75 9.5 Z" />
+            <path strokeLinecap="round" d="M8 5.5V8.5 M6.5 7H9.5" strokeWidth="1.5" />
+          </svg>
+        </HunkActionButton>
+      </div>
+
+      {/* Lines */}
+      <div className="font-mono text-[12px] leading-[1.5]">
+        {(() => { const effIndents = getEffectiveIndents(hunk.lines.map((l) => l.content)); return hunk.lines.map((line, i) => {
+          const bg =
+            line.type === 'add'
+              ? 'bg-emerald-500/10'
+              : line.type === 'remove'
+                ? 'bg-red-500/10'
+                : ''
+          const marker =
+            line.type === 'add' ? '+' : line.type === 'remove' ? '−' : ' '
+          const markerColor =
+            line.type === 'add'
+              ? 'text-emerald-400'
+              : line.type === 'remove'
+                ? 'text-red-400'
+                : 'text-zinc-700'
+          const textColor =
+            line.type === 'add'
+              ? 'text-emerald-200'
+              : line.type === 'remove'
+                ? 'text-red-200'
+                : 'text-zinc-400'
+          const displayLine = line.type === 'remove' ? line.oldLine : (line.newLine ?? line.oldLine)
+          const html = hlLines[i] || ''
+          return (
+            <div key={i} className={`flex ${bg}`}>
+              <span className="w-10 shrink-0 select-none pr-2 text-right text-[10px] text-zinc-700">
+                {displayLine ?? ''}
+              </span>
+              <span className={`w-4 shrink-0 select-none text-center ${markerColor}`}>{marker}</span>
+              <code
+                className="min-w-0 flex-1 block pr-2"
+                style={getCodeLineStyle(line.content, effIndents[i])}
+                dangerouslySetInnerHTML={{ __html: stripLeadingWhitespaceHtml(html) || '&nbsp;' }}
+              />
+            </div>
+          )
+        }) })()}
+      </div>
+    </div>
+  )
+}
+
 // ── File Tree ──────────────────────────────────────────────────────────────
 
 function FileTree({ projectId, hasActiveSession }: { projectId: string; hasActiveSession?: boolean }) {
   const [files, setFiles] = useState<FileEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
-  const [viewingFile, setViewingFile] = useState<{ path: string; content: string } | null>(null)
+  const [viewingFile, setViewingFile] = useState<{ path: string; content: string; worktreeId?: string | null } | null>(null)
+  // Editor dirty-buffer tracking. When the user tries to close the editor
+  // with unsaved edits, we show a confirm modal instead of discarding silently.
+  const editorRef = useRef<CodeMirrorFileViewHandle | null>(null)
+  const [editorDirty, setEditorDirty] = useState(false)
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false)
+  const attemptCloseEditor = useCallback(() => {
+    if (editorRef.current?.isDirty()) { setShowCloseConfirm(true); return }
+    setViewingFile(null)
+  }, [])
   const [search, setSearch] = useState('')
   const [showSearch, setShowSearch] = useState(false)
   const [collapseKey, setCollapseKey] = useState(0)
@@ -2109,7 +3072,38 @@ function FileTree({ projectId, hasActiveSession }: { projectId: string; hasActiv
   const [acceptingAll, setAcceptingAll] = useState(false)
   const [showReviewModal, setShowReviewModal] = useState(false)
   const [reviewFilePath, setReviewFilePath] = useState<string | null>(null)
+  // Ancestor paths that should be auto-expanded — set by the "Open file"
+  // button in Changes so the tree reveals the target file.
+  const [expandPaths, setExpandPaths] = useState<Set<string>>(new Set())
+  // Full-file diff view — shown when user opens a file with mock changes
+  const [diffViewingFile, setDiffViewingFile] = useState<{ path: string; lines: DiffLine[] } | null>(null)
   const creatingRef = useRef<HTMLInputElement>(null)
+
+  // Listen for cross-panel "open file in explorer" requests
+  useEffect(() => {
+    function handleOpenFile(e: Event) {
+      const path = (e as CustomEvent<string>).detail
+      if (!path) return
+      // Compute all parent paths (e.g. src/components/WorkPanel.tsx →
+      // {src, src/components}) so folders auto-expand down to the file.
+      const parts = path.split('/')
+      const ancestors = new Set<string>()
+      for (let i = 1; i < parts.length; i++) {
+        ancestors.add(parts.slice(0, i).join('/'))
+      }
+      // Use a fresh Set each time so FolderNode's useEffect fires even when
+      // the user clicks "Open file" on the same path twice in a row.
+      setExpandPaths(ancestors)
+      setSelectedPath(path)
+      // If the file has mock diff data, open the diff viewer directly
+      const mock = getMockChangeForPath(path)
+      if (mock?.fullDiff) {
+        setDiffViewingFile({ path, lines: mock.fullDiff })
+      }
+    }
+    window.addEventListener('explorer-open-file', handleOpenFile)
+    return () => window.removeEventListener('explorer-open-file', handleOpenFile)
+  }, [])
 
   function fetchFiles() {
     fetch(`/api/projects/${projectId}/repository/files`)
@@ -2143,13 +3137,14 @@ function FileTree({ projectId, hasActiveSession }: { projectId: string; hasActiv
     // the user sees the agent's in-progress edits. For files touched by
     // multiple worktrees, fall back to main (the merge view comes later).
     const fileEntry = files.find((f) => f.path === path)
-    const worktreeParam = fileEntry?.worktrees && fileEntry.worktrees.length === 1
-      ? `?worktree=${fileEntry.worktrees[0].id}`
-      : ''
+    const singleWorktreeId = fileEntry?.worktrees && fileEntry.worktrees.length === 1
+      ? fileEntry.worktrees[0].id
+      : null
+    const worktreeParam = singleWorktreeId ? `?worktree=${singleWorktreeId}` : ''
     const res = await fetch(`/api/projects/${projectId}/repository/files/${encodeURIComponent(path)}${worktreeParam}`)
     if (res.ok) {
       const data = await res.json()
-      setViewingFile({ path, content: data.content })
+      setViewingFile({ path, content: data.content, worktreeId: singleWorktreeId })
     }
   }
 
@@ -2256,35 +3251,85 @@ function FileTree({ projectId, hasActiveSession }: { projectId: string; hasActiv
 
   return (
     <div className="relative flex w-full min-w-0 flex-col border-r border-[#2B2B2B]" style={{ backgroundColor: '#181818' }}>
-      {/* File viewer overlay */}
+      {/* Full-file diff viewer overlay — shown when the user opens a file
+          with mock changes via "Open file" from Changes or clicking the
+          file in the tree. Overlays the regular file viewer. */}
+      {diffViewingFile && (
+        <FullFileDiffView
+          filePath={diffViewingFile.path}
+          lines={diffViewingFile.lines}
+          onClose={() => setDiffViewingFile(null)}
+        />
+      )}
+
+      {/* File editor overlay — CodeMirror, editable. Edits live in memory;
+          only Ctrl/Cmd+S (or the modal's Save button) writes to the sandbox.
+          Closing with unsaved edits triggers the save/discard confirm modal. */}
       {viewingFile && (
         <div className="absolute inset-0 z-10 flex flex-col" style={{ backgroundColor: '#181818' }}>
-          <div className="flex shrink-0 items-center justify-between border-b border-[#2B2B2B] px-3 py-1.5" style={{ backgroundColor: '#313131' }}>
+          <div className="flex shrink-0 items-center gap-2 border-b border-[#2B2B2B] px-3 py-1.5" style={{ backgroundColor: '#313131' }}>
+            <button
+              onClick={attemptCloseEditor}
+              className="flex items-center text-zinc-400 hover:text-zinc-200"
+              aria-label="Back to files"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
             <div className="flex items-center gap-1.5">
               <FileIcon name={viewingFile.path.split('/').pop() ?? ''} size={14} />
               <span className="text-[10px] font-medium text-zinc-300">{viewingFile.path}</span>
+              {/* Unsaved-indicator dot, VS Code style */}
+              {editorDirty && <span className="h-1.5 w-1.5 rounded-full bg-amber-400" title="Unsaved changes" />}
             </div>
-            <button onClick={() => setViewingFile(null)} className="text-zinc-500 hover:text-zinc-300">
-              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
           </div>
-          <div className="flex-1 overflow-auto px-3 py-2 text-[12px] leading-5 font-mono" style={{ backgroundColor: '#1F1F1F' }}>
-            <table className="w-full border-collapse">
-              <tbody>
-                {viewingFile.content.split('\n').map((line, i) => (
-                  <tr key={i} className="hover:bg-white/5">
-                    <td className="sticky left-0 w-10 shrink-0 select-none pr-4 text-right align-top text-zinc-500" style={{ backgroundColor: '#1F1F1F' }}>{i + 1}</td>
-                    <td className={`whitespace-pre relative language-${getLanguage(viewingFile.path)}`}>
-                      <IndentGuides line={line} />
-                      <code className={`language-${getLanguage(viewingFile.path)}`} dangerouslySetInnerHTML={{ __html: highlightCode(line || ' ', viewingFile.path) }} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="flex-1 min-h-0">
+            <CodeMirrorFileView
+              ref={editorRef}
+              projectId={projectId}
+              filePath={viewingFile.path}
+              initialContent={viewingFile.content}
+              worktreeId={viewingFile.worktreeId ?? null}
+              onDirtyChange={setEditorDirty}
+            />
           </div>
+
+          {showCloseConfirm && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}>
+              <div className="w-[320px] rounded-md border border-[#2B2B2B] p-4 shadow-xl" style={{ backgroundColor: '#252526' }}>
+                <div className="mb-2 text-[12px] font-medium text-zinc-200">Save changes to {viewingFile.path.split('/').pop()}?</div>
+                <div className="mb-4 text-[11px] text-zinc-400">Your changes will be lost if you don&apos;t save them.</div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setShowCloseConfirm(false)}
+                    className="rounded border border-[#3A3A3A] px-3 py-1 text-[11px] text-zinc-300 hover:bg-white/5"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      editorRef.current?.discard()
+                      setShowCloseConfirm(false)
+                      setViewingFile(null)
+                    }}
+                    className="rounded border border-[#3A3A3A] px-3 py-1 text-[11px] text-zinc-300 hover:bg-white/5"
+                  >
+                    Discard
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const ok = await editorRef.current?.save()
+                      if (ok) { setShowCloseConfirm(false); setViewingFile(null) }
+                    }}
+                    className="rounded bg-emerald-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-emerald-500"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -2385,7 +3430,7 @@ function FileTree({ projectId, hasActiveSession }: { projectId: string; hasActiv
         ) : filteredFiles.length === 0 ? (
           <p className="px-3 py-2 text-xs text-zinc-400">{search ? 'No matches' : 'No files'}</p>
         ) : (
-          <TreeNode node={tree} depth={0} selectedPath={selectedPath} onSelect={handleSelectFile} collapseKey={collapseKey} onContextMenu={handleContextMenu} onMove={handleMoveFile} />
+          <TreeNode node={tree} depth={0} selectedPath={selectedPath} onSelect={handleSelectFile} collapseKey={collapseKey} expandPaths={expandPaths} onContextMenu={handleContextMenu} onMove={handleMoveFile} />
         )}
       </div>
 
@@ -2741,11 +3786,14 @@ interface TreeProps {
   selectedPath: string | null
   onSelect: (p: string) => void
   collapseKey?: number
+  // When a path is in this set (including its ancestors), the folder
+  // auto-expands to reveal the target. Used by "Open file" from Changes.
+  expandPaths?: Set<string>
   onContextMenu?: (e: React.MouseEvent, path: string) => void
   onMove?: (fromPath: string, toFolder: string) => void
 }
 
-function TreeNode({ node, depth, selectedPath, onSelect, collapseKey, onContextMenu, onMove }: TreeProps) {
+function TreeNode({ node, depth, selectedPath, onSelect, collapseKey, expandPaths, onContextMenu, onMove }: TreeProps) {
   return (
     <>
       {node.children.map((child) => (
@@ -2760,7 +3808,7 @@ function TreeNode({ node, depth, selectedPath, onSelect, collapseKey, onContextM
             onMove={onMove}
           />
         ) : (
-          <FolderNode key={child.path} node={child} depth={depth} selectedPath={selectedPath} onSelect={onSelect} collapseKey={collapseKey} onContextMenu={onContextMenu} onMove={onMove} />
+          <FolderNode key={child.path} node={child} depth={depth} selectedPath={selectedPath} onSelect={onSelect} collapseKey={collapseKey} expandPaths={expandPaths} onContextMenu={onContextMenu} onMove={onMove} />
         )
       ))}
     </>
@@ -2801,13 +3849,19 @@ function FileNodeDraggable({ child, depth, selectedPath, onSelect, onContextMenu
   )
 }
 
-function FolderNode({ node, depth, selectedPath, onSelect, collapseKey, onContextMenu, onMove }: TreeProps) {
+function FolderNode({ node, depth, selectedPath, onSelect, collapseKey, expandPaths, onContextMenu, onMove }: TreeProps) {
   const [expanded, setExpanded] = useState(depth < 1)
   const [dragOver, setDragOver] = useState(false)
 
   useEffect(() => {
     if (collapseKey && collapseKey > 0) setExpanded(false)
   }, [collapseKey])
+
+  // Auto-expand when this folder's path is an ancestor of a requested path.
+  useEffect(() => {
+    if (!expandPaths || expandPaths.size === 0) return
+    if (expandPaths.has(node.path)) setExpanded(true)
+  }, [expandPaths, node.path])
 
   function handleDragOver(e: React.DragEvent) {
     e.preventDefault()
@@ -2854,7 +3908,7 @@ function FolderNode({ node, depth, selectedPath, onSelect, collapseKey, onContex
         {node.isNew && <span className="shrink-0 text-[9px] font-bold text-emerald-500">U</span>}
         {node.isModified && !node.isNew && <span className="shrink-0 text-[9px] font-bold text-amber-500">M</span>}
       </button>
-      {expanded && <TreeNode node={node} depth={depth + 1} selectedPath={selectedPath} onSelect={onSelect} collapseKey={collapseKey} onContextMenu={onContextMenu} onMove={onMove} />}
+      {expanded && <TreeNode node={node} depth={depth + 1} selectedPath={selectedPath} onSelect={onSelect} collapseKey={collapseKey} expandPaths={expandPaths} onContextMenu={onContextMenu} onMove={onMove} />}
     </div>
   )
 }
@@ -3004,12 +4058,27 @@ function ChatPanel({
   onClearSelection,
   onSessionRenamed,
   onMinimize,
+  onOpenScratchpad,
+  onBusyChange,
+  hunkAttachment,
+  onClearHunkAttachment,
 }: {
   projectId: string
   sessionId: string
   sessionName: string
   isWorktreeChat: boolean
   onMinimize: () => void
+  onOpenScratchpad: () => void
+  onBusyChange: (sessionId: string, busy: boolean) => void
+  hunkAttachment: {
+    filePath: string
+    fileStatus: 'M' | 'A' | 'D'
+    focusStart: number
+    focusEnd: number
+    formattedContent: string
+    lineRange: string
+  } | null
+  onClearHunkAttachment: () => void
   messages: Message[]
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>
   activeMode: ChatMode
@@ -3200,6 +4269,12 @@ function ChatPanel({
   const agentPollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [liveStepIds, setLiveStepIds] = useState<Set<string>>(new Set())
 
+  // Notify parent (WorkPanel) whenever this chat becomes busy / idle, so the
+  // sidebar + worktree tab bar can swap icons for a loading spinner.
+  useEffect(() => {
+    onBusyChange(sessionId, sending || teamProcessing)
+  }, [sending, teamProcessing, sessionId, onBusyChange])
+
   // Cleanup polling on unmount
   useEffect(() => {
     return () => {
@@ -3210,8 +4285,15 @@ function ChatPanel({
 
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault()
-    const content = input.trim()
-    if ((!content && attachments.length === 0) || sending || teamProcessing) return
+    const userText = input.trim()
+    // Allow sending with just an attachment (no text) when a hunk is pinned
+    if ((!userText && attachments.length === 0 && !hunkAttachment) || sending || teamProcessing) return
+
+    // Prepend the hunk attachment to the outgoing message content so the
+    // agent sees it as part of the user's context. Pill clears on send.
+    const content = hunkAttachment
+      ? `${hunkAttachment.formattedContent}${userText}`
+      : userText
 
     const userMsg: Message = {
       id: `temp-${Date.now()}`,
@@ -3224,8 +4306,8 @@ function ChatPanel({
     }
     // Auto-rename the chat using the first user message (first 5 words)
     const isFirstMessage = messages.filter(m => m.sender === 'user').length === 0
-    if (isFirstMessage && content) {
-      const title = content.split(/\s+/).slice(0, 5).join(' ').slice(0, 40)
+    if (isFirstMessage && userText) {
+      const title = userText.split(/\s+/).slice(0, 5).join(' ').slice(0, 40)
       onSessionRenamed(title)
     }
 
@@ -3233,6 +4315,7 @@ function ChatPanel({
     setLiveStepIds(new Set()) // clear previous session's live steps
     setInput('')
     setAttachments([])
+    if (hunkAttachment) onClearHunkAttachment()
     setSending(true)
 
     // Start polling for real-time tool calls (all modes)
@@ -3443,6 +4526,17 @@ function ChatPanel({
           <span className="min-w-0 truncate text-[12px] font-medium text-zinc-300">{sessionName}</span>
           <span className="text-[10px] text-zinc-600">(main)</span>
           <div className="flex-1" />
+          {/* Scratchpad — free-form notes referenced via @notes */}
+          <button
+            type="button"
+            onClick={onOpenScratchpad}
+            title="Scratchpad"
+            className="text-zinc-500 transition-colors hover:text-zinc-300"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zM19.5 14.25v4.75A2.25 2.25 0 0117.25 21H5.25A2.25 2.25 0 013 18.75V6.75A2.25 2.25 0 015.25 4.5h4.75" />
+            </svg>
+          </button>
           {/* History button — placeholder, logic TBD */}
           <button
             type="button"
@@ -3673,6 +4767,30 @@ function ChatPanel({
                     </button>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Hunk attachment pill — shown above the textarea when a diff
+                hunk has been attached from the Changes panel */}
+            {hunkAttachment && (
+              <div className="flex items-center gap-2 border-b border-[#3C3C3C] px-3 py-2">
+                <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-white/10 px-2 py-1.5" style={{ backgroundColor: '#2A2A2A' }}>
+                  <svg className="h-3 w-3 shrink-0 text-zinc-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
+                  </svg>
+                  <span className="truncate text-[11px] text-zinc-200">{hunkAttachment.filePath}</span>
+                  <span className="shrink-0 text-[10px] text-zinc-500">· focused on {hunkAttachment.lineRange}</span>
+                  <button
+                    type="button"
+                    onClick={onClearHunkAttachment}
+                    className="ml-auto shrink-0 text-zinc-500 hover:text-zinc-200"
+                    title="Remove attachment"
+                  >
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
               </div>
             )}
 

@@ -76,3 +76,56 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: 'File not found' }, { status: 404 })
   }
 }
+
+// PUT — Write content back to a file. Mirrors GET's path resolution:
+// ?worktree=ID or ?session=ID routes the write into the correct working
+// directory (worktree path or main project root). Body: { content: string }.
+export async function PUT(request: NextRequest, { params }: RouteParams) {
+  const { id, path: encodedPath } = await params
+  const auth = await verifyProjectAccess(id)
+  if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status })
+
+  const filePath = decodeURIComponent(encodedPath)
+  const worktreeIdParam = request.nextUrl.searchParams.get('worktree')
+  const sessionId = request.nextUrl.searchParams.get('session')
+
+  let body: { content?: string } = {}
+  try { body = await request.json() } catch {}
+  if (typeof body.content !== 'string') {
+    return NextResponse.json({ error: 'content required' }, { status: 400 })
+  }
+
+  // Same resolution logic as GET — keep them in lockstep.
+  let projectRoot = '/home/user/project'
+
+  if (worktreeIdParam) {
+    const wt = await prisma.worktree.findUnique({
+      where: { id: worktreeIdParam },
+      select: { projectId: true, worktreePath: true },
+    })
+    if (wt && wt.projectId === id && wt.worktreePath) {
+      projectRoot = wt.worktreePath
+    }
+  } else if (sessionId) {
+    const session = await prisma.chatSession.findUnique({
+      where: { id: sessionId },
+      select: {
+        projectId: true,
+        worktree: { select: { worktreePath: true } },
+      },
+    })
+    if (session && session.projectId === id && session.worktree?.worktreePath) {
+      projectRoot = session.worktree.worktreePath
+    }
+  }
+
+  const sandboxId = await ensureSandboxRunning(id)
+  if (!sandboxId) return NextResponse.json({ error: 'Container not available' }, { status: 503 })
+
+  try {
+    await compute.writeFile(sandboxId, `${projectRoot}/${filePath}`, body.content)
+    return NextResponse.json({ ok: true, sizeBytes: Buffer.byteLength(body.content, 'utf-8') })
+  } catch {
+    return NextResponse.json({ error: 'Failed to write file' }, { status: 500 })
+  }
+}
