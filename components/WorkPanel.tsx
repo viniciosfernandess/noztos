@@ -4,6 +4,9 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { ChatTabs } from './ChatTabs'
 import { CodeMirrorFileView, type CodeMirrorFileViewHandle } from './CodeMirrorFileView'
+import { InlineDiffEditor, type InlineDiffEditorHandle } from './InlineDiffEditor'
+import { ChecksPanel } from './ChecksPanel'
+import { useGitStatus, deriveBadge } from '@/lib/hooks/useGitStatus'
 import { ReportBadge } from './ChatReport'
 import type { ChatReport } from '@/lib/report-types'
 
@@ -1082,9 +1085,15 @@ interface WorktreeInfo {
 
 export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true }: WorkPanelProps) {
   const [terminalOpen, setTerminalOpen] = useState(true)
+  // Bottom panel active tab — Terminal by default, Checks shows git state
+  // with the commit / push / PR / merge action buttons.
+  const [bottomTab, setBottomTab] = useState<'terminal' | 'checks'>('terminal')
   const [rightPanelTab, setRightPanelTab] = useState<'explorer' | 'changes'>('explorer')
-  const [changesSearchOpen, setChangesSearchOpen] = useState(false)
-  const [changesSearchQuery, setChangesSearchQuery] = useState('')
+  // Changes tab: select-mode toggle. When on, rows show checkboxes and the
+  // action bar at the bottom replaces the default row click behavior with
+  // selection toggling. Lives up here (not inside ChangesList) so the header
+  // icon can drive it.
+  const [changesSelectMode, setChangesSelectMode] = useState(false)
   const [rightPanelExpanded, setRightPanelExpanded] = useState(false)
   const [showTargetBranchPicker, setShowTargetBranchPicker] = useState(false)
   const [targetBranchSearch, setTargetBranchSearch] = useState('')
@@ -1095,17 +1104,18 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
   // spinner icons in the sidebar + worktree tab bar
   const [busySessions, setBusySessions] = useState<Set<string>>(new Set())
 
-  // Hunk attachment from Changes panel → injected into next chat message
-  const [pendingHunkAttachment, setPendingHunkAttachment] = useState<{
+  // Hunk attachments from the Changes panel → injected into the next chat
+  // message. Stored as an array so the user can accumulate multiple hunks
+  // (even across different files) before sending. Each entry is cleared
+  // individually via its chip's × button, or all at once on send.
+  const [pendingHunkAttachments, setPendingHunkAttachments] = useState<Array<{
     filePath: string
     fileStatus: 'M' | 'A' | 'D'
     focusStart: number
     focusEnd: number
-    // Pre-formatted content that will be prepended to the user's message
     formattedContent: string
-    // Simple label for the pill
     lineRange: string
-  } | null>(null)
+  }>>([])
 
   // Stable callback passed to ChatPanel — prevents infinite re-renders by
   // keeping the reference identity across parent renders.
@@ -1148,6 +1158,10 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
   const [worktrees, setWorktrees] = useState<WorktreeInfo[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [activeWorktreeId, setActiveWorktreeId] = useState<string | null>(null)
+  // Git status for the currently-active chat context (main or worktree).
+  // Drives the colored badge next to the branch label in the right panel.
+  const { status: activeGitStatus } = useGitStatus(projectId, activeSessionId, activeWorktreeId, 30000)
+  const statusBadge = deriveBadge(activeGitStatus)
   const [worktreeTabMenuId, setWorktreeTabMenuId] = useState<string | null>(null)
   const [worktreeTabMenuPos, setWorktreeTabMenuPos] = useState<{ top: number; left: number } | null>(null)
   const [closingWorktreeChat, setClosingWorktreeChat] = useState<{ worktreeId: string; sessionId: string; sessionName: string } | null>(null)
@@ -1242,6 +1256,14 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
       }
     } catch { /* ignore */ }
   }, [projectId])
+
+  // Other parts of the app (e.g. the ChecksPanel after move-to-branch) can
+  // ask the sidebar to refresh worktrees by dispatching this event.
+  useEffect(() => {
+    const handler = () => reloadAll(true)
+    window.addEventListener('bornastar-refresh-worktrees', handler)
+    return () => window.removeEventListener('bornastar-refresh-worktrees', handler)
+  }, [reloadAll])
 
   // Load on mount
   useEffect(() => {
@@ -1436,7 +1458,15 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
     if (!activeSessionId && !activeWorktreeId) {
       await handleNewMainChat()
     }
-    setPendingHunkAttachment(payload)
+    // Accumulate — same file+range is a no-op so double-clicks don't duplicate.
+    setPendingHunkAttachments((prev) => {
+      const dup = prev.some((p) =>
+        p.filePath === payload.filePath &&
+        p.focusStart === payload.focusStart &&
+        p.focusEnd === payload.focusEnd,
+      )
+      return dup ? prev : [...prev, payload]
+    })
   }
 
   async function handleAttachHunkToNewChat(filePath: string, fileStatus: 'M' | 'A' | 'D', hunk: DiffHunk) {
@@ -1448,7 +1478,56 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
     } else {
       await handleNewMainChat()
     }
-    setPendingHunkAttachment(payload)
+    // New chat starts fresh with exactly one attachment.
+    setPendingHunkAttachments([payload])
+  }
+
+  // Bulk attach — used by the select-mode action bar in the Changes panel.
+  // We flatten every hunk of every selected file into an array of payloads
+  // (dedup'd by filePath+range) and hand the whole batch to the same state
+  // the single-hunk flow uses — so the chat input renders them as chips just
+  // like individual attaches do.
+  function flattenSelectedToPayloads(files: MockChangedFile[]) {
+    const seen = new Set<string>()
+    const out: Array<ReturnType<typeof buildHunkAttachmentPayload>> = []
+    for (const f of files) {
+      for (const h of f.hunks) {
+        const p = buildHunkAttachmentPayload(f.path, f.status, h)
+        const key = `${p.filePath}:${p.focusStart}-${p.focusEnd}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        out.push(p)
+      }
+    }
+    return out
+  }
+
+  async function handleBulkAttachToCurrentChat(files: MockChangedFile[]) {
+    if (files.length === 0) return
+    if (!activeSessionId && !activeWorktreeId) {
+      await handleNewMainChat()
+    }
+    const payloads = flattenSelectedToPayloads(files)
+    // Append + dedupe against whatever's already staged.
+    setPendingHunkAttachments((prev) => {
+      const seen = new Set(prev.map((p) => `${p.filePath}:${p.focusStart}-${p.focusEnd}`))
+      const merged = [...prev]
+      for (const p of payloads) {
+        const key = `${p.filePath}:${p.focusStart}-${p.focusEnd}`
+        if (!seen.has(key)) { seen.add(key); merged.push(p) }
+      }
+      return merged
+    })
+  }
+
+  async function handleBulkAttachToNewChat(files: MockChangedFile[]) {
+    if (files.length === 0) return
+    if (activeWorktreeId) {
+      await handleAddChatToWorktree(activeWorktreeId)
+    } else {
+      await handleNewMainChat()
+    }
+    setPendingHunkAttachments(flattenSelectedToPayloads(files))
   }
 
   async function handleCloseWorktreeChat(worktreeId: string, sessionId: string) {
@@ -1883,8 +1962,9 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                   }}
                   onOpenScratchpad={() => setShowScratchpad(true)}
                   onBusyChange={handleBusyChange}
-                  hunkAttachment={pendingHunkAttachment}
-                  onClearHunkAttachment={() => setPendingHunkAttachment(null)}
+                  hunkAttachments={pendingHunkAttachments}
+                  onClearHunkAttachment={(index) => setPendingHunkAttachments((prev) => prev.filter((_, i) => i !== index))}
+                  onClearAllHunkAttachments={() => setPendingHunkAttachments([])}
                 />
               </div>
             </div>
@@ -1998,7 +2078,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
               )}
             </button>
             <button
-              onClick={() => { setRightPanelTab('explorer'); setChangesSearchOpen(false); setChangesSearchQuery('') }}
+              onClick={() => { setRightPanelTab('explorer'); setChangesSelectMode(false) }}
               className={`relative flex items-center gap-1.5 px-3 py-2.5 text-[12px] font-medium transition-colors ${
                 rightPanelTab === 'explorer'
                   ? 'text-zinc-100'
@@ -2010,19 +2090,29 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                 <span className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full bg-white" />
               )}
             </button>
-            {/* Search icon — only on Changes tab */}
+            {/* Select-mode toggle — only on Changes tab. Swaps the whole
+                panel into multi-select so the user can bulk-attach several
+                changed files (and all their hunks) to a chat in one go. */}
             {rightPanelTab === 'changes' && (
               <button
-                onClick={() => { setChangesSearchOpen(!changesSearchOpen); setChangesSearchQuery('') }}
-                title="Search changes"
-                className={`ml-2 transition-colors ${changesSearchOpen ? 'text-zinc-200' : 'text-zinc-500 hover:text-zinc-300'}`}
+                onClick={() => setChangesSelectMode((v) => !v)}
+                title={changesSelectMode ? 'Exit select mode' : 'Select changes'}
+                className={`ml-2 transition-colors ${changesSelectMode ? 'text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`}
               >
+                {/* Checkbox-with-check icon — reads as "select" */}
                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                  <rect x="3.5" y="3.5" width="17" height="17" rx="2.5" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 12.5l3 3 5-6" />
                 </svg>
               </button>
             )}
             <div className="flex-1" />
+            {statusBadge && (
+              <span className="mr-2 flex items-center gap-1.5 text-[10px] text-zinc-400">
+                <span className={`h-1.5 w-1.5 rounded-full ${statusBadge.color}`} />
+                {statusBadge.label}
+              </span>
+            )}
             <span className="mr-2 text-[11px] font-medium text-zinc-500">
               {activeWorktreeId
                 ? `${worktrees.find((w) => w.id === activeWorktreeId)?.branchName ?? 'branch'} (branch)`
@@ -2041,33 +2131,6 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
             </button>
           </div>
 
-          {/* Search bar — only when Changes tab + search open */}
-          {rightPanelTab === 'changes' && changesSearchOpen && (
-            <div className="flex shrink-0 items-center gap-2 border-b border-[#2B2B2B] px-3 py-1.5" style={{ backgroundColor: '#1F1F1F' }}>
-              <svg className="h-3 w-3 shrink-0 text-zinc-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-              </svg>
-              <input
-                autoFocus
-                value={changesSearchQuery}
-                onChange={(e) => setChangesSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') { setChangesSearchOpen(false); setChangesSearchQuery('') }
-                }}
-                placeholder="Filter changes..."
-                className="min-w-0 flex-1 bg-transparent text-[11px] text-zinc-200 placeholder-zinc-600 outline-none"
-              />
-              <button
-                onClick={() => { setChangesSearchOpen(false); setChangesSearchQuery('') }}
-                className="text-zinc-600 transition-colors hover:text-zinc-300"
-              >
-                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-          )}
-
           {/* Panel content — takes remaining space above terminal */}
           <div className="min-h-0 flex-1 overflow-y-auto" style={{ backgroundColor: '#181818' }}>
             {rightPanelTab === 'explorer' && (
@@ -2075,9 +2138,12 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
             )}
             {rightPanelTab === 'changes' && (
               <ChangesList
-                searchQuery={changesSearchQuery}
+                selectMode={changesSelectMode}
+                onExitSelectMode={() => setChangesSelectMode(false)}
                 onAttachToCurrent={handleAttachHunkToCurrentChat}
                 onAttachToNew={handleAttachHunkToNewChat}
+                onBulkAttachToCurrent={handleBulkAttachToCurrentChat}
+                onBulkAttachToNew={handleBulkAttachToNewChat}
                 onOpenFile={(path) => {
                   setRightPanelTab('explorer')
                   // Dispatch AFTER the Explorer tab is mounted — setState is
@@ -2090,33 +2156,70 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
             )}
           </div>
 
-          {/* Terminal — retrátil from bottom of the right panel, only when a chat is open */}
+          {/* Bottom panel — Terminal + Checks tabs. Terminal is the default;
+              Checks overlays the same area with the git / PR action panel. */}
           {hasOpenChat && terminalOpen ? (
             <div className="flex h-1/2 shrink-0 flex-col border-t border-[#2B2B2B]" style={{ backgroundColor: '#181818' }}>
-              {/* Terminal header */}
-              <div className="flex shrink-0 items-center border-b border-[#2B2B2B] px-2" style={{ backgroundColor: '#1F1F1F' }}>
-                <div className="flex items-center gap-1 px-2 py-1.5">
-                  <svg className="h-3 w-3 text-emerald-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              {/* Tab bar */}
+              <div className="flex shrink-0 items-center gap-0.5 border-b border-[#2B2B2B] px-2" style={{ backgroundColor: '#1F1F1F' }}>
+                <button
+                  onClick={() => setBottomTab('terminal')}
+                  className={`flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-medium transition-colors ${bottomTab === 'terminal' ? 'text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`}
+                >
+                  <svg className={`h-3 w-3 ${bottomTab === 'terminal' ? 'text-emerald-400' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z" />
                   </svg>
-                  <span className="text-[10px] font-medium text-zinc-300">Terminal</span>
-                </div>
+                  Terminal
+                  {bottomTab === 'terminal' && <span className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full bg-white" />}
+                </button>
+                <button
+                  onClick={() => setBottomTab('checks')}
+                  className={`relative flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-medium transition-colors ${bottomTab === 'checks' ? 'text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`}
+                >
+                  <svg className={`h-3 w-3 ${bottomTab === 'checks' ? 'text-emerald-400' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Checks
+                  {bottomTab === 'checks' && <span className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full bg-white" />}
+                </button>
                 <div className="flex-1" />
                 <button
                   onClick={() => setTerminalOpen(false)}
                   className="flex h-5 w-5 items-center justify-center rounded text-zinc-600 hover:bg-white/5 hover:text-zinc-400"
-                  title="Close terminal"
+                  title="Collapse panel"
                 >
                   <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
                   </svg>
                 </button>
               </div>
-              {/* Terminal body */}
-              <TerminalBody projectId={projectId} sessionId={activeSessionId} worktreeId={activeWorktreeId} />
+              {/* Tab body — a single slot; each panel owns its own scroll. */}
+              <div className="relative min-h-0 flex-1">
+                {bottomTab === 'terminal' && (
+                  <TerminalBody projectId={projectId} sessionId={activeSessionId} worktreeId={activeWorktreeId} />
+                )}
+                {bottomTab === 'checks' && (
+                  <ChecksPanel
+                    projectId={projectId}
+                    sessionId={activeSessionId}
+                    worktreeId={activeWorktreeId}
+                    onArchive={async () => {
+                      // Merged worktree archive — no dirty-changes modal
+                      // needed since the merge already consumed them.
+                      if (!activeWorktreeId) return
+                      const res = await fetch(`/api/projects/${projectId}/worktrees/${activeWorktreeId}/archive`, { method: 'POST' })
+                      if (res.ok) {
+                        setWorktrees((prev) => prev.filter((w) => w.id !== activeWorktreeId))
+                        setActiveWorktreeId(null)
+                        setActiveSessionId(null)
+                      }
+                    }}
+                  />
+                )}
+              </div>
             </div>
           ) : hasOpenChat ? (
-            /* Terminal collapsed — thin bar at bottom to pull up */
+            /* Bottom panel collapsed — thin bar to pull up */
             <button
               onClick={() => setTerminalOpen(true)}
               className="flex shrink-0 items-center gap-2 border-t border-[#2B2B2B] px-3 py-1.5 text-left transition-colors hover:bg-white/5"
@@ -2128,7 +2231,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
               <svg className="h-3 w-3 text-emerald-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z" />
               </svg>
-              <span className="text-[10px] text-zinc-500">Terminal</span>
+              <span className="text-[10px] text-zinc-500">Terminal · Checks</span>
             </button>
           ) : null}
         </div>
@@ -2638,20 +2741,49 @@ const STATUS_ICONS: Record<string, { symbol: string; text: string; bg: string; b
 }
 
 function ChangesList({
-  searchQuery,
+  selectMode,
+  onExitSelectMode,
   onAttachToCurrent,
   onAttachToNew,
+  onBulkAttachToCurrent,
+  onBulkAttachToNew,
   onOpenFile,
 }: {
-  searchQuery: string
+  // Whether the panel is in multi-select mode (header icon toggles this).
+  selectMode: boolean
+  onExitSelectMode: () => void
+  // Single-hunk attach — used inside the per-file diff view.
   onAttachToCurrent: (filePath: string, fileStatus: 'M' | 'A' | 'D', hunk: DiffHunk) => void
   onAttachToNew: (filePath: string, fileStatus: 'M' | 'A' | 'D', hunk: DiffHunk) => void
+  // Whole-file bulk attach — takes every hunk of every selected file.
+  onBulkAttachToCurrent: (files: MockChangedFile[]) => void
+  onBulkAttachToNew: (files: MockChangedFile[]) => void
   onOpenFile: (filePath: string) => void
 }) {
   const [openedPath, setOpenedPath] = useState<string | null>(null)
-  const filtered = searchQuery
-    ? MOCK_CHANGES.filter((f) => f.path.toLowerCase().includes(searchQuery.toLowerCase()))
-    : MOCK_CHANGES
+  // Selected file paths in select mode. Cleared whenever select mode exits.
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
+  useEffect(() => { if (!selectMode) setSelectedPaths(new Set()) }, [selectMode])
+
+  const filtered = MOCK_CHANGES
+  const selectedFiles = filtered.filter((f) => selectedPaths.has(f.path))
+  const allSelected = filtered.length > 0 && selectedPaths.size === filtered.length
+
+  function toggleSelect(path: string) {
+    setSelectedPaths((prev) => {
+      const next = new Set(prev)
+      if (next.has(path)) next.delete(path); else next.add(path)
+      return next
+    })
+  }
+  function toggleSelectAll() {
+    if (allSelected) setSelectedPaths(new Set())
+    else setSelectedPaths(new Set(filtered.map((f) => f.path)))
+  }
+  function cancelSelection() {
+    setSelectedPaths(new Set())
+    onExitSelectMode()
+  }
 
   function formatPath(fullPath: string) {
     const parts = fullPath.split('/')
@@ -2752,24 +2884,59 @@ function ChangesList({
   if (filtered.length === 0) {
     return (
       <div className="flex h-full items-center justify-center">
-        <p className="text-[11px] text-zinc-500">
-          {searchQuery ? 'No matches found.' : 'No changes yet.'}
-        </p>
+        <p className="text-[11px] text-zinc-500">No changes yet.</p>
       </div>
     )
   }
 
   return (
-    <div className="py-1">
+    <div className="flex h-full flex-col">
+      {/* Select-all header — only visible in select mode. Gives the user a
+          one-click way to grab every change (e.g., for a full-review prompt). */}
+      {selectMode && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-[#2B2B2B] px-3 py-2" style={{ backgroundColor: '#1F1F1F' }}>
+          <button
+            onClick={toggleSelectAll}
+            className="flex items-center gap-2 text-[11px] font-medium text-zinc-300 hover:text-zinc-100"
+          >
+            <span className={`flex h-3.5 w-3.5 items-center justify-center rounded border ${allSelected ? 'border-emerald-500 bg-emerald-500' : 'border-zinc-600'}`}>
+              {allSelected && (
+                <svg className="h-2.5 w-2.5 text-[#1F1F1F]" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </span>
+            {allSelected ? 'Deselect all' : 'Select all'}
+          </button>
+          <span className="ml-auto text-[10px] text-zinc-500 tabular-nums">
+            {selectedPaths.size} of {filtered.length} selected
+          </span>
+        </div>
+      )}
+
+      {/* Rows */}
+      <div className="min-h-0 flex-1 overflow-y-auto py-1">
       {filtered.map((file) => {
         const { dir, fileName } = formatPath(file.path)
         const st = STATUS_ICONS[file.status]
+        const isSelected = selectedPaths.has(file.path)
         return (
           <button
             key={file.path}
-            onClick={() => setOpenedPath(file.path)}
-            className="group flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-white/[0.04]"
+            onClick={() => selectMode ? toggleSelect(file.path) : setOpenedPath(file.path)}
+            className={`group flex w-full items-center gap-2 px-3 py-2 text-left transition-colors ${isSelected ? 'bg-white/[0.06]' : 'hover:bg-white/[0.04]'}`}
           >
+            {/* Selection checkbox — only in select mode */}
+            {selectMode && (
+              <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border ${isSelected ? 'border-emerald-500 bg-emerald-500' : 'border-zinc-600 group-hover:border-zinc-400'}`}>
+                {isSelected && (
+                  <svg className="h-2.5 w-2.5 text-[#1F1F1F]" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </span>
+            )}
+
             {/* File path — dir small, then filename */}
             <div className="flex min-w-0 flex-1 items-baseline gap-1">
               {dir && <span className="shrink-0 text-[11px] text-zinc-600">{dir}/</span>}
@@ -2789,6 +2956,37 @@ function ChangesList({
           </button>
         )
       })}
+      </div>
+
+      {/* Bottom action bar — appears whenever something is selected in select
+          mode. Mirrors the per-hunk actions but applied to every hunk of every
+          selected file. Cancel exits select mode entirely. */}
+      {selectMode && selectedPaths.size > 0 && (
+        <div className="flex shrink-0 items-center gap-2 border-t border-[#2B2B2B] px-3 py-2" style={{ backgroundColor: '#1F1F1F' }}>
+          <span className="text-[10px] font-medium text-zinc-400 tabular-nums">
+            {selectedPaths.size} selected
+          </span>
+          <div className="flex-1" />
+          <button
+            onClick={cancelSelection}
+            className="rounded border border-[#3C3C3C] px-2 py-1 text-[10px] font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-white/5"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => { onBulkAttachToNew(selectedFiles); cancelSelection() }}
+            className="rounded border border-[#3C3C3C] px-2 py-1 text-[10px] font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-white/5"
+          >
+            Attach to new chat
+          </button>
+          <button
+            onClick={() => { onBulkAttachToCurrent(selectedFiles); cancelSelection() }}
+            className="rounded bg-emerald-600 px-2.5 py-1 text-[10px] font-medium text-white transition-colors hover:bg-emerald-500"
+          >
+            Attach to current chat
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -2904,20 +3102,27 @@ function FullFileDiffView({
       <div className="flex-1 overflow-y-auto overflow-x-hidden font-mono text-[13px] leading-[1.5]" style={{ backgroundColor: '#1F1F1F' }}>
         {(() => { const effIndents = getEffectiveIndents(lines.map((l) => l.content)); return lines.map((line, i) => {
           const bg =
-            line.type === 'add' ? 'bg-emerald-500/10'
-            : line.type === 'remove' ? 'bg-red-500/10'
+            line.type === 'add' ? 'bg-emerald-500/25'
+            : line.type === 'remove' ? 'bg-red-500/25'
             : ''
           const marker =
             line.type === 'add' ? '+' : line.type === 'remove' ? '−' : ' '
           const markerColor =
-            line.type === 'add' ? 'text-emerald-400'
-            : line.type === 'remove' ? 'text-red-400'
+            line.type === 'add' ? 'text-emerald-300'
+            : line.type === 'remove' ? 'text-red-300'
             : 'text-zinc-700'
           const displayLine = line.type === 'remove' ? line.oldLine : (line.newLine ?? line.oldLine)
           const html = highlightedLines[i] || ''
+          // Line-number color: on colored diff rows the muted zinc-700 vanishes
+          // against the saturated bg — bump to a tinted zinc that reads clearly
+          // on green/red while staying subtle on context rows.
+          const lineNumColor =
+            line.type === 'add' ? 'text-emerald-200/80'
+            : line.type === 'remove' ? 'text-red-200/80'
+            : 'text-zinc-500'
           return (
             <div key={i} className={`flex w-full min-w-0 hover:bg-white/[0.03] ${bg}`}>
-              <span className="w-12 shrink-0 select-none pr-3 pt-0 text-right text-[11px] text-zinc-700">
+              <span className={`w-12 shrink-0 select-none pr-3 pt-0 text-right text-[11px] ${lineNumColor}`}>
                 {displayLine ?? ''}
               </span>
               <span className={`w-4 shrink-0 select-none text-center ${markerColor}`}>{marker}</span>
@@ -2999,17 +3204,17 @@ function DiffHunkView({
         {(() => { const effIndents = getEffectiveIndents(hunk.lines.map((l) => l.content)); return hunk.lines.map((line, i) => {
           const bg =
             line.type === 'add'
-              ? 'bg-emerald-500/10'
+              ? 'bg-emerald-500/25'
               : line.type === 'remove'
-                ? 'bg-red-500/10'
+                ? 'bg-red-500/25'
                 : ''
           const marker =
             line.type === 'add' ? '+' : line.type === 'remove' ? '−' : ' '
           const markerColor =
             line.type === 'add'
-              ? 'text-emerald-400'
+              ? 'text-emerald-300'
               : line.type === 'remove'
-                ? 'text-red-400'
+                ? 'text-red-300'
                 : 'text-zinc-700'
           const textColor =
             line.type === 'add'
@@ -3019,9 +3224,13 @@ function DiffHunkView({
                 : 'text-zinc-400'
           const displayLine = line.type === 'remove' ? line.oldLine : (line.newLine ?? line.oldLine)
           const html = hlLines[i] || ''
+          const lineNumColor =
+            line.type === 'add' ? 'text-emerald-200/80'
+            : line.type === 'remove' ? 'text-red-200/80'
+            : 'text-zinc-500'
           return (
             <div key={i} className={`flex ${bg}`}>
-              <span className="w-10 shrink-0 select-none pr-2 text-right text-[10px] text-zinc-700">
+              <span className={`w-10 shrink-0 select-none pr-2 text-right text-[10px] ${lineNumColor}`}>
                 {displayLine ?? ''}
               </span>
               <span className={`w-4 shrink-0 select-none text-center ${markerColor}`}>{marker}</span>
@@ -3076,7 +3285,16 @@ function FileTree({ projectId, hasActiveSession }: { projectId: string; hasActiv
   // button in Changes so the tree reveals the target file.
   const [expandPaths, setExpandPaths] = useState<Set<string>>(new Set())
   // Full-file diff view — shown when user opens a file with mock changes
-  const [diffViewingFile, setDiffViewingFile] = useState<{ path: string; lines: DiffLine[] } | null>(null)
+  const [diffViewingFile, setDiffViewingFile] = useState<{ path: string; lines: DiffLine[]; worktreeId?: string | null } | null>(null)
+  // Dirty-buffer tracking for the inline diff editor, mirroring what the
+  // regular file editor does — unsaved edits pop the save/discard modal.
+  const diffEditorRef = useRef<InlineDiffEditorHandle | null>(null)
+  const [diffEditorDirty, setDiffEditorDirty] = useState(false)
+  const [showDiffCloseConfirm, setShowDiffCloseConfirm] = useState(false)
+  const attemptCloseDiffEditor = useCallback(() => {
+    if (diffEditorRef.current?.isDirty()) { setShowDiffCloseConfirm(true); return }
+    setDiffViewingFile(null)
+  }, [])
   const creatingRef = useRef<HTMLInputElement>(null)
 
   // Listen for cross-panel "open file in explorer" requests
@@ -3251,15 +3469,76 @@ function FileTree({ projectId, hasActiveSession }: { projectId: string; hasActiv
 
   return (
     <div className="relative flex w-full min-w-0 flex-col border-r border-[#2B2B2B]" style={{ backgroundColor: '#181818' }}>
-      {/* Full-file diff viewer overlay — shown when the user opens a file
-          with mock changes via "Open file" from Changes or clicking the
-          file in the tree. Overlays the regular file viewer. */}
+      {/* Inline diff editor overlay — shown when the user opens a file that
+          has pending changes. Context and add lines are editable; removed
+          lines are read-only red widgets for visual reference only. Saves
+          route to the correct worktree (or main) via the same PUT endpoint
+          the plain file editor uses. */}
       {diffViewingFile && (
-        <FullFileDiffView
-          filePath={diffViewingFile.path}
-          lines={diffViewingFile.lines}
-          onClose={() => setDiffViewingFile(null)}
-        />
+        <div className="absolute inset-0 z-10 flex flex-col" style={{ backgroundColor: '#181818' }}>
+          <div className="flex shrink-0 items-center gap-2 border-b border-[#2B2B2B] px-3 py-1.5" style={{ backgroundColor: '#313131' }}>
+            <button
+              onClick={attemptCloseDiffEditor}
+              className="flex items-center text-zinc-400 hover:text-zinc-200"
+              aria-label="Back to files"
+            >
+              <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div className="flex items-center gap-1.5">
+              <FileIcon name={diffViewingFile.path.split('/').pop() ?? ''} size={14} />
+              <span className="text-[10px] font-medium text-zinc-300">{diffViewingFile.path}</span>
+              {diffEditorDirty && <span className="h-1.5 w-1.5 rounded-full bg-amber-400" title="Unsaved changes" />}
+            </div>
+          </div>
+          <div className="flex-1 min-h-0">
+            <InlineDiffEditor
+              ref={diffEditorRef}
+              projectId={projectId}
+              filePath={diffViewingFile.path}
+              lines={diffViewingFile.lines}
+              worktreeId={diffViewingFile.worktreeId ?? null}
+              onDirtyChange={setDiffEditorDirty}
+            />
+          </div>
+
+          {showDiffCloseConfirm && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}>
+              <div className="w-[320px] rounded-md border border-[#2B2B2B] p-4 shadow-xl" style={{ backgroundColor: '#252526' }}>
+                <div className="mb-2 text-[12px] font-medium text-zinc-200">Save changes to {diffViewingFile.path.split('/').pop()}?</div>
+                <div className="mb-4 text-[11px] text-zinc-400">Your changes will be lost if you don&apos;t save them.</div>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setShowDiffCloseConfirm(false)}
+                    className="rounded border border-[#3A3A3A] px-3 py-1 text-[11px] text-zinc-300 hover:bg-white/5"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      diffEditorRef.current?.discard()
+                      setShowDiffCloseConfirm(false)
+                      setDiffViewingFile(null)
+                    }}
+                    className="rounded border border-[#3A3A3A] px-3 py-1 text-[11px] text-zinc-300 hover:bg-white/5"
+                  >
+                    Discard
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const ok = await diffEditorRef.current?.save()
+                      if (ok) { setShowDiffCloseConfirm(false); setDiffViewingFile(null) }
+                    }}
+                    className="rounded bg-emerald-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-emerald-500"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       {/* File editor overlay — CodeMirror, editable. Edits live in memory;
@@ -4060,8 +4339,9 @@ function ChatPanel({
   onMinimize,
   onOpenScratchpad,
   onBusyChange,
-  hunkAttachment,
+  hunkAttachments,
   onClearHunkAttachment,
+  onClearAllHunkAttachments,
 }: {
   projectId: string
   sessionId: string
@@ -4070,15 +4350,16 @@ function ChatPanel({
   onMinimize: () => void
   onOpenScratchpad: () => void
   onBusyChange: (sessionId: string, busy: boolean) => void
-  hunkAttachment: {
+  hunkAttachments: Array<{
     filePath: string
     fileStatus: 'M' | 'A' | 'D'
     focusStart: number
     focusEnd: number
     formattedContent: string
     lineRange: string
-  } | null
-  onClearHunkAttachment: () => void
+  }>
+  onClearHunkAttachment: (index: number) => void
+  onClearAllHunkAttachments: () => void
   messages: Message[]
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>
   activeMode: ChatMode
@@ -4286,13 +4567,13 @@ function ChatPanel({
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault()
     const userText = input.trim()
-    // Allow sending with just an attachment (no text) when a hunk is pinned
-    if ((!userText && attachments.length === 0 && !hunkAttachment) || sending || teamProcessing) return
+    // Allow sending with just attachments (no text) when hunks are pinned
+    if ((!userText && attachments.length === 0 && hunkAttachments.length === 0) || sending || teamProcessing) return
 
-    // Prepend the hunk attachment to the outgoing message content so the
-    // agent sees it as part of the user's context. Pill clears on send.
-    const content = hunkAttachment
-      ? `${hunkAttachment.formattedContent}${userText}`
+    // Prepend each hunk attachment in order so the agent sees them all as
+    // part of the user's context. All chips clear on send.
+    const content = hunkAttachments.length > 0
+      ? `${hunkAttachments.map((h) => h.formattedContent).join('')}${userText}`
       : userText
 
     const userMsg: Message = {
@@ -4315,7 +4596,7 @@ function ChatPanel({
     setLiveStepIds(new Set()) // clear previous session's live steps
     setInput('')
     setAttachments([])
-    if (hunkAttachment) onClearHunkAttachment()
+    if (hunkAttachments.length > 0) onClearAllHunkAttachments()
     setSending(true)
 
     // Start polling for real-time tool calls (all modes)
@@ -4770,27 +5051,39 @@ function ChatPanel({
               </div>
             )}
 
-            {/* Hunk attachment pill — shown above the textarea when a diff
-                hunk has been attached from the Changes panel */}
-            {hunkAttachment && (
-              <div className="flex items-center gap-2 border-b border-[#3C3C3C] px-3 py-2">
-                <div className="flex min-w-0 flex-1 items-center gap-2 rounded-md border border-white/10 px-2 py-1.5" style={{ backgroundColor: '#2A2A2A' }}>
-                  <svg className="h-3 w-3 shrink-0 text-zinc-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
-                  </svg>
-                  <span className="truncate text-[11px] text-zinc-200">{hunkAttachment.filePath}</span>
-                  <span className="shrink-0 text-[10px] text-zinc-500">· focused on {hunkAttachment.lineRange}</span>
-                  <button
-                    type="button"
-                    onClick={onClearHunkAttachment}
-                    className="ml-auto shrink-0 text-zinc-500 hover:text-zinc-200"
-                    title="Remove attachment"
-                  >
-                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
+            {/* Hunk attachment chips — compact pills that wrap across rows
+                so multiple can be stacked before sending. Each has its own ×
+                to remove. Clicking outside a chip does nothing — send clears
+                them all. */}
+            {hunkAttachments.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 border-b border-[#3C3C3C] px-3 py-2">
+                {hunkAttachments.map((att, i) => {
+                  const fileName = att.filePath.split('/').pop() ?? att.filePath
+                  return (
+                    <div
+                      key={`${att.filePath}:${att.focusStart}-${att.focusEnd}:${i}`}
+                      className="flex min-w-0 max-w-[220px] items-center gap-1.5 rounded-md border border-white/10 px-1.5 py-1"
+                      style={{ backgroundColor: '#2A2A2A' }}
+                      title={`${att.filePath} · ${att.lineRange}`}
+                    >
+                      <svg className="h-3 w-3 shrink-0 text-zinc-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
+                      </svg>
+                      <span className="truncate text-[11px] font-medium text-zinc-200">{fileName}</span>
+                      <span className="shrink-0 text-[10px] text-zinc-500">{att.lineRange.replace('line ', 'L').replace('lines ', 'L')}</span>
+                      <button
+                        type="button"
+                        onClick={() => onClearHunkAttachment(i)}
+                        className="shrink-0 text-zinc-500 hover:text-zinc-200"
+                        title="Remove"
+                      >
+                        <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  )
+                })}
               </div>
             )}
 
