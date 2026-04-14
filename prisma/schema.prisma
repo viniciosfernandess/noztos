@@ -151,14 +151,83 @@ model Worktree {
   worktreePath String
   baseCommit   String
   portBase     Int?
+  // PR composition fields — the user (or agent) can type into these any
+  // time on the Checks panel. They sit here so a draft survives across
+  // chat sessions within the worktree and can pre-populate a real PR when
+  // created. Null until someone starts writing.
+  prTitleDraft String?
+  prBodyDraft  String?
   trashedAt    DateTime?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   sessions     ChatSession[]
+  todos        Todo[]
   project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId, status])
   @@map("worktrees")
+}
+
+// Semantic-search index — chunks with voyage-code-2 embeddings. Declared
+// here only so `prisma db push` sees the table exists and doesn't try to
+// drop it; all reads / writes happen via raw SQL in
+// lib/embeddings/{indexer,retriever} (the `embedding` column is pgvector
+// and the HNSW index on it aren't fully representable in Prisma schema).
+// `@@ignore` keeps this model out of the generated Prisma Client so no
+// code path can accidentally query it with the ORM.
+model RepoChunk {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  repositoryId String
+  filePath     String
+  chunkType    String
+  chunkName    String?
+  content      String
+  lineStart    Int?
+  lineEnd      Int?
+  embedding    Unsupported("vector(1536)")?
+  lastModified DateTime? @default(now())
+  touchCount   Int?      @default(0)
+
+  @@unique([repositoryId, filePath, chunkName])
+  @@index([repositoryId, lastModified(sort: Desc)], map: "repo_chunks_repo_idx")
+  @@map("repo_chunks")
+  @@ignore
+}
+
+// File-level import graph — same contract as RepoChunk: declared only to
+// prevent drops, manipulated via raw SQL only.
+model RepoImport {
+  repositoryId String
+  filePath     String
+  importsPath  String
+
+  @@id([repositoryId, filePath, importsPath])
+  @@index([repositoryId, filePath], map: "repo_imports_file_idx")
+  @@map("repo_imports")
+  @@ignore
+}
+
+// Per-worktree checklist. Lives alongside git state in the Checks panel and
+// lets the user (or agent) track intentions / follow-ups for the branch.
+// For main-chat todos we attach to a session instead of a worktree, via
+// the nullable sessionId — exactly one of worktreeId / sessionId is set.
+model Todo {
+  id          String       @id @default(cuid())
+  worktreeId  String?
+  sessionId   String?
+  content     String
+  done        Boolean      @default(false)
+  // Sort order so drag-to-reorder and stable lists work without depending
+  // on createdAt alone. New items land at the end (max+1).
+  position    Int          @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  worktree    Worktree?    @relation(fields: [worktreeId], references: [id], onDelete: Cascade)
+  session     ChatSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([worktreeId])
+  @@index([sessionId])
+  @@map("todos")
 }
 
 model ChatSession {
@@ -180,6 +249,7 @@ model ChatSession {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
   messages       ChatMessage[]
+  todos          Todo[]
   project        Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
   worktree       Worktree?      @relation(fields: [worktreeId], references: [id], onDelete: Cascade)
 

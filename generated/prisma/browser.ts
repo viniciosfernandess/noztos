@@ -53,6 +53,11 @@ export type Team = Prisma.TeamModel
  */
 export type Worktree = Prisma.WorktreeModel
 /**
+ * Model Todo
+ * 
+ */
+export type Todo = Prisma.TodoModel
+/**
  * Model ChatSession
  * 
  */

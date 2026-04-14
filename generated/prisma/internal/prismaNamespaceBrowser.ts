@@ -58,6 +58,7 @@ export const ModelName = {
   Collaborator: 'Collaborator',
   Team: 'Team',
   Worktree: 'Worktree',
+  Todo: 'Todo',
   ChatSession: 'ChatSession',
   ChatMessage: 'ChatMessage',
   Task: 'Task',
@@ -201,12 +202,28 @@ export const WorktreeScalarFieldEnum = {
   worktreePath: 'worktreePath',
   baseCommit: 'baseCommit',
   portBase: 'portBase',
+  prTitleDraft: 'prTitleDraft',
+  prBodyDraft: 'prBodyDraft',
   trashedAt: 'trashedAt',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
 
 export type WorktreeScalarFieldEnum = (typeof WorktreeScalarFieldEnum)[keyof typeof WorktreeScalarFieldEnum]
+
+
+export const TodoScalarFieldEnum = {
+  id: 'id',
+  worktreeId: 'worktreeId',
+  sessionId: 'sessionId',
+  content: 'content',
+  done: 'done',
+  position: 'position',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type TodoScalarFieldEnum = (typeof TodoScalarFieldEnum)[keyof typeof TodoScalarFieldEnum]
 
 
 export const ChatSessionScalarFieldEnum = {

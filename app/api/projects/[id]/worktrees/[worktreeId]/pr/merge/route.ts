@@ -8,7 +8,7 @@ import {
   mergePullRequest,
 } from '@/lib/git'
 
-interface RouteContext { params: Promise<{ id: string; wid: string }> }
+interface RouteContext { params: Promise<{ id: string; worktreeId: string }> }
 
 // POST — merge the PR associated with this worktree's branch. Body:
 //   { method?: 'merge'|'squash'|'rebase'; deleteBranch?: boolean }
@@ -16,12 +16,12 @@ interface RouteContext { params: Promise<{ id: string; wid: string }> }
 // We look up the PR number server-side so the client just hits this with
 // the worktree id and doesn't need to track the PR state separately.
 export async function POST(request: NextRequest, context: RouteContext) {
-  const { id, wid } = await context.params
+  const { id, worktreeId } = await context.params
   const auth = await verifyProjectAccess(id)
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
   const wt = await prisma.worktree.findUnique({
-    where: { id: wid },
+    where: { id: worktreeId },
     select: { projectId: true, branchName: true },
   })
   if (!wt || wt.projectId !== id) return NextResponse.json({ error: 'worktree not found' }, { status: 404 })

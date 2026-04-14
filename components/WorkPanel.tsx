@@ -1085,10 +1085,7 @@ interface WorktreeInfo {
 
 export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true }: WorkPanelProps) {
   const [terminalOpen, setTerminalOpen] = useState(true)
-  // Bottom panel active tab — Terminal by default, Checks shows git state
-  // with the commit / push / PR / merge action buttons.
-  const [bottomTab, setBottomTab] = useState<'terminal' | 'checks'>('terminal')
-  const [rightPanelTab, setRightPanelTab] = useState<'explorer' | 'changes'>('explorer')
+  const [rightPanelTab, setRightPanelTab] = useState<'explorer' | 'changes' | 'checks'>('explorer')
   // Changes tab: select-mode toggle. When on, rows show checkboxes and the
   // action bar at the bottom replaces the default row click behavior with
   // selection toggling. Lives up here (not inside ChangesList) so the header
@@ -2090,6 +2087,25 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                 <span className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full bg-white" />
               )}
             </button>
+            {/* Spacer — pushes Checks away from Explorer/Changes so it reads
+                as a separate group of actions, like Conductor does. */}
+            <div className="ml-4" />
+            <button
+              onClick={() => setRightPanelTab('checks')}
+              className={`relative flex items-center gap-1.5 px-3 py-2.5 text-[12px] font-medium transition-colors ${
+                rightPanelTab === 'checks'
+                  ? 'text-zinc-100'
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              Checks
+              {statusBadge && (
+                <span className={`h-1.5 w-1.5 rounded-full ${statusBadge.color}`} title={statusBadge.label} />
+              )}
+              {rightPanelTab === 'checks' && (
+                <span className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full bg-white" />
+              )}
+            </button>
             {/* Select-mode toggle — only on Changes tab. Swaps the whole
                 panel into multi-select so the user can bulk-attach several
                 changed files (and all their hunks) to a chat in one go. */}
@@ -2154,84 +2170,61 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                 }}
               />
             )}
+            {rightPanelTab === 'checks' && (
+              <ChecksPanel
+                projectId={projectId}
+                sessionId={activeSessionId}
+                worktreeId={activeWorktreeId}
+                onArchive={async () => {
+                  if (!activeWorktreeId) return
+                  const res = await fetch(`/api/projects/${projectId}/worktrees/${activeWorktreeId}/archive`, { method: 'POST' })
+                  if (res.ok) {
+                    setWorktrees((prev) => prev.filter((w) => w.id !== activeWorktreeId))
+                    setActiveWorktreeId(null)
+                    setActiveSessionId(null)
+                  }
+                }}
+              />
+            )}
           </div>
 
-          {/* Bottom panel — Terminal + Checks tabs. Terminal is the default;
-              Checks overlays the same area with the git / PR action panel. */}
+          {/* Terminal panel — retrátil. Checks now lives up in the header
+              tab row next to Explorer/Changes; this stays terminal-only. */}
           {hasOpenChat && terminalOpen ? (
             <div className="flex h-1/2 shrink-0 flex-col border-t border-[#2B2B2B]" style={{ backgroundColor: '#181818' }}>
-              {/* Tab bar */}
-              <div className="flex shrink-0 items-center gap-0.5 border-b border-[#2B2B2B] px-2" style={{ backgroundColor: '#1F1F1F' }}>
-                <button
-                  onClick={() => setBottomTab('terminal')}
-                  className={`flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-medium transition-colors ${bottomTab === 'terminal' ? 'text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`}
-                >
-                  <svg className={`h-3 w-3 ${bottomTab === 'terminal' ? 'text-emerald-400' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <div className="flex shrink-0 items-center border-b border-[#2B2B2B] px-2" style={{ backgroundColor: '#1F1F1F' }}>
+                <div className="flex items-center gap-1 px-2 py-1.5">
+                  <svg className="h-3 w-3 text-emerald-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z" />
                   </svg>
-                  Terminal
-                  {bottomTab === 'terminal' && <span className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full bg-white" />}
-                </button>
-                <button
-                  onClick={() => setBottomTab('checks')}
-                  className={`relative flex items-center gap-1.5 px-2.5 py-2 text-[11px] font-medium transition-colors ${bottomTab === 'checks' ? 'text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`}
-                >
-                  <svg className={`h-3 w-3 ${bottomTab === 'checks' ? 'text-emerald-400' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Checks
-                  {bottomTab === 'checks' && <span className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full bg-white" />}
-                </button>
+                  <span className="text-[10px] font-medium text-zinc-300">Terminal</span>
+                </div>
                 <div className="flex-1" />
                 <button
                   onClick={() => setTerminalOpen(false)}
                   className="flex h-5 w-5 items-center justify-center rounded text-zinc-600 hover:bg-white/5 hover:text-zinc-400"
-                  title="Collapse panel"
+                  title="Close terminal"
                 >
                   <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
                   </svg>
                 </button>
               </div>
-              {/* Tab body — a single slot; each panel owns its own scroll. */}
-              <div className="relative min-h-0 flex-1">
-                {bottomTab === 'terminal' && (
-                  <TerminalBody projectId={projectId} sessionId={activeSessionId} worktreeId={activeWorktreeId} />
-                )}
-                {bottomTab === 'checks' && (
-                  <ChecksPanel
-                    projectId={projectId}
-                    sessionId={activeSessionId}
-                    worktreeId={activeWorktreeId}
-                    onArchive={async () => {
-                      // Merged worktree archive — no dirty-changes modal
-                      // needed since the merge already consumed them.
-                      if (!activeWorktreeId) return
-                      const res = await fetch(`/api/projects/${projectId}/worktrees/${activeWorktreeId}/archive`, { method: 'POST' })
-                      if (res.ok) {
-                        setWorktrees((prev) => prev.filter((w) => w.id !== activeWorktreeId))
-                        setActiveWorktreeId(null)
-                        setActiveSessionId(null)
-                      }
-                    }}
-                  />
-                )}
-              </div>
+              <TerminalBody projectId={projectId} sessionId={activeSessionId} worktreeId={activeWorktreeId} />
             </div>
           ) : hasOpenChat ? (
-            /* Bottom panel collapsed — thin bar to pull up */
             <button
               onClick={() => setTerminalOpen(true)}
-              className="flex shrink-0 items-center gap-2 border-t border-[#2B2B2B] px-3 py-1.5 text-left transition-colors hover:bg-white/5"
-              style={{ backgroundColor: '#1F1F1F' }}
+              className="flex shrink-0 items-center gap-2 border-t border-[#2B2B2B] px-3 py-3 text-left transition-colors hover:bg-white/10"
+              style={{ backgroundColor: '#252526' }}
             >
-              <svg className="h-3 w-3 text-zinc-500" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <svg className="h-3.5 w-3.5 text-zinc-300" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
               </svg>
-              <svg className="h-3 w-3 text-emerald-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+              <svg className="h-3.5 w-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z" />
               </svg>
-              <span className="text-[10px] text-zinc-500">Terminal · Checks</span>
+              <span className="text-[12px] font-medium text-zinc-200">Terminal</span>
             </button>
           ) : null}
         </div>
@@ -2637,6 +2630,10 @@ interface MockChangedFile {
   // Each line is a DiffLine so unchanged lines show as context and
   // modified/added/removed lines render with highlight.
   fullDiff?: DiffLine[]
+  // True when the file differs from HEAD but hasn't been committed yet.
+  // Renders a "U" badge in the Changes list so the user can tell committed
+  // work apart from dirty-working-tree edits at a glance.
+  uncommitted?: boolean
 }
 
 // Helper — find a mock change by path (used by the Explorer "Open file" flow
@@ -2715,9 +2712,8 @@ const MOCK_CHANGES: MockChangedFile[] = [
     added: 4,
     removed: 2,
     hunks: [MOCK_BUTTON_HUNK],
-    // Full-file diff mirrors the hunk here because the file is small enough
-    // to show in its entirety. For longer files we'd pad with context lines.
     fullDiff: MOCK_BUTTON_HUNK.lines,
+    // Imagine this one is committed (in the branch's history already).
   },
   {
     path: 'lib/useAsyncAction.ts',
@@ -2726,6 +2722,8 @@ const MOCK_CHANGES: MockChangedFile[] = [
     removed: 0,
     hunks: [MOCK_HOOK_HUNK],
     fullDiff: MOCK_HOOK_HUNK.lines,
+    // This one is still sitting in the working tree — U badge appears.
+    uncommitted: true,
   },
 ]
 
@@ -2948,6 +2946,18 @@ function ChangesList({
               {file.added > 0 && <span className="text-emerald-400">+{file.added}</span>}
               {file.removed > 0 && <span className="ml-1 text-red-400">-{file.removed}</span>}
             </span>
+
+            {/* U badge — only on files that haven't been committed yet. Sits
+                where the status square would go so committed/uncommitted
+                are immediately distinguishable at the end of the row. */}
+            {file.uncommitted && (
+              <span
+                title="Uncommitted"
+                className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-amber-400/40 bg-amber-400/10 text-[10px] font-bold leading-none text-amber-400"
+              >
+                U
+              </span>
+            )}
 
             {/* Status indicator — colored square with symbol */}
             <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[11px] font-bold leading-none ${st.text} ${st.bg} ${st.border}`}>

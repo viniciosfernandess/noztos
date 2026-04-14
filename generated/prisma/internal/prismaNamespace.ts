@@ -391,6 +391,7 @@ export const ModelName = {
   Collaborator: 'Collaborator',
   Team: 'Team',
   Worktree: 'Worktree',
+  Todo: 'Todo',
   ChatSession: 'ChatSession',
   ChatMessage: 'ChatMessage',
   Task: 'Task',
@@ -417,7 +418,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "user" | "project" | "repository" | "repoFile" | "collaborator" | "team" | "worktree" | "chatSession" | "chatMessage" | "task" | "taskIteration" | "taskSkillLog" | "taskBuildLog" | "taskSuggestion" | "slackLog" | "resourceUsage" | "teamRun" | "buildSession"
+    modelProps: "user" | "project" | "repository" | "repoFile" | "collaborator" | "team" | "worktree" | "todo" | "chatSession" | "chatMessage" | "task" | "taskIteration" | "taskSkillLog" | "taskBuildLog" | "taskSuggestion" | "slackLog" | "resourceUsage" | "teamRun" | "buildSession"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -936,6 +937,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.WorktreeCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.WorktreeCountAggregateOutputType> | number
+        }
+      }
+    }
+    Todo: {
+      payload: Prisma.$TodoPayload<ExtArgs>
+      fields: Prisma.TodoFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.TodoFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TodoPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.TodoFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TodoPayload>
+        }
+        findFirst: {
+          args: Prisma.TodoFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TodoPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.TodoFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TodoPayload>
+        }
+        findMany: {
+          args: Prisma.TodoFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TodoPayload>[]
+        }
+        create: {
+          args: Prisma.TodoCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TodoPayload>
+        }
+        createMany: {
+          args: Prisma.TodoCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.TodoCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TodoPayload>[]
+        }
+        delete: {
+          args: Prisma.TodoDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TodoPayload>
+        }
+        update: {
+          args: Prisma.TodoUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TodoPayload>
+        }
+        deleteMany: {
+          args: Prisma.TodoDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.TodoUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.TodoUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TodoPayload>[]
+        }
+        upsert: {
+          args: Prisma.TodoUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TodoPayload>
+        }
+        aggregate: {
+          args: Prisma.TodoAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateTodo>
+        }
+        groupBy: {
+          args: Prisma.TodoGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.TodoGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.TodoCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.TodoCountAggregateOutputType> | number
         }
       }
     }
@@ -1906,12 +1981,28 @@ export const WorktreeScalarFieldEnum = {
   worktreePath: 'worktreePath',
   baseCommit: 'baseCommit',
   portBase: 'portBase',
+  prTitleDraft: 'prTitleDraft',
+  prBodyDraft: 'prBodyDraft',
   trashedAt: 'trashedAt',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
 
 export type WorktreeScalarFieldEnum = (typeof WorktreeScalarFieldEnum)[keyof typeof WorktreeScalarFieldEnum]
+
+
+export const TodoScalarFieldEnum = {
+  id: 'id',
+  worktreeId: 'worktreeId',
+  sessionId: 'sessionId',
+  content: 'content',
+  done: 'done',
+  position: 'position',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type TodoScalarFieldEnum = (typeof TodoScalarFieldEnum)[keyof typeof TodoScalarFieldEnum]
 
 
 export const ChatSessionScalarFieldEnum = {
@@ -2378,6 +2469,7 @@ export type GlobalOmitConfig = {
   collaborator?: Prisma.CollaboratorOmit
   team?: Prisma.TeamOmit
   worktree?: Prisma.WorktreeOmit
+  todo?: Prisma.TodoOmit
   chatSession?: Prisma.ChatSessionOmit
   chatMessage?: Prisma.ChatMessageOmit
   task?: Prisma.TaskOmit
