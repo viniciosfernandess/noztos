@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { diffLines } from 'diff'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { ChatTabs } from './ChatTabs'
 import { CodeMirrorFileView, type CodeMirrorFileViewHandle } from './CodeMirrorFileView'
@@ -2648,6 +2649,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
             )}
             {rightPanelTab === 'changes' && (
               <ChangesList
+                projectId={projectId}
                 selectMode={changesSelectMode}
                 onExitSelectMode={() => setChangesSelectMode(false)}
                 onAttachToCurrent={handleAttachHunkToCurrentChat}
@@ -3125,6 +3127,10 @@ interface MockChangedFile {
   hunks: DiffHunk[]
   fullDiff?: DiffLine[]
   uncommitted?: boolean
+  // First worktree that touched this file — used to fetch the correct
+  // version when opening the inline diff. Optional because the legacy
+  // mock data doesn't carry it.
+  worktreeId?: string
 }
 
 function getMockChangeForPath(path: string): MockChangedFile | null {
@@ -3142,7 +3148,168 @@ const STATUS_ICONS: Record<string, { symbol: string; text: string; bg: string; b
   D: { symbol: '−', text: 'text-red-400', bg: 'bg-red-400/10', border: 'border-red-400/30' },
 }
 
+// Compact inline diff for the Changes tab drill-in view. Fetches the file's
+// current and original content from the per-file endpoint and builds hunks
+// via jsdiff (LCS-based, so inserts/deletes don't cascade). Only the
+// changed lines + 3 lines of context before/after are rendered — the rest
+// of the file is skipped entirely, so a small edit to a 500-line file
+// shows ~7 lines, not 500.
+function buildHunksFromContents(original: string, current: string, contextLines = 3): DiffHunk[] {
+  const parts = diffLines(original, current)
+  // Flatten parts into a linear stream of typed lines. Track running old /
+  // new line numbers so each line has the correct "sidebar" line number.
+  type FlatLine = { type: 'context' | 'add' | 'remove'; content: string; oldLine?: number; newLine?: number }
+  const flat: FlatLine[] = []
+  let oldLine = 0
+  let newLine = 0
+  for (const p of parts) {
+    // jsdiff strips the trailing newline — re-split strictly on \n and drop
+    // the final empty string that appears when the chunk ended in \n.
+    const pieces = p.value.split('\n')
+    if (pieces.length > 0 && pieces[pieces.length - 1] === '') pieces.pop()
+    for (const piece of pieces) {
+      if (p.added) {
+        newLine += 1
+        flat.push({ type: 'add', content: piece, newLine })
+      } else if (p.removed) {
+        oldLine += 1
+        flat.push({ type: 'remove', content: piece, oldLine })
+      } else {
+        oldLine += 1
+        newLine += 1
+        flat.push({ type: 'context', content: piece, oldLine, newLine })
+      }
+    }
+  }
+
+  // Group changed regions into hunks with `contextLines` context on each
+  // side. Consecutive changes with ≤ (contextLines * 2) context between
+  // them get merged into a single hunk to avoid a broken-up view.
+  const changedIndices: number[] = []
+  flat.forEach((l, i) => { if (l.type !== 'context') changedIndices.push(i) })
+  if (changedIndices.length === 0) return []
+
+  const ranges: Array<{ start: number; end: number }> = []
+  let rangeStart = Math.max(0, changedIndices[0] - contextLines)
+  let rangeEnd = Math.min(flat.length - 1, changedIndices[0] + contextLines)
+  for (let k = 1; k < changedIndices.length; k++) {
+    const idx = changedIndices[k]
+    const expandedStart = Math.max(0, idx - contextLines)
+    const expandedEnd = Math.min(flat.length - 1, idx + contextLines)
+    if (expandedStart <= rangeEnd + 1) {
+      rangeEnd = Math.max(rangeEnd, expandedEnd)
+    } else {
+      ranges.push({ start: rangeStart, end: rangeEnd })
+      rangeStart = expandedStart
+      rangeEnd = expandedEnd
+    }
+  }
+  ranges.push({ start: rangeStart, end: rangeEnd })
+
+  return ranges.map((r) => {
+    const hunkLines: DiffLine[] = []
+    for (let i = r.start; i <= r.end; i++) {
+      const l = flat[i]
+      hunkLines.push({
+        type: l.type,
+        content: l.content,
+        oldLine: l.oldLine,
+        newLine: l.newLine,
+      })
+    }
+    const first = flat[r.start]
+    return {
+      oldStart: first.oldLine ?? 1,
+      newStart: first.newLine ?? 1,
+      lines: hunkLines,
+    }
+  })
+}
+
+function InlineDiffView({
+  projectId,
+  path,
+  worktreeId,
+  onAttachToCurrent,
+  onAttachToNew,
+  fileStatus,
+}: {
+  projectId: string
+  path: string
+  worktreeId: string | null
+  onAttachToCurrent: (filePath: string, fileStatus: 'M' | 'A' | 'D', hunk: DiffHunk) => void
+  onAttachToNew: (filePath: string, fileStatus: 'M' | 'A' | 'D', hunk: DiffHunk) => void
+  fileStatus: 'M' | 'A' | 'D'
+}) {
+  const [state, setState] = useState<{ content: string; originalContent: string } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    const qs = worktreeId ? `?worktree=${worktreeId}` : ''
+    fetch(`/api/projects/${projectId}/repository/files/${encodeURIComponent(path)}${qs}`)
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
+      .then((data) => {
+        if (cancelled) return
+        setState({ content: data.content ?? '', originalContent: data.originalContent ?? '' })
+        setLoading(false)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setError(err?.message ?? 'failed to load diff')
+        setLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [projectId, path, worktreeId])
+
+  if (loading) {
+    return <div className="flex h-full items-center justify-center text-[11px] text-zinc-500">Loading diff…</div>
+  }
+  if (error) {
+    return <div className="flex h-full items-center justify-center text-[11px] text-red-400">Failed: {error}</div>
+  }
+  if (!state) return null
+
+  const hunks = buildHunksFromContents(state.originalContent, state.content, 3)
+
+  if (hunks.length === 0) {
+    return (
+      <div className="flex h-full items-center justify-center text-[11px] text-zinc-500">
+        No changes in this file.
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
+      {hunks.map((hunk, hi) => (
+        <DiffHunkView
+          key={hi}
+          hunk={hunk}
+          filePath={path}
+          onCopy={() => {
+            const text = hunk.lines.map((l) => {
+              const marker = l.type === 'add' ? '+' : l.type === 'remove' ? '-' : ' '
+              return `${marker}${l.content}`
+            }).join('\n')
+            navigator.clipboard?.writeText(text).catch(() => {})
+          }}
+          onAttachToCurrent={() => onAttachToCurrent(path, fileStatus, hunk)}
+          onAttachToNew={() => onAttachToNew(path, fileStatus, hunk)}
+        />
+      ))}
+    </div>
+  )
+}
+
 function ChangesList({
+  projectId,
   selectMode,
   onExitSelectMode,
   onAttachToCurrent,
@@ -3151,6 +3318,7 @@ function ChangesList({
   onBulkAttachToNew,
   onOpenFile,
 }: {
+  projectId: string
   // Whether the panel is in multi-select mode (header icon toggles this).
   selectMode: boolean
   onExitSelectMode: () => void
@@ -3167,7 +3335,44 @@ function ChangesList({
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
   useEffect(() => { if (!selectMode) setSelectedPaths(new Set()) }, [selectMode])
 
-  const filtered = MOCK_CHANGES
+  // Fetch real modified files from the repository API — replaces the old
+  // MOCK_CHANGES array. Polls every 5s so new edits from active chats show
+  // up live, matching the Explorer tree refresh cadence. Hunks aren't
+  // returned here yet, so drill-into-diff view falls back to a simple
+  // header + open-in-explorer action until the per-file diff endpoint ships.
+  const [realChanges, setRealChanges] = useState<MockChangedFile[]>([])
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const res = await fetch(`/api/projects/${projectId}/repository/files`)
+        if (!res.ok) return
+        const data = await res.json()
+        if (cancelled) return
+        const allFiles = data.files ?? []
+        const modFiles = allFiles.filter((f: { isModified?: boolean }) => f.isModified)
+        const mapped: MockChangedFile[] = modFiles.map((f: {
+          path: string; isNew?: boolean; added?: number; removed?: number;
+          worktrees?: { id: string; name: string }[]
+        }) => ({
+          path: f.path,
+          status: (f.isNew ? 'A' : 'M') as 'M' | 'A' | 'D',
+          added: f.added ?? 0,
+          removed: f.removed ?? 0,
+          hunks: [],
+          worktreeId: f.worktrees?.[0]?.id,
+        }))
+        setRealChanges(mapped)
+      } catch (err) {
+        console.error('[ChangesList] fetch failed:', err)
+      }
+    }
+    load()
+    const interval = setInterval(load, 5000)
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [projectId])
+
+  const filtered = realChanges
   const selectedFiles = filtered.filter((f) => selectedPaths.has(f.path))
   const allSelected = filtered.length > 0 && selectedPaths.size === filtered.length
 
@@ -3195,7 +3400,7 @@ function ChangesList({
   }
 
   // If a file is opened, show its diff view (takes over the whole panel)
-  const openedFile = openedPath ? MOCK_CHANGES.find((f) => f.path === openedPath) : null
+  const openedFile = openedPath ? filtered.find((f) => f.path === openedPath) : null
   if (openedFile) {
     const { dir, fileName } = formatPath(openedFile.path)
     const st = STATUS_ICONS[openedFile.status]
@@ -3260,25 +3465,18 @@ function ChangesList({
           </span>
         </div>
 
-        {/* Diff hunks */}
-        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
-          {openedFile.hunks.map((hunk, hi) => (
-            <DiffHunkView
-              key={hi}
-              hunk={hunk}
-              filePath={openedFile.path}
-              onCopy={() => {
-                const text = hunk.lines.map((l) => {
-                  const marker = l.type === 'add' ? '+' : l.type === 'remove' ? '-' : ' '
-                  return `${marker}${l.content}`
-                }).join('\n')
-                navigator.clipboard?.writeText(text).catch(() => {})
-              }}
-              onAttachToCurrent={() => onAttachToCurrent(openedFile.path, openedFile.status, hunk)}
-              onAttachToNew={() => onAttachToNew(openedFile.path, openedFile.status, hunk)}
-            />
-          ))}
-        </div>
+        {/* Inline diff — fetched from per-file endpoint using the worktree
+            that touched this file. Uses jsdiff for real LCS-based hunks
+            with 3 lines of context before/after each change, so a small
+            edit in a large file shows only the relevant block. */}
+        <InlineDiffView
+          projectId={projectId}
+          path={openedFile.path}
+          worktreeId={openedFile.worktreeId ?? null}
+          fileStatus={openedFile.status}
+          onAttachToCurrent={onAttachToCurrent}
+          onAttachToNew={onAttachToNew}
+        />
       </div>
     )
   }
@@ -3325,7 +3523,10 @@ function ChangesList({
         return (
           <button
             key={file.path}
-            onClick={() => selectMode ? toggleSelect(file.path) : setOpenedPath(file.path)}
+            onClick={() => {
+              if (selectMode) { toggleSelect(file.path); return }
+              setOpenedPath(file.path)
+            }}
             className={`group flex w-full items-center gap-2 px-3 py-2 text-left transition-colors ${isSelected ? 'bg-white/[0.06]' : 'hover:bg-white/[0.04]'}`}
           >
             {/* Selection checkbox — only in select mode */}
@@ -4063,11 +4264,6 @@ function FileTree({ projectId, hasActiveSession, mainState }: { projectId: strin
       <div className="flex items-center justify-between border-b border-[#2B2B2B] px-3 py-2">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">Explorer</span>
         <div className="flex items-center gap-0.5">
-          {modifiedFiles.length > 0 && !mainState && (
-            <span className="mr-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
-              {modifiedFiles.length}
-            </span>
-          )}
           {/* Edit actions — hidden in main state (read-only preview) */}
           {!mainState && (
             <>
@@ -4162,144 +4358,6 @@ function FileTree({ projectId, hasActiveSession, mainState }: { projectId: strin
       </div>
 
       {/* Changes bar + review panel */}
-      {modifiedFiles.length > 0 && (
-        <div className="shrink-0 border-t border-[#2B2B2B]">
-          {/* Toggle bar */}
-          <button
-            onClick={() => setShowChangesPanel(!showChangesPanel)}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-white/5"
-          >
-            <svg className={`h-3 w-3 text-zinc-500 transition-transform ${showChangesPanel ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 15.75l7.5-7.5 7.5 7.5" />
-            </svg>
-            <span className="text-[11px] font-semibold text-amber-400">{modifiedFiles.length} change{modifiedFiles.length !== 1 ? 's' : ''}</span>
-            <div className="flex-1" />
-            {/* Accept all */}
-            <span
-              onClick={(e) => {
-                e.stopPropagation()
-                if (acceptingAll) return
-                setAcceptingAll(true)
-                Promise.all(modifiedFiles.map((f) =>
-                  fetch(`/api/projects/${projectId}/repository/files`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ path: f.path, action: 'accept' }),
-                  })
-                )).then(() => { fetchFiles(); setAcceptingAll(false); setShowChangesPanel(false) })
-                  .catch(() => setAcceptingAll(false))
-              }}
-              className="text-[10px] text-emerald-400 hover:text-emerald-300"
-            >
-              {acceptingAll ? 'Accepting...' : 'Accept All'}
-            </span>
-            <span className="text-zinc-600">·</span>
-            {/* Revert all */}
-            <span
-              onClick={(e) => {
-                e.stopPropagation()
-                if (revertingAll) return
-                setRevertingAll(true)
-                fetch(`/api/projects/${projectId}/repository/files/revert-all`, { method: 'POST' })
-                  .then(() => { fetchFiles(); setRevertingAll(false); setShowChangesPanel(false) })
-                  .catch(() => setRevertingAll(false))
-              }}
-              className="text-[10px] text-red-400 hover:text-red-300"
-            >
-              {revertingAll ? 'Reverting...' : 'Revert All'}
-            </span>
-          </button>
-
-          {/* Expanded panel — file list */}
-          {showChangesPanel && (
-            <div className="border-t border-[#2B2B2B]">
-              {/* Review all button */}
-              <button
-                onClick={(e) => { e.stopPropagation(); setShowReviewModal(true); setReviewFilePath(null) }}
-                className="flex w-full items-center justify-center gap-1.5 border-b border-[#2B2B2B] px-3 py-1.5 text-[10px] font-medium text-zinc-400 hover:bg-violet-500/5"
-              >
-                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m5.231 13.888L8.25 21v-3.375C5.25 14.437 3 11.25 3 8.25 3 5.108 5.108 3 8.25 3h7.5C18.892 3 21 5.108 21 8.25c0 3-2.25 6.188-5.25 9.375z" />
-                </svg>
-                Review All Changes
-              </button>
-              {/* File list */}
-              <div className="max-h-44 overflow-y-auto px-1 py-1">
-                {modifiedFiles.map((f) => {
-                  const fileName = f.path.split('/').pop() ?? f.path
-                  const wtLabel = f.worktrees && f.worktrees.length > 0
-                    ? f.worktrees.length === 1
-                      ? f.worktrees[0].name
-                      : `${f.worktrees.length} worktrees`
-                    : null
-                  return (
-                    <div
-                      key={f.id}
-                      className={`group flex items-center gap-2 rounded px-2 py-1.5 ${
-                        reviewingFile === f.id ? 'bg-white/10' : 'hover:bg-white/5'
-                      }`}
-                      title={f.worktrees?.map((w) => w.name).join(', ')}
-                    >
-                      <span className={`text-[10px] font-mono font-bold ${f.isNew ? 'text-emerald-400' : 'text-amber-400'}`}>{f.isNew ? 'U' : 'M'}</span>
-                      <button
-                        onClick={() => { setReviewFilePath(f.path); setShowReviewModal(true) }}
-                        className="min-w-0 flex-1 text-left"
-                      >
-                        <p className="text-[10px] text-zinc-300 truncate">{fileName}</p>
-                        <p className="text-[8px] text-zinc-600 truncate">
-                          {wtLabel ? <span className="text-[#0078D4]">{wtLabel}</span> : null}
-                          {wtLabel ? <span className="mx-1">·</span> : null}
-                          {f.path}
-                        </p>
-                      </button>
-                      {/* +/- inline */}
-                      {(f.added || f.removed) ? (
-                        <span className="font-mono text-[9px] tabular-nums">
-                          {f.added ? <span className="text-emerald-400">+{f.added}</span> : null}
-                          {f.removed ? <span className="ml-1 text-red-400">-{f.removed}</span> : null}
-                        </span>
-                      ) : null}
-                      {/* Accept */}
-                      <button
-                        onClick={() => {
-                          fetch(`/api/projects/${projectId}/repository/files`, {
-                            method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ path: f.path, action: 'accept' }),
-                          }).then(() => fetchFiles())
-                        }}
-                        title="Accept change"
-                        className="hidden h-5 w-5 shrink-0 items-center justify-center rounded text-emerald-500 hover:bg-emerald-500/10 group-hover:flex"
-                      >
-                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                        </svg>
-                      </button>
-                      {/* Reject (revert) */}
-                      <button
-                        onClick={() => {
-                          fetch(`/api/projects/${projectId}/repository/files`, {
-                            method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ path: f.path, action: 'revert' }),
-                          }).then(() => fetchFiles())
-                        }}
-                        title="Revert change"
-                        className="hidden h-5 w-5 shrink-0 items-center justify-center rounded text-red-400 hover:bg-red-500/10 group-hover:flex"
-                      >
-                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
-                        </svg>
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
       {/* Review diff modal */}
       {showReviewModal && (
         <ChangesReviewModal

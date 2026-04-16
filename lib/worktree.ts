@@ -313,14 +313,17 @@ export async function getWorktreeChangedFiles(
   const ref = refCheck.stdout?.trim().endsWith('OK') ? 'origin/main' : wt.baseCommit
 
   try {
-    const res = await compute.exec(
-      sandboxId,
-      `cd ${wt.worktreePath} && git diff --numstat ${ref} 2>/dev/null && echo "---SEP---" && git diff --name-status ${ref} 2>/dev/null`,
-    )
-    const text = res.stdout?.trim() ?? ''
-    if (!text) return []
-
-    const [numstatBlock = '', nameStatusBlock = ''] = text.split('---SEP---')
+    // Run the two diffs separately. The old `&&`-chained version was failing
+    // with exit 129 when either diff had no output, because shell chaining
+    // propagates the first command's status. Separate execs are cheap and
+    // let us recover from either one returning empty.
+    const [numstatRes, nameStatusRes] = await Promise.all([
+      compute.exec(sandboxId, `cd ${wt.worktreePath} && git diff --numstat ${ref} || true`),
+      compute.exec(sandboxId, `cd ${wt.worktreePath} && git diff --name-status ${ref} || true`),
+    ])
+    const numstatBlock = numstatRes.stdout?.trim() ?? ''
+    const nameStatusBlock = nameStatusRes.stdout?.trim() ?? ''
+    if (!numstatBlock && !nameStatusBlock) return []
     const numstats = new Map<string, { added: number; removed: number }>()
     for (const line of numstatBlock.split('\n')) {
       const m = line.match(/^(\d+|-)\s+(\d+|-)\s+(.+)$/)

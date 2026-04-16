@@ -38,7 +38,10 @@
       "WebFetch(domain:hiretop.com)",
       "WebFetch(domain:www.omnara.com)",
       "Bash(git -C /Users/viniciosfernandes/Desktop/projects/bornastar status --short)",
-      "Bash(grep -n \"^]$\\\\|^const STATUS_ICONS\" /Users/viniciosfernandes/Desktop/projects/bornastar/components/WorkPanel.tsx)"
+      "Bash(grep -n \"^]$\\\\|^const STATUS_ICONS\" /Users/viniciosfernandes/Desktop/projects/bornastar/components/WorkPanel.tsx)",
+      "Bash(kill %1)",
+      "Bash(lsof -ti:3000)",
+      "Bash(xargs kill:*)"
     ],
     "additionalDirectories": [
       "/Users/viniciosfernandes/Desktop/projects/bornastar/app/api/projects/[id]",
