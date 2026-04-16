@@ -6,6 +6,7 @@ import {
   currentBranch,
   findPullRequestForBranch,
   getBranchProtection,
+  getCiStatusForRef,
   loadProjectGitContext,
   resolveWorkingDir,
   uncommittedCount,
@@ -55,8 +56,14 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
   // PR lookup depends on the branch, so chain after.
   let pr = null
+  let ciStatus: 'passing' | 'pending' | 'failing' | null = null
   if (branch && branch !== 'main' && branch !== 'HEAD') {
     pr = await findPullRequestForBranch(ctx.githubOwner, ctx.githubRepo, branch, ctx.githubToken).catch(() => null)
+    // Only query CI when there's a live PR — no point polling check
+    // runs for a branch that doesn't exist on GitHub yet.
+    if (pr) {
+      ciStatus = await getCiStatusForRef(ctx.githubOwner, ctx.githubRepo, branch, ctx.githubToken)
+    }
   }
 
   return NextResponse.json({
@@ -68,5 +75,6 @@ export async function GET(request: NextRequest, context: RouteContext) {
     mainProtectionChecked: protection.checkedAt,
     pr,
     githubConnected: !!ctx.githubToken,
+    ciStatus,
   })
 }

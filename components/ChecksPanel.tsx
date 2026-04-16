@@ -20,6 +20,9 @@
 // manual refresh.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { MOCK_CONFLICTS, MOCK_GIT_STATUS } from '@/lib/mocks/checks-demo'
+import { SplitCreatePRButton } from './SplitCreatePRButton'
+import { deriveUnsupportedLabel } from '@/lib/hooks/useGitStatus'
 
 interface GitStatus {
   branch: string
@@ -59,9 +62,15 @@ export interface ChecksPanelProps {
   sessionId: string | null
   worktreeId: string | null
   onArchive?: () => void
+  // True when the user clicked "Continue" on a merged PR banner — the
+  // purple Merged row stops rendering and any row-level actions go back
+  // to their normal single-button form ("Commit and push" / "Create PR").
+  mergedBannerDismissed?: boolean
+  // Same idea for a rejected PR — "Start over" dismisses the red row.
+  closedBannerDismissed?: boolean
 }
 
-export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive }: ChecksPanelProps) {
+export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive, mergedBannerDismissed, closedBannerDismissed }: ChecksPanelProps) {
   const [status, setStatus] = useState<GitStatus | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -80,11 +89,9 @@ export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive }: Che
   // Conductor: no persistent input at the bottom.
   const [todoInputOpen, setTodoInputOpen] = useState(false)
 
-  // Commit message / move-to-branch modals.
+  // Commit message modal state.
   const [showCommitModal, setShowCommitModal] = useState(false)
   const [commitMessage, setCommitMessage] = useState('')
-  const [showMoveToBranchModal, setShowMoveToBranchModal] = useState(false)
-  const [newBranchName, setNewBranchName] = useState('')
   // Archive confirmation — only opens when there's unsaved work at archive
   // time. Otherwise we skip the modal and archive immediately.
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
@@ -103,6 +110,10 @@ export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive }: Che
 
   // ── Git status polling ────────────────────────────────────────────────
   const refreshStatus = useCallback(async () => {
+    if (MOCK_GIT_STATUS) {
+      setStatus(MOCK_GIT_STATUS as GitStatus)
+      return
+    }
     try {
       const res = await fetch(`/api/projects/${projectId}/git/status${qs()}`)
       if (res.ok) setStatus(await res.json())
@@ -114,6 +125,35 @@ export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive }: Che
     const t = setInterval(refreshStatus, 15000)
     return () => clearInterval(t)
   }, [refreshStatus])
+
+  // Sibling listeners to the hook's so the Checks panel's own rows
+  // flip before the next poll.
+  useEffect(() => {
+    const toAwaiting = () => {
+      setStatus((prev) => {
+        if (!prev?.pr || prev.pr.derivedStatus !== 'changes_requested') return prev
+        return { ...prev, pr: { ...prev.pr, derivedStatus: 'open', mergeable_state: 'blocked' } }
+      })
+    }
+    const toReady = () => {
+      setStatus((prev) => {
+        if (!prev?.pr || prev.pr.derivedStatus !== 'draft') return prev
+        return { ...prev, pr: { ...prev.pr, draft: false, derivedStatus: 'open', mergeable_state: 'clean' } }
+      })
+    }
+    window.addEventListener('bornastar-optimistic-awaiting', toAwaiting)
+    window.addEventListener('bornastar-optimistic-ready', toReady)
+    return () => {
+      window.removeEventListener('bornastar-optimistic-awaiting', toAwaiting)
+      window.removeEventListener('bornastar-optimistic-ready', toReady)
+    }
+  }, [])
+
+  // Top-bar's split button fires this event when the user picks either
+  // "Create PR" or "Create as draft". Running the flow here (instead of
+  // duplicating the logic) keeps the auto-commit + suggestion + rename
+  // pipeline in a single place.
+  const createPRRef = useRef<(asDraft?: boolean) => void>(() => {})
 
   // ── PR draft — load on mount, debounce save on edit ────────────────────
   useEffect(() => {
@@ -247,12 +287,20 @@ export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive }: Che
         throw new Error(t.error || 'push failed')
       }
       setError(null)
+      const wasChangesRequested = status?.pr?.derivedStatus === 'changes_requested'
+      // Pull fresh state first — in prod the API may already reflect
+      // "review dismissed" after the push. Then, if we still see
+      // changes_requested, apply the optimistic flip so the UI moves
+      // forward even before the next poll ticks through.
       await refreshStatus()
+      if (wasChangesRequested) {
+        window.dispatchEvent(new CustomEvent('bornastar-optimistic-awaiting'))
+      }
     } catch (e) { setError(e instanceof Error ? e.message : 'Action failed') }
     finally { setBusy(null) }
   }
 
-  async function createPR() {
+  const createPR = useCallback(async (asDraft: boolean = false) => {
     if (!status) return
     setBusy('pr')
     try {
@@ -280,7 +328,7 @@ export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive }: Che
       const res = await fetch(`/api/projects/${projectId}/worktrees/${worktreeId}/pr`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, body, draft: prDraft, autoCommit: needsAutoCommit, commitMessage: title }),
+        body: JSON.stringify({ title, body, draft: asDraft, autoCommit: needsAutoCommit, commitMessage: title }),
       })
       if (!res.ok) { const t = await res.json().catch(() => ({})); throw new Error(t.error || 'create PR failed') }
 
@@ -299,7 +347,21 @@ export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive }: Che
       await refreshStatus()
     } catch (e) { setError(e instanceof Error ? e.message : 'Create PR failed') }
     finally { setBusy(null) }
-  }
+  }, [projectId, worktreeId, status, prTitle, prBody, refreshStatus])
+
+  // Keep the ref in sync so the event listener always calls the
+  // latest closure (avoids stale `status` inside the handler).
+  useEffect(() => { createPRRef.current = createPR }, [createPR])
+
+  // External trigger from the top bar's split button.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ asDraft?: boolean }>).detail
+      createPRRef.current(!!detail?.asDraft)
+    }
+    window.addEventListener('bornastar-create-pr', handler)
+    return () => window.removeEventListener('bornastar-create-pr', handler)
+  }, [])
 
   async function mergePR() {
     setBusy('merge')
@@ -329,24 +391,6 @@ export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive }: Che
     finally { setBusy(null) }
   }
 
-  async function moveToBranch() {
-    if (!sessionId) { setError('No active chat'); return }
-    setBusy('move')
-    setShowMoveToBranchModal(false)
-    try {
-      const res = await fetch(`/api/projects/${projectId}/git/move-main-to-branch`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId, newBranchName: newBranchName.trim() || undefined }),
-      })
-      if (!res.ok) { const t = await res.json().catch(() => ({})); throw new Error(t.error || 'move failed') }
-      setNewBranchName('')
-      await refreshStatus()
-      window.dispatchEvent(new CustomEvent('bornastar-refresh-worktrees'))
-    } catch (e) { setError(e instanceof Error ? e.message : 'Move failed') }
-    finally { setBusy(null) }
-  }
-
   // ── Render ───────────────────────────────────────────────────────────────
   const pr = status?.pr ?? null
   const isMain = !worktreeId
@@ -354,11 +398,37 @@ export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive }: Che
   const hasUnpushed = (status?.commitsAhead ?? 0) > 0
   const isBehind = (status?.commitsBehind ?? 0) > 0
   const hasOpenPr = !!pr && pr.state === 'open'
-  const isMerged = !!pr && pr.merged
+  // Effective merged state — if the user dismissed the banner via
+  // Continue, stop treating the worktree as "merged-loud" for UI
+  // purposes so rows fall back to their regular single-action form.
+  const isMergedRaw = !!pr && pr.merged
+  const isMerged = isMergedRaw && !mergedBannerDismissed
+  // Same pattern for Closed — distinct from Merged because the PR was
+  // rejected, not accepted. Dismissal via "Start over".
+  const isClosedRaw = !!pr && !pr.merged && pr.state === 'closed'
+  const isClosed = isClosedRaw && !closedBannerDismissed
   const isReadyToMerge = hasOpenPr && pr && (pr.derivedStatus === 'approved' || (pr.derivedStatus === 'open' && pr.mergeable_state === 'clean'))
   // Git section is hidden when nothing is happening git-wise. Mirrors Conductor.
   const showGitSection = !!status && (
     hasUncommitted || hasUnpushed || isBehind || hasOpenPr || isMerged || !status.githubConnected || (isMain && status.mainProtected)
+  )
+  // Ready-to-merge and Merged states show a prominent banner already —
+  // the "Git status" heading under it with an empty list looks awkward.
+  // Show the heading only when at least one row will actually render.
+  const isReadyToMergeBanner = !!(isReadyToMerge && !isMerged)
+  const hasPrRow = hasOpenPr && !isReadyToMergeBanner
+  const hasNoPrRow = !hasOpenPr && !isMerged && !isMain
+  const hasMainProtectedRow = !!(isMain && status?.mainProtected && (hasUncommitted || hasUnpushed))
+  const showGitHeading = !!status && (
+    !status.githubConnected ||
+    hasUncommitted ||
+    (!isMain && isBehind) ||
+    hasPrRow ||
+    hasNoPrRow ||
+    hasMainProtectedRow ||
+    isReadyToMerge ||
+    isMerged ||
+    isClosed
   )
 
   // When a PR is open, the draft title/body shouldn't be user-editable
@@ -377,76 +447,181 @@ export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive }: Che
         readOnly={lockFields}
         className="mb-3 w-full border-0 bg-transparent p-0 text-[14px] font-medium text-zinc-200 placeholder-zinc-600 outline-none"
       />
-      <textarea
-        value={displayBody}
-        onChange={(e) => { if (lockFields) return; setPrBody(e.target.value); scheduleDraftSave(prTitle, e.target.value) }}
-        rows={Math.max(2, displayBody.split('\n').length)}
-        placeholder="PR description"
-        readOnly={lockFields}
-        className="mb-4 w-full resize-none border-0 bg-transparent p-0 text-[12px] text-zinc-300 placeholder-zinc-600 outline-none"
-      />
+      {/* PR description — once a PR exists, the body is read-only and
+          can be long, so we cap the height and scroll inside the block.
+          While editable (no PR yet), it grows naturally with the user's
+          typing up to the same cap. */}
+      <div
+        className={`mb-4 w-full overflow-y-auto ${lockFields ? 'rounded-md border border-[#2B2B2B] px-3 py-2' : ''}`}
+        style={{ maxHeight: lockFields ? '180px' : '320px', backgroundColor: lockFields ? 'rgba(255,255,255,0.02)' : 'transparent' }}
+      >
+        <textarea
+          value={displayBody}
+          onChange={(e) => { if (lockFields) return; setPrBody(e.target.value); scheduleDraftSave(prTitle, e.target.value) }}
+          rows={Math.max(2, displayBody.split('\n').length)}
+          placeholder="PR description"
+          readOnly={lockFields}
+          className="w-full resize-none border-0 bg-transparent p-0 text-[12px] text-zinc-300 placeholder-zinc-600 outline-none"
+        />
+      </div>
 
-      {/* Current changes — live diff summary, only once a PR is open. The
-          PR body above is frozen at PR-creation time; this block shows
-          what the branch actually holds right now so the user can see
-          pushes that landed after the PR opened. */}
-      {hasOpenPr && currentChangesSummary && (
-        <div className="mb-6 rounded border border-[#2B2B2B] px-3 py-2" style={{ backgroundColor: 'rgba(255,255,255,0.02)' }}>
-          <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Current changes</div>
-          <pre className="whitespace-pre-wrap break-words font-sans text-[11px] text-zinc-400">{currentChangesSummary}</pre>
-        </div>
-      )}
 
       {/* ── Git status (conditional) ─────────────────────────────────────── */}
       {showGitSection && (
         <>
-          {isMerged && (
-            <div className="mb-3 rounded-md border border-purple-500/40 p-3" style={{ backgroundColor: 'rgba(168, 85, 247, 0.12)' }}>
-              <div className="mb-1.5 flex items-center gap-2">
-                <span className="rounded bg-purple-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">Merged</span>
-                <a href={pr?.html_url} target="_blank" rel="noreferrer" className="text-[11px] text-purple-200 hover:text-purple-100">#{pr?.number} — view on GitHub ↗</a>
-              </div>
-              <div className="mb-2 text-[11px] text-zinc-400">
-                Your changes are now in <span className="font-mono text-zinc-300">main</span>. Continue working on this branch or archive it.
-              </div>
-              <button
-                onClick={() => {
-                  // Archive wipes the worktree. If the user made new
-                  // changes after the merge and didn't push, the confirm
-                  // modal lets them back out before losing anything.
-                  if (hasUncommitted || hasUnpushed) setShowArchiveConfirm(true)
-                  else onArchive?.()
-                }}
-                className="rounded border border-[#3C3C3C] px-2.5 py-1 text-[11px] text-zinc-200 hover:bg-white/5"
-              >
-                Archive
-              </button>
-            </div>
-          )}
-          {!isMerged && isReadyToMerge && pr && (
-            <div className="mb-3 rounded-md border border-emerald-500/40 p-3" style={{ backgroundColor: 'rgba(16, 185, 129, 0.12)' }}>
-              <div className="mb-1.5 flex items-center gap-2">
-                <span className="rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">Ready to merge</span>
-                <a href={pr.html_url} target="_blank" rel="noreferrer" className="text-[11px] text-emerald-200 hover:text-emerald-100">#{pr.number} — view on GitHub ↗</a>
-              </div>
-              <div className="mb-2 text-[11px] text-zinc-400">Checks passed and the PR is approved.</div>
-              <button onClick={mergePR} disabled={busy !== null} className="rounded bg-emerald-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-emerald-500 disabled:opacity-40">Merge</button>
-            </div>
+          {showGitHeading && (
+            <div className="mb-2 text-[12px] font-medium text-zinc-300">Git status</div>
           )}
 
-          <div className="mb-2 text-[12px] font-medium text-zinc-300">Git status</div>
+          {/* Ready-to-merge / Merged states are presented as plain rows
+              here. The full-bar prominence lives in the right-panel top
+              navbar; this section just lists the action so the user can
+              act from inside Checks too. */}
+          {/* Unsupported row — generic bucket for states we can't
+              resolve in-app (CI failing, binary conflict, etc). Shows
+              a label + guidance to handle the issue on GitHub; the
+              #PR chip in the top bar handles the actual navigation.
+              Polling will flip the state automatically on next push. */}
+          {(() => {
+            const label = deriveUnsupportedLabel(status)
+            if (!label) return null
+            return (
+              <Row
+                indicator="gray"
+                label={`${label} · needs attention on GitHub`}
+              />
+            )
+          })()}
+
+          {isReadyToMerge && pr && (
+            <Row
+              indicator="green"
+              label="Ready to merge"
+              action={<button onClick={mergePR} disabled={busy !== null} className="rounded border border-[#2B2B2B] px-2 py-1 text-[11px] font-medium text-zinc-300 hover:border-[#3A3A3A] hover:bg-white/[0.03] disabled:opacity-40">Merge</button>}
+            />
+          )}
+          {isMerged && pr && (
+            <Row
+              indicator="purple"
+              label="Merged"
+              action={
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => window.dispatchEvent(new CustomEvent('bornastar-continue-merged'))}
+                    className="rounded border border-[#2B2B2B] px-2 py-1 text-[11px] font-medium text-zinc-300 hover:border-[#3A3A3A] hover:bg-white/[0.03]"
+                  >
+                    Continue
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (hasUncommitted || hasUnpushed) setShowArchiveConfirm(true)
+                      else onArchive?.()
+                    }}
+                    className="rounded border border-[#2B2B2B] px-2 py-1 text-[11px] font-medium text-zinc-300 hover:border-[#3A3A3A] hover:bg-white/[0.03]"
+                  >
+                    Archive
+                  </button>
+                </div>
+              }
+            />
+          )}
+
+          {!isMerged && !isClosed && pr?.derivedStatus === 'draft' && (
+            <Row
+              indicator="gray"
+              label={`PR #${pr.number} · Draft`}
+              action={
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await fetch(`/api/projects/${projectId}/worktrees/${worktreeId}/pr/mark-ready`, { method: 'POST' })
+                      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'mark ready failed')
+                      window.dispatchEvent(new CustomEvent('bornastar-optimistic-ready'))
+                      await refreshStatus()
+                    } catch (e) { setError(e instanceof Error ? e.message : 'Mark ready failed') }
+                  }}
+                  className="rounded border border-[#2B2B2B] px-2 py-1 text-[11px] font-medium text-zinc-300 hover:border-[#3A3A3A] hover:bg-white/[0.03]"
+                >
+                  Mark ready for review
+                </button>
+              }
+            />
+          )}
+
+          {isClosed && pr && (
+            <Row
+              indicator="red"
+              label={`PR #${pr.number} · Closed`}
+              action={
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => window.dispatchEvent(new CustomEvent('bornastar-start-over-closed'))}
+                    className="rounded border border-[#2B2B2B] px-2 py-1 text-[11px] font-medium text-zinc-300 hover:border-[#3A3A3A] hover:bg-white/[0.03]"
+                  >
+                    Start over
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (hasUncommitted || hasUnpushed) setShowArchiveConfirm(true)
+                      else onArchive?.()
+                    }}
+                    className="rounded border border-[#2B2B2B] px-2 py-1 text-[11px] font-medium text-zinc-300 hover:border-[#3A3A3A] hover:bg-white/[0.03]"
+                  >
+                    Archive
+                  </button>
+                </div>
+              }
+            />
+          )}
 
           {status && !status.githubConnected && (
-            <Row indicator="red" label="GitHub not connected" action={<a href="/api/auth/github/start" className="text-[11px] font-medium text-zinc-300 hover:text-zinc-100 disabled:opacity-40">Connect</a>} />
+            <Row indicator="red" label="GitHub not connected" action={<a href="/api/auth/github/start" className="rounded border border-[#2B2B2B] px-2 py-1 text-[11px] font-medium text-zinc-300 hover:border-[#3A3A3A] hover:bg-white/[0.03] disabled:opacity-40">Connect</a>} />
           )}
 
           {hasUncommitted && status && (
             <Row
               indicator="amber"
               label={`${status.uncommitted} uncommitted change${status.uncommitted === 1 ? '' : 's'}`}
-              action={status.githubConnected && !(isMain && status.mainProtected) && (
-                <button onClick={openCommitModal} disabled={busy !== null} className="text-[11px] font-medium text-zinc-300 hover:text-zinc-100 disabled:opacity-40">Commit and push</button>
-              )}
+              action={
+                status.githubConnected && !(isMain && status.mainProtected) ? (
+                  isMerged || isClosed ? (
+                    // Loud state (Merged or Closed) still up: combined
+                    // buttons dismiss the banner AND run the action in
+                    // one go. Same dispatch pattern for both — just
+                    // different event names.
+                    (() => {
+                      const dismissEvent = isMerged ? 'bornastar-continue-merged' : 'bornastar-start-over-closed'
+                      const verb = isMerged ? 'Continue' : 'Start over'
+                      return (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => {
+                              window.dispatchEvent(new CustomEvent(dismissEvent))
+                              openCommitModal()
+                            }}
+                            disabled={busy !== null}
+                            className="rounded border border-[#2B2B2B] px-2 py-1 text-[11px] font-medium text-zinc-300 hover:border-[#3A3A3A] hover:bg-white/[0.03] disabled:opacity-40"
+                          >
+                            {verb} &amp; commit and push
+                          </button>
+                          <button
+                            onClick={() => {
+                              window.dispatchEvent(new CustomEvent(dismissEvent))
+                              createPR()
+                            }}
+                            disabled={busy !== null}
+                            className="rounded border border-[#2B2B2B] px-2 py-1 text-[11px] font-medium text-zinc-300 hover:border-[#3A3A3A] hover:bg-white/[0.03] disabled:opacity-40"
+                          >
+                            {verb} &amp; create PR
+                          </button>
+                        </div>
+                      )
+                    })()
+                  ) : (
+                    <button onClick={openCommitModal} disabled={busy !== null} className="rounded border border-[#2B2B2B] px-2 py-1 text-[11px] font-medium text-zinc-300 hover:border-[#3A3A3A] hover:bg-white/[0.03] disabled:opacity-40">Commit and push</button>
+                  )
+                ) : null
+              }
             />
           )}
 
@@ -454,57 +629,72 @@ export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive }: Che
             <Row
               indicator="amber"
               label={`${status!.commitsBehind} commit${status!.commitsBehind === 1 ? '' : 's'} behind main`}
-              action={<button onClick={updateBranch} disabled={busy !== null} className="text-[11px] font-medium text-zinc-300 hover:text-zinc-100 disabled:opacity-40">Update branch</button>}
+              action={<button onClick={updateBranch} disabled={busy !== null} className="rounded border border-[#2B2B2B] px-2 py-1 text-[11px] font-medium text-zinc-300 hover:border-[#3A3A3A] hover:bg-white/[0.03] disabled:opacity-40">Update branch</button>}
             />
           )}
 
-          {hasUnpushed && !hasOpenPr && !isMerged && !hasUncommitted && (
+          {/* "N commits not pushed" row removed — after Start over the
+              commits are usually already on origin/branch; the only
+              meaningful next step is "Create PR", which is covered by
+              the row below. Keeping both created a misleading duplicate. */}
+
+          {/* Conflicts row — distinct action: kick off the rebase +
+              resolver overlay. Handled by the top-bar button too, so
+              this mirror the state but the CTA is optional. */}
+          {hasOpenPr && pr && (pr.derivedStatus === 'conflicts' || pr.mergeable_state === 'dirty') && (
             <Row
-              indicator="blue"
-              label={`${status!.commitsAhead} commit${status!.commitsAhead === 1 ? '' : 's'} not pushed`}
-              action={<button onClick={openCommitModal} disabled={busy !== null} className="text-[11px] font-medium text-zinc-300 hover:text-zinc-100 disabled:opacity-40">Push</button>}
+              indicator="amber"
+              label={`PR #${pr.number} · Merge conflicts`}
+              action={
+                <button
+                  onClick={async () => {
+                    // Mock mode short-circuits to the pre-fab file set.
+                    if (MOCK_GIT_STATUS && MOCK_CONFLICTS) {
+                      window.dispatchEvent(new CustomEvent('bornastar-open-conflict-resolver', { detail: { files: MOCK_CONFLICTS.files } }))
+                      return
+                    }
+                    try {
+                      const res = await fetch(`/api/projects/${projectId}/worktrees/${worktreeId}/rebase/start`, { method: 'POST' })
+                      const data = await res.json().catch(() => ({}))
+                      if (data.status === 'conflict') {
+                        window.dispatchEvent(new CustomEvent('bornastar-open-conflict-resolver', { detail: { files: data.files ?? [] } }))
+                      } else if (data.status === 'clean') {
+                        await refreshStatus()
+                      }
+                    } catch {}
+                  }}
+                  className="rounded border border-[#2B2B2B] px-2 py-1 text-[11px] font-medium text-zinc-300 hover:border-[#3A3A3A] hover:bg-white/[0.03]"
+                >
+                  Resolve conflicts
+                </button>
+              }
             />
           )}
 
-          {hasOpenPr && pr && !isReadyToMerge && (() => {
-            // When the repo has branch protection and reviewers haven't
-            // signed off yet, the GitHub API returns review_decision=
-            // REVIEW_REQUIRED. Reflect that as "Awaiting approval" so the
-            // user knows they can't merge until someone reviews — even if
-            // CI is otherwise green.
+          {/* Awaiting / Changes requested passive row — no action
+              button (the #PR chip in the top bar handles "open on
+              GitHub"). Skipped for Draft because the dedicated Draft
+              row above already shows the status + Mark ready, and
+              skipped for Conflicts because the Conflicts row above
+              handles that state. */}
+          {hasOpenPr && pr && !isReadyToMerge && pr.derivedStatus !== 'draft' && pr.derivedStatus !== 'conflicts' && pr.mergeable_state !== 'dirty' && (() => {
             const awaiting = pr.derivedStatus === 'open' && pr.mergeable_state !== 'clean'
             const label = awaiting ? `PR #${pr.number} · Awaiting approval` : prLabel(pr)
             const indicator = awaiting ? 'amber' : prIndicator(pr.derivedStatus)
-            return (
-              <Row
-                indicator={indicator}
-                label={label}
-                action={<a href={pr.html_url} target="_blank" rel="noreferrer" className="text-[11px] font-medium text-zinc-300 hover:text-zinc-100 disabled:opacity-40">View PR #{pr.number}</a>}
-              />
-            )
+            return <Row indicator={indicator} label={label} />
           })()}
 
-          {!hasOpenPr && !isMerged && !isMain && status && (
+          {/* "No PR open" row — only shown when neither an open PR nor
+              a live merged banner is competing for attention. Once the
+              merged banner is dismissed (Continue), this reappears so
+              new work can be turned into a follow-up PR. */}
+          {!hasOpenPr && !isMain && !isMerged && !isClosed && status && (
             <Row
               indicator="gray"
               label="No PR open"
               action={status.githubConnected && (status.commitsAhead > 0 || hasUncommitted) ? (
-                <div className="flex items-center gap-1">
-                  <label className="flex items-center gap-1 text-[10px] text-zinc-400">
-                    <input type="checkbox" checked={prDraft} onChange={(e) => setPrDraft(e.target.checked)} className="h-3 w-3" />
-                    Draft
-                  </label>
-                  <button onClick={createPR} disabled={busy !== null} className="text-[11px] font-medium text-zinc-300 hover:text-zinc-100 disabled:opacity-40">Create PR</button>
-                </div>
+                <SplitCreatePRButton onCreate={(asDraft) => createPR(asDraft)} disabled={busy !== null} />
               ) : <span className="text-[11px] text-zinc-600">Nothing to push</span>}
-            />
-          )}
-
-          {isMain && status?.mainProtected && (hasUncommitted || hasUnpushed) && (
-            <Row
-              indicator="red"
-              label="Main is protected — push blocked"
-              action={<button onClick={() => setShowMoveToBranchModal(true)} disabled={busy !== null} className="text-[11px] font-medium text-zinc-300 hover:text-zinc-100 disabled:opacity-40">Move to a branch</button>}
             />
           )}
 
@@ -600,39 +790,57 @@ export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive }: Che
         </div>
       )}
 
-      {showMoveToBranchModal && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}>
-          <div className="w-[400px] rounded-md border border-[#2B2B2B] p-4 shadow-xl" style={{ backgroundColor: '#252526' }}>
-            <div className="mb-1 text-[12px] font-medium text-zinc-200">Move changes to a new branch</div>
-            <div className="mb-3 text-[11px] text-zinc-400">This chat + its uncommitted changes move onto a new branch. Main resets back to the remote state.</div>
-            <input
-              autoFocus
-              value={newBranchName}
-              onChange={(e) => setNewBranchName(e.target.value)}
-              placeholder="branch-name (leave empty for auto)"
-              className="mb-3 w-full rounded border border-[#3A3A3A] bg-[#1F1F1F] px-2 py-1.5 text-[12px] text-zinc-200 outline-none focus:border-zinc-500"
-            />
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setShowMoveToBranchModal(false)} className="rounded border border-[#3A3A3A] px-3 py-1 text-[11px] text-zinc-300 hover:bg-white/5">Cancel</button>
-              <button onClick={moveToBranch} disabled={busy !== null} className="rounded bg-emerald-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-emerald-500 disabled:opacity-40">Move</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {showArchiveConfirm && (
         <div className="absolute inset-0 z-20 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.55)' }}>
-          <div className="w-[420px] rounded-md border border-[#2B2B2B] p-4 shadow-xl" style={{ backgroundColor: '#252526' }}>
+          <div className="w-[440px] rounded-md border border-[#2B2B2B] p-4 shadow-xl" style={{ backgroundColor: '#252526' }}>
             <div className="mb-2 text-[12px] font-medium text-zinc-200">Archive worktree?</div>
-            <div className="mb-3 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-200">
-              {hasUncommitted && (
-                <div>{status!.uncommitted} uncommitted change{status!.uncommitted === 1 ? '' : 's'} will be lost.</div>
-              )}
-              {hasUnpushed && (
-                <div>{status!.commitsAhead} commit{status!.commitsAhead === 1 ? '' : 's'} on this branch haven&apos;t been pushed yet.</div>
-              )}
-            </div>
-            <div className="mb-3 text-[11px] text-zinc-400">The worktree and its files will be removed from the sandbox. The branch stays on GitHub (push it first if you want to keep the work).</div>
+
+            {/* Context-aware body — separate copy for Merged vs Closed
+                vs plain, so the user understands what's at stake. */}
+            {isMergedRaw ? (
+              <>
+                <div className="mb-3 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-200">
+                  <div className="mb-1 font-medium">This branch was already merged into main (PR #{pr?.number}).</div>
+                  {hasUncommitted && (
+                    <div>{status!.uncommitted} uncommitted change{status!.uncommitted === 1 ? '' : 's'} will be lost if you archive now.</div>
+                  )}
+                  {hasUnpushed && (
+                    <div>{status!.commitsAhead} commit{status!.commitsAhead === 1 ? '' : 's'} not yet pushed will be lost too.</div>
+                  )}
+                </div>
+                <div className="mb-3 text-[11px] text-zinc-400">
+                  To keep this work, cancel and use one of the <span className="text-zinc-200">Continue &amp; commit and push</span> / <span className="text-zinc-200">Continue &amp; create PR</span> actions on the right — that pushes the follow-up edits and opens a new PR for them.
+                </div>
+              </>
+            ) : isClosedRaw ? (
+              <>
+                <div className="mb-3 rounded border border-red-500/30 bg-red-500/10 px-2 py-1.5 text-[11px] text-red-200">
+                  <div className="mb-1 font-medium">PR #{pr?.number} was closed without merging.</div>
+                  {hasUncommitted && (
+                    <div>{status!.uncommitted} uncommitted change{status!.uncommitted === 1 ? '' : 's'} will be lost if you archive now.</div>
+                  )}
+                  {hasUnpushed && (
+                    <div>{status!.commitsAhead} commit{status!.commitsAhead === 1 ? '' : 's'} not yet pushed will be lost too.</div>
+                  )}
+                </div>
+                <div className="mb-3 text-[11px] text-zinc-400">
+                  To keep this work, cancel and use <span className="text-zinc-200">Start over &amp; commit and push</span> or <span className="text-zinc-200">Start over &amp; create PR</span> — the commits land on the branch (and optionally into a new PR #{(pr?.number ?? 0) + 1}).
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mb-3 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-200">
+                  {hasUncommitted && (
+                    <div>{status!.uncommitted} uncommitted change{status!.uncommitted === 1 ? '' : 's'} will be lost.</div>
+                  )}
+                  {hasUnpushed && (
+                    <div>{status!.commitsAhead} commit{status!.commitsAhead === 1 ? '' : 's'} on this branch haven&apos;t been pushed yet.</div>
+                  )}
+                </div>
+                <div className="mb-3 text-[11px] text-zinc-400">The worktree and its files will be removed from the sandbox. The branch stays on GitHub (push it first if you want to keep the work).</div>
+              </>
+            )}
+
             <div className="flex justify-end gap-2">
               <button onClick={() => setShowArchiveConfirm(false)} className="rounded border border-[#3A3A3A] px-3 py-1 text-[11px] text-zinc-300 hover:bg-white/5">Cancel</button>
               <button
@@ -649,7 +857,7 @@ export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive }: Che
   )
 }
 
-function Row({ indicator, label, action }: { indicator: 'red' | 'amber' | 'blue' | 'gray' | 'green' | 'purple'; label: string; action?: React.ReactNode }) {
+function Row({ indicator, label, action }: { indicator: 'red' | 'amber' | 'blue' | 'gray' | 'green' | 'purple' | 'orange'; label: string; action?: React.ReactNode }) {
   const dot = {
     red: 'bg-red-500',
     amber: 'bg-amber-500',
@@ -657,6 +865,7 @@ function Row({ indicator, label, action }: { indicator: 'red' | 'amber' | 'blue'
     gray: 'bg-zinc-600',
     green: 'bg-emerald-500',
     purple: 'bg-purple-500',
+    orange: 'bg-orange-500',
   }[indicator]
   return (
     <div className="flex items-center gap-2 py-1">
@@ -667,11 +876,11 @@ function Row({ indicator, label, action }: { indicator: 'red' | 'amber' | 'blue'
   )
 }
 
-function prIndicator(status: PullRequest['derivedStatus']): 'blue' | 'amber' | 'green' | 'red' | 'purple' | 'gray' {
+function prIndicator(status: PullRequest['derivedStatus']): 'blue' | 'amber' | 'green' | 'red' | 'purple' | 'gray' | 'orange' {
   switch (status) {
     case 'draft': return 'gray'
     case 'open': return 'blue'
-    case 'changes_requested': return 'amber'
+    case 'changes_requested': return 'orange'
     case 'approved': return 'green'
     case 'merged': return 'purple'
     case 'closed': return 'red'

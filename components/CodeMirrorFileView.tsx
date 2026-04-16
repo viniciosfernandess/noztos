@@ -58,6 +58,11 @@ export interface CodeMirrorFileViewProps {
   // Fires whenever the in-memory buffer diverges from the last saved content.
   // Parent uses this to decide whether to show a save/discard modal on close.
   onDirtyChange?: (dirty: boolean) => void
+  // When true, disable editing and skip the save path. Used in main-
+  // state (no active workspace) so reads of the repo don't risk
+  // writing to /home/user/project (which gets reset --hard every 5 min
+  // by the main refresh worker).
+  readOnly?: boolean
 }
 
 // Imperative handle so the parent (which owns the back/close button) can ask
@@ -72,6 +77,7 @@ export const CodeMirrorFileView = forwardRef<CodeMirrorFileViewHandle, CodeMirro
   projectId,
   filePath,
   initialContent,
+  readOnly,
   worktreeId,
   sessionId,
   onSaved,
@@ -107,8 +113,9 @@ export const CodeMirrorFileView = forwardRef<CodeMirrorFileViewHandle, CodeMirro
       }),
     ]
     if (lang) exts.push(lang)
+    if (readOnly) exts.push(EditorView.editable.of(false))
     return exts
-  }, [lang])
+  }, [lang, readOnly])
 
   // Latest value in a ref so the save function can always read fresh content.
   const valueRef = useRef(value)
@@ -166,18 +173,21 @@ export const CodeMirrorFileView = forwardRef<CodeMirrorFileViewHandle, CodeMirro
 
   return (
     <div className="flex h-full flex-col">
-      {/* Status strip — unobtrusive indicator of save state. */}
-      <div className="flex items-center justify-end px-3 py-1 text-[10px]" style={{ backgroundColor: '#1F1F1F', borderBottom: '1px solid #2B2B2B' }}>
-        <span className={
-          status === 'saving' ? 'text-zinc-400'
-          : status === 'saved' ? 'text-emerald-500'
-          : status === 'dirty' ? 'text-amber-500'
-          : status === 'error' ? 'text-red-500'
-          : 'text-zinc-600'
-        }>
-          {status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved' : status === 'dirty' ? 'Modified' : status === 'error' ? 'Save failed' : ''}
-        </span>
-      </div>
+      {/* Status strip — unobtrusive indicator of save state. Hidden
+          in read-only mode since saving is disabled there. */}
+      {!readOnly && (
+        <div className="flex items-center justify-end px-3 py-1 text-[10px]" style={{ backgroundColor: '#1F1F1F', borderBottom: '1px solid #2B2B2B' }}>
+          <span className={
+            status === 'saving' ? 'text-zinc-400'
+            : status === 'saved' ? 'text-emerald-500'
+            : status === 'dirty' ? 'text-amber-500'
+            : status === 'error' ? 'text-red-500'
+            : 'text-zinc-600'
+          }>
+            {status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved' : status === 'dirty' ? 'Modified' : status === 'error' ? 'Save failed' : ''}
+          </span>
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ backgroundColor: '#1F1F1F' }}>
         <CodeMirror
           value={value}
@@ -187,8 +197,12 @@ export const CodeMirrorFileView = forwardRef<CodeMirrorFileViewHandle, CodeMirro
           onChange={handleChange}
           basicSetup={{
             lineNumbers: true,
-            highlightActiveLine: true,
-            highlightActiveLineGutter: true,
+            // Active-line highlighting is distracting in read-only
+            // because the cursor is frozen on line 1 and its background
+            // leaks through the one-dark theme. Disable it entirely
+            // when there's nothing for the user to interact with.
+            highlightActiveLine: !readOnly,
+            highlightActiveLineGutter: !readOnly,
             foldGutter: false,
             autocompletion: false,
             bracketMatching: true,

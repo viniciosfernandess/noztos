@@ -367,6 +367,37 @@ export async function closePullRequest(owner: string, repo: string, token: strin
   return { ok: true }
 }
 
+// Aggregate CI status for a commit SHA via the Checks API. Returns
+// 'passing' when every completed run succeeded, 'failing' if any
+// failed/timed_out/cancelled, 'pending' while any are still running,
+// null when there are no checks at all (repo has no CI configured).
+export async function getCiStatusForRef(
+  owner: string,
+  repo: string,
+  ref: string,
+  token: string | null,
+): Promise<'passing' | 'pending' | 'failing' | null> {
+  try {
+    const res = await fetch(
+      `${GH_API}/repos/${owner}/${repo}/commits/${encodeURIComponent(ref)}/check-runs?per_page=100`,
+      { headers: ghHeaders(token) },
+    )
+    if (!res.ok) return null
+    const body = (await res.json()) as {
+      total_count?: number
+      check_runs?: Array<{ status: string; conclusion: string | null }>
+    }
+    const runs = body.check_runs ?? []
+    if (runs.length === 0) return null
+    const anyRunning = runs.some((r) => r.status !== 'completed')
+    if (anyRunning) return 'pending'
+    const anyFailed = runs.some((r) => r.conclusion === 'failure' || r.conclusion === 'timed_out' || r.conclusion === 'cancelled' || r.conclusion === 'action_required')
+    return anyFailed ? 'failing' : 'passing'
+  } catch {
+    return null
+  }
+}
+
 export async function deleteRemoteBranch(owner: string, repo: string, token: string, branch: string): Promise<{ ok: boolean; error?: string }> {
   const res = await fetch(`${GH_API}/repos/${owner}/${repo}/git/refs/heads/${encodeURIComponent(branch)}`, {
     method: 'DELETE',

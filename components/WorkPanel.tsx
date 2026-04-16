@@ -6,7 +6,11 @@ import { ChatTabs } from './ChatTabs'
 import { CodeMirrorFileView, type CodeMirrorFileViewHandle } from './CodeMirrorFileView'
 import { InlineDiffEditor, type InlineDiffEditorHandle } from './InlineDiffEditor'
 import { ChecksPanel } from './ChecksPanel'
-import { useGitStatus, deriveBadge } from '@/lib/hooks/useGitStatus'
+import { SplitCreatePRButton } from './SplitCreatePRButton'
+import { ConflictResolver } from './ConflictResolver'
+import { ResolveConflictsSplitButton } from './ResolveConflictsSplitButton'
+import { MOCK_CONFLICTS, MOCK_GIT_STATUS } from '@/lib/mocks/checks-demo'
+import { useGitStatus, deriveBadge, deriveUnsupportedLabel } from '@/lib/hooks/useGitStatus'
 import { ReportBadge } from './ChatReport'
 import type { ChatReport } from '@/lib/report-types'
 
@@ -346,37 +350,37 @@ function ChatsSidebar({
 
       {/* Scrollable list — starts directly with add buttons */}
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pt-2">
-        <div>
-              {/* Thin add rows */}
-              <button
-                onClick={onNewMainChat}
-                className="flex w-full items-center gap-2 pl-9 pr-4 py-1.5 text-left text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300"
-                title="New chat on main"
-              >
-                <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                </svg>
-                <span className="text-[11px]">add chat</span>
-                <span className="text-[11px] text-zinc-700">(main)</span>
-              </button>
+        <div className="flex flex-col">
+              {/* Workspace is the only unit of work. "Workspace" is the
+                  user-facing name for what git calls a worktree. */}
               <button
                 onClick={onNewWorktree}
                 className="flex w-full items-center gap-2 pl-9 pr-4 py-1.5 text-left text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300"
-                title="New worktree"
+                title="New workspace"
               >
                 <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                 </svg>
-                <span className="text-[11px]">add worktree</span>
-                <span className="text-[11px] text-zinc-700">(branch)</span>
+                <span className="text-[11px]">new workspace</span>
               </button>
 
-              {/* Unified items list — main chats first, then worktrees */}
-              {mainChats.length === 0 && worktrees.length === 0 && (
-                <p className="px-9 py-2 text-[10px] text-zinc-600">No chats yet</p>
+              {/* Centered empty state — only shown when there are no
+                  workspaces at all. Anchored mid-sidebar so the "new
+                  workspace" button stays at the top and the empty
+                  message gets the visual weight. */}
+              {worktrees.length === 0 && (
+                <div className="flex min-h-[240px] flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
+                  <svg className="h-8 w-8 text-zinc-700" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 7.5l3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0021 18V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v12a2.25 2.25 0 002.25 2.25z" />
+                  </svg>
+                  <div className="text-[11px] font-medium text-zinc-400">No workspaces yet</div>
+                </div>
               )}
 
-              {mainChats.map((s) => {
+              {/* Legacy main-chat list hidden — kept in state only for
+                  backward compat of already-created main chats. New
+                  items never land here. */}
+              {false && mainChats.map((s) => {
                 const active = activeSessionId === s.id && !activeWorktreeId
                 const unread = unreadIds.has(s.id) && !active
                 return (
@@ -1086,6 +1090,11 @@ interface WorktreeInfo {
 export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true }: WorkPanelProps) {
   const [terminalOpen, setTerminalOpen] = useState(true)
   const [rightPanelTab, setRightPanelTab] = useState<'explorer' | 'changes' | 'checks'>('explorer')
+  // Main-state refresh telemetry — timestamp of the last successful
+  // refresh-main, plus an in-flight flag so the UI can disable the
+  // button + show a spinner.
+  const [mainRefreshedAt, setMainRefreshedAt] = useState<number | null>(null)
+  const [mainRefreshing, setMainRefreshing] = useState(false)
   // Changes tab: select-mode toggle. When on, rows show checkboxes and the
   // action bar at the bottom replaces the default row click behavior with
   // selection toggling. Lives up here (not inside ChangesList) so the header
@@ -1155,6 +1164,16 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
   const [worktrees, setWorktrees] = useState<WorktreeInfo[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [activeWorktreeId, setActiveWorktreeId] = useState<string | null>(null)
+  // Worktree IDs whose Merged banner the user has dismissed via "Continue".
+  // Suppresses the purple state locally without touching the PR — the user
+  // keeps working on the already-merged branch until they archive.
+  const [continuedMergedWorktrees, setContinuedMergedWorktrees] = useState<Set<string>>(new Set())
+  // Same pattern for closed/rejected PRs — "Start over" hides the red
+  // banner. The PR stays closed on GitHub; the worktree acts fresh.
+  const [startedOverClosedWorktrees, setStartedOverClosedWorktrees] = useState<Set<string>>(new Set())
+  // Open conflict resolver overlay for a given worktree + file list.
+  // Null = no overlay showing.
+  const [conflictSession, setConflictSession] = useState<{ worktreeId: string; files: import('./conflicts/types').ConflictFile[] } | null>(null)
   // Git status for the currently-active chat context (main or worktree).
   // Drives the colored badge next to the branch label in the right panel.
   const { status: activeGitStatus } = useGitStatus(projectId, activeSessionId, activeWorktreeId, 30000)
@@ -1261,6 +1280,74 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
     window.addEventListener('bornastar-refresh-worktrees', handler)
     return () => window.removeEventListener('bornastar-refresh-worktrees', handler)
   }, [reloadAll])
+
+  // Force Explorer when leaving a workspace — Changes/Checks tabs
+  // disappear in the main-state, so leaving them selected would render
+  // an empty body.
+  useEffect(() => {
+    if (!activeWorktreeId && rightPanelTab !== 'explorer') setRightPanelTab('explorer')
+  }, [activeWorktreeId, rightPanelTab])
+
+  // Refresh main in-place. Callable manually (button) or automatically
+  // via the interval below. Skipped while a workspace is active-less
+  // edge case: the sandbox's main directory never collides with any
+  // worktree's directory, so this is always safe to run.
+  const refreshMain = useCallback(async () => {
+    if (mainRefreshing) return
+    setMainRefreshing(true)
+    try {
+      const res = await fetch(`/api/projects/${projectId}/git/refresh-main`, { method: 'POST' })
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}))
+        setMainRefreshedAt(typeof data.refreshedAt === 'number' ? data.refreshedAt : Date.now())
+      }
+    } catch {}
+    setMainRefreshing(false)
+  }, [projectId, mainRefreshing])
+
+  // Auto-refresh every 5 minutes regardless of workspace state — main
+  // lives in its own dir, updating it doesn't disturb anyone's work.
+  useEffect(() => {
+    refreshMain()
+    const t = setInterval(refreshMain, 5 * 60 * 1000)
+    return () => clearInterval(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId])
+
+  // ChecksPanel's "Continue" on a merged banner fires this event — we
+  // flip the active worktree into the "continued" set so the purple
+  // banner hides until the user either archives or reopens the tab.
+  useEffect(() => {
+    const handler = () => {
+      if (!activeWorktreeId) return
+      setContinuedMergedWorktrees((prev) => new Set(prev).add(activeWorktreeId))
+    }
+    window.addEventListener('bornastar-continue-merged', handler)
+    return () => window.removeEventListener('bornastar-continue-merged', handler)
+  }, [activeWorktreeId])
+
+  // Same deal for the Closed state — "Start over" hides the red banner.
+  useEffect(() => {
+    const handler = () => {
+      if (!activeWorktreeId) return
+      setStartedOverClosedWorktrees((prev) => new Set(prev).add(activeWorktreeId))
+    }
+    window.addEventListener('bornastar-start-over-closed', handler)
+    return () => window.removeEventListener('bornastar-start-over-closed', handler)
+  }, [activeWorktreeId])
+
+  // ChecksPanel's "Resolve conflicts" row fires this with the file
+  // list — we open the ConflictResolver overlay scoped to the active
+  // worktree. Top-bar CTA uses setConflictSession directly.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      if (!activeWorktreeId) return
+      const detail = (e as CustomEvent<{ files?: import('./conflicts/types').ConflictFile[] }>).detail
+      setConflictSession({ worktreeId: activeWorktreeId, files: detail?.files ?? [] })
+    }
+    window.addEventListener('bornastar-open-conflict-resolver', handler)
+    return () => window.removeEventListener('bornastar-open-conflict-resolver', handler)
+  }, [activeWorktreeId])
 
   // Load on mount
   useEffect(() => {
@@ -1589,9 +1676,9 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
     setActiveTeamId(null)
   }
 
-  // Count changed files for the Changes tab badge — sum of all worktree +
-  // chat stats files. Falls back to MOCK_CHANGES.length while the backend
-  // isn't wired up, so the badge still reflects the rows the user sees.
+  // Count changed files for the Changes tab badge — real stats first,
+  // falls back to the mock array length while the backend isn't wired
+  // (so the badge matches the rows the user actually sees).
   const realChangedCount = Object.values(worktreeStats).reduce((sum, s) => sum + s.files, 0)
     + Object.values(chatStats).reduce((sum, s) => sum + s.files, 0)
   const changedFilesCount = realChangedCount > 0 ? realChangedCount : MOCK_CHANGES.length
@@ -2039,16 +2126,10 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={handleNewMainChat}
-                className="rounded-full border border-white/20 px-4 py-1.5 text-[12px] font-medium text-zinc-200 transition-colors hover:border-white/40 hover:bg-white/5"
-              >
-                + New chat <span className="ml-0.5 text-[10px] text-zinc-500">(main)</span>
-              </button>
-              <button
                 onClick={handleNewWorktree}
                 className="rounded-full border border-white/20 px-4 py-1.5 text-[12px] font-medium text-zinc-200 transition-colors hover:border-white/40 hover:bg-white/5"
               >
-                + New worktree <span className="ml-0.5 text-[10px] text-zinc-500">(branch)</span>
+                + New workspace
               </button>
             </div>
           </div>
@@ -2056,27 +2137,447 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
       </div>
 
         {/* Right: Explorer / Changes / Terminal panel */}
-        <div className={`flex min-w-0 shrink-0 flex-col border-l border-[#2B2B2B] transition-all duration-200 ${rightPanelExpanded ? 'w-[50%]' : 'w-[30%]'}`} style={{ backgroundColor: '#1F1F1F' }}>
-          {/* Tabs: Changes | Explorer + context label */}
-          <div className="flex shrink-0 items-center border-b border-[#2B2B2B] px-3" style={{ backgroundColor: '#1F1F1F' }}>
-            <button
-              onClick={() => setRightPanelTab('changes')}
-              className={`relative flex items-center gap-1.5 px-3 py-2.5 text-[12px] font-medium transition-colors ${
-                rightPanelTab === 'changes'
-                  ? 'text-zinc-100'
-                  : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              Changes
-              {changedFilesCount > 0 && (
-                <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-400">
-                  {changedFilesCount}
+        <div className={`relative flex min-w-0 shrink-0 flex-col border-l border-[#2B2B2B] transition-all duration-200 ${rightPanelExpanded ? 'w-[50%]' : 'w-[30%]'}`} style={{ backgroundColor: '#1F1F1F' }}>
+          {/* Conflict resolver overlay — covers the whole right panel
+              (tabs + body + bottom terminal) so the user is focused on
+              resolving. Chat column stays live on the left. */}
+          {conflictSession && (
+            <ConflictResolver
+              projectId={projectId}
+              worktreeId={conflictSession.worktreeId}
+              initialFiles={conflictSession.files}
+              onClose={() => setConflictSession(null)}
+              onDone={() => {
+                setConflictSession(null)
+                window.dispatchEvent(new CustomEvent('bornastar-refresh-worktrees'))
+              }}
+            />
+          )}
+          {/* Main-state top bar (no workspace active) — shows "main ·
+              updated X ago" + manual Refresh. Auto-updates every 5
+              minutes in background so the Explorer tree always
+              reflects latest origin/main. */}
+          {!activeWorktreeId && (
+            <div className="flex shrink-0 items-center justify-between border-b border-[#2B2B2B] px-3 py-2" style={{ backgroundColor: '#1B1B1B' }}>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-mono text-zinc-400">main</span>
+                <span className="text-[10px] text-zinc-600">·</span>
+                <span className="text-[10px] text-zinc-500" title={mainRefreshedAt ? new Date(mainRefreshedAt).toLocaleString() : ''}>
+                  {(() => {
+                    if (mainRefreshing && !mainRefreshedAt) return 'Refreshing…'
+                    if (!mainRefreshedAt) return 'Not refreshed yet'
+                    const diff = Date.now() - mainRefreshedAt
+                    const s = Math.floor(diff / 1000)
+                    if (s < 10) return 'just now'
+                    if (s < 60) return `${s}s ago`
+                    const m = Math.floor(s / 60)
+                    if (m < 60) return `updated ${m} min ago`
+                    const h = Math.floor(m / 60)
+                    return `updated ${h}h ago`
+                  })()}
                 </span>
-              )}
-              {rightPanelTab === 'changes' && (
-                <span className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full bg-white" />
-              )}
-            </button>
+              </div>
+              <div className="group relative">
+                <button
+                  onClick={refreshMain}
+                  disabled={mainRefreshing}
+                  aria-label="Refresh main from origin"
+                  className="flex h-6 w-6 items-center justify-center rounded text-zinc-400 hover:bg-white/5 hover:text-zinc-200 disabled:opacity-40"
+                >
+                  <svg className={`h-3 w-3 ${mainRefreshing ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                  </svg>
+                </button>
+                {/* Hover tooltip — explains what clicking does. The
+                    click itself is the action; no extra confirm. */}
+                <div className="pointer-events-none absolute right-0 top-full z-20 mt-1 w-52 rounded-md border border-[#2B2B2B] p-2.5 opacity-0 shadow-xl transition-opacity group-hover:opacity-100" style={{ backgroundColor: '#252526' }}>
+                  <div className="mb-0.5 text-[11px] font-medium text-zinc-200">Refresh main</div>
+                  <div className="text-[10px] leading-snug text-zinc-400">Pull the latest from origin/main and rebuild the file tree.</div>
+                </div>
+              </div>
+            </div>
+          )}
+          {/* Workspace-state top bar — the big PR-aware one we already
+              had. Only renders when a workspace is active. */}
+          {activeWorktreeId && (() => {
+            const pr = activeGitStatus?.pr
+            const isContinued = !!activeWorktreeId && continuedMergedWorktrees.has(activeWorktreeId)
+            const isStartedOver = !!activeWorktreeId && startedOverClosedWorktrees.has(activeWorktreeId)
+            // "Continue" from a merged banner hides the loud state so
+            // the user can keep making follow-up edits on the same
+            // worktree — the PR is still technically merged on GitHub.
+            const prMerged = !!pr?.merged && !isContinued
+            const prReady = !!pr && !prMerged && !isContinued && (
+              pr.derivedStatus === 'approved' ||
+              (pr.derivedStatus === 'open' && pr.mergeable_state === 'clean')
+            )
+            // Changes requested gets its own visual lane — reviewer
+            // flagged something and the user needs to push fixes before
+            // the PR can move forward. Distinct orange so it doesn't
+            // look like the calmer "Awaiting review" yellow.
+            const prChangesRequested = !!pr && !prMerged && !prReady && !isContinued && pr.derivedStatus === 'changes_requested'
+            // Closed (rejected) — the PR was closed without merging.
+            // "Start over" dismisses the banner locally; user keeps the
+            // branch and can later open a follow-up PR.
+            const prClosed = !!pr && !prMerged && pr.state === 'closed' && !isStartedOver
+            // Draft PR — author still iterating, reviewers NOT notified
+            // yet. Takes precedence over "Awaiting" because draft PRs
+            // are technically open too.
+            const prDraft = !!pr && !prMerged && !prClosed && pr.derivedStatus === 'draft'
+            // Merge conflicts — GitHub computed that the branch can't
+            // be merged cleanly onto main. Distinct from awaiting /
+            // changes requested: this is a technical git issue, not a
+            // human decision.
+            const prConflicts = !!pr && !prMerged && !prClosed && (
+              pr.derivedStatus === 'conflicts' ||
+              (pr.mergeable_state === 'dirty' && pr.state === 'open')
+            )
+            // Catch-all for states we can't (yet) resolve in-app —
+            // CI failing, binary conflicts, submodule conflicts,
+            // branch deleted on remote, etc. Rendered in neutral zinc
+            // with a "fix it on GitHub" label. User goes to the PR,
+            // fixes there, comes back to edit locally; polling picks
+            // up the new state on next push.
+            const prAwaiting = !!pr && !prMerged && !prReady && !prChangesRequested && !prDraft && !prConflicts && !isContinued && pr.state === 'open'
+            const unsupportedState = deriveUnsupportedLabel(activeGitStatus)
+            const prUnsupported = !!unsupportedState && !prMerged && !prClosed && !prReady && !prChangesRequested && !prAwaiting && !prDraft && !prConflicts
+
+            // Subdued tech palette — solid color, but more refined than
+            // a flashy saturated fill. The accent CTA button supplies
+            // the contrast so the bar reads sophisticated, not loud.
+            const bg = prMerged ? '#3B1A6B'             // deep violet
+              : prReady ? '#0F4F3C'                     // deep emerald
+              : prChangesRequested ? '#5B1F0F'          // deep coral/orange
+              : prConflicts ? '#3F2A0A'                 // darker amber — tech problem
+              : prAwaiting ? '#5C3F0F'                  // deep amber
+              : prClosed ? '#4A0F1E'                    // deep crimson
+              : prDraft ? '#27272A'                     // zinc-800 — neutral
+              : prUnsupported ? '#2A2A2A'               // zinc — needs GitHub
+              : '#1B1B1B'
+            const border = prMerged ? 'border-purple-900'
+              : prReady ? 'border-emerald-900'
+              : prChangesRequested ? 'border-orange-900'
+              : prConflicts ? 'border-amber-900'
+              : prAwaiting ? 'border-amber-900'
+              : prClosed ? 'border-red-900'
+              : prDraft ? 'border-zinc-700'
+              : prUnsupported ? 'border-zinc-700'
+              : 'border-[#2B2B2B]'
+            const pillLabel = prMerged ? 'Merged'
+              : prReady ? 'Ready to merge'
+              : prChangesRequested ? 'Changes requested'
+              : prConflicts ? 'Conflicts'
+              : prAwaiting ? 'Awaiting review'
+              : prClosed ? 'Closed'
+              : prDraft ? 'Draft'
+              : prUnsupported ? (unsupportedState ?? 'Needs attention')
+              : ''
+            const isLoud = prMerged || prReady || prChangesRequested || prConflicts || prAwaiting || prClosed || prDraft || prUnsupported
+
+            // Suppress the Working indicator when the PR is the headline
+            // state — the user's attention belongs to the PR at that point.
+            const chatWorking = !!activeSessionId && busySessions.has(activeSessionId) && !prMerged && !prReady && !prAwaiting
+
+            // Right-side actions.
+            //   • PR-loud states → primary CTA (Merge / Archive / View).
+            //   • If the user kept editing after the PR was created and
+            //     has uncommitted or unpushed work, we also surface
+            //     "Commit and push" next to the CTA so those edits can
+            //     reach the same PR in one click (a push on the PR's
+            //     head branch auto-updates it).
+            //   • No PR → Commit and push + Create PR as before.
+            let rightButton: React.ReactNode = null
+            const pending = activeGitStatus
+              ? (activeGitStatus.uncommitted > 0 || activeGitStatus.commitsAhead > 0)
+              : false
+            if (pr?.html_url && isLoud) {
+              // Merged state gets TWO buttons — Continue (dismiss the
+              // purple banner and keep working on the branch) and Archive
+              // (close the worktree, with confirm if pending work exists).
+              if (prMerged && activeWorktreeId) {
+                const wtId = activeWorktreeId
+                const hasPending = (activeGitStatus?.uncommitted ?? 0) > 0 || (activeGitStatus?.commitsAhead ?? 0) > 0
+                const doArchive = async () => {
+                  // If there's pending work, route the user through the
+                  // Checks panel's archive confirm modal instead of
+                  // wiping silently.
+                  if (hasPending) {
+                    setRightPanelTab('checks')
+                    return
+                  }
+                  const res = await fetch(`/api/projects/${projectId}/worktrees/${wtId}/archive`, { method: 'POST' })
+                  if (res.ok) {
+                    setWorktrees((prev) => prev.filter((w) => w.id !== wtId))
+                    setActiveWorktreeId(null)
+                    setActiveSessionId(null)
+                  }
+                }
+                rightButton = (
+                  <>
+                    <button
+                      onClick={() => setContinuedMergedWorktrees((prev) => new Set(prev).add(wtId))}
+                      className="rounded-md border border-white/25 bg-white/10 px-3 py-1 text-[11px] font-semibold text-white hover:bg-white/15"
+                    >
+                      Continue
+                    </button>
+                    <button
+                      onClick={doArchive}
+                      className="rounded-md bg-purple-500 px-3 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-purple-400"
+                    >
+                      Archive
+                    </button>
+                  </>
+                )
+              } else if (prClosed && activeWorktreeId) {
+                // Closed state gets two buttons: Start over (dismiss
+                // banner, return to normal flow — branch + commits
+                // preserved) and Archive (close worktree entirely).
+                const wtId = activeWorktreeId
+                const hasPending = (activeGitStatus?.uncommitted ?? 0) > 0 || (activeGitStatus?.commitsAhead ?? 0) > 0
+                const doArchive = async () => {
+                  if (hasPending) { setRightPanelTab('checks'); return }
+                  const res = await fetch(`/api/projects/${projectId}/worktrees/${wtId}/archive`, { method: 'POST' })
+                  if (res.ok) {
+                    setWorktrees((prev) => prev.filter((w) => w.id !== wtId))
+                    setActiveWorktreeId(null)
+                    setActiveSessionId(null)
+                  }
+                }
+                rightButton = (
+                  <>
+                    <button
+                      onClick={() => setStartedOverClosedWorktrees((prev) => new Set(prev).add(wtId))}
+                      className="rounded-md border border-white/25 bg-white/10 px-3 py-1 text-[11px] font-semibold text-white hover:bg-white/15"
+                    >
+                      Start over
+                    </button>
+                    <button
+                      onClick={doArchive}
+                      className="rounded-md bg-red-500 px-3 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-red-400"
+                    >
+                      Archive
+                    </button>
+                  </>
+                )
+              } else if (prReady) {
+                // Ready to merge → real action button. Awaiting /
+                // Changes requested are passive states (user just
+                // waits for reviewer); the #PR chip on the left covers
+                // "open on GitHub" so we leave this side empty there.
+                rightButton = (
+                  <button
+                    onClick={() => window.open(pr.html_url, '_blank', 'noopener,noreferrer')}
+                    className="rounded-md bg-emerald-500 px-3 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-emerald-400"
+                  >
+                    Merge
+                  </button>
+                )
+              } else if (prConflicts && activeWorktreeId) {
+                // Conflicts → user picks between manual resolver
+                // overlay or delegating to the chat agent.
+                const wtId = activeWorktreeId
+                rightButton = (
+                  <ResolveConflictsSplitButton
+                    onManual={async () => {
+                      if (MOCK_GIT_STATUS && MOCK_CONFLICTS) {
+                        setConflictSession({ worktreeId: wtId, files: MOCK_CONFLICTS.files })
+                        return
+                      }
+                      try {
+                        const res = await fetch(`/api/projects/${projectId}/worktrees/${wtId}/rebase/start`, { method: 'POST' })
+                        const data = await res.json().catch(() => ({}))
+                        if (data.status === 'conflict') {
+                          setConflictSession({ worktreeId: wtId, files: data.files ?? [] })
+                        }
+                      } catch {}
+                    }}
+                    onAgent={() => {
+                      // Send a structured prompt to the active chat so
+                      // the agent handles the rebase + resolution +
+                      // push. User watches the conversation — if the
+                      // agent picks wrong, they can correct inline.
+                      window.dispatchEvent(new CustomEvent('bornastar-agent-prompt', {
+                        detail: {
+                          text: 'Merge the remote branch (main) into this branch and resolve the conflicts. After resolving, commit and push the merged result back to the branch. Explain each decision you make at a conflict so I can review.',
+                        },
+                      }))
+                    }}
+                  />
+                )
+              } else if (prDraft && activeWorktreeId) {
+                // Draft → single action that flips the PR to "ready for
+                // review". Backend hits the GraphQL mutation and the
+                // next poll swings the bar to Awaiting / Ready.
+                const wtId = activeWorktreeId
+                const markReady = async () => {
+                  try {
+                    const res = await fetch(`/api/projects/${projectId}/worktrees/${wtId}/pr/mark-ready`, { method: 'POST' })
+                    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'mark ready failed')
+                    // Next poll reflects the real state. In the
+                    // meantime, optimistically broadcast so the panel
+                    // and this bar update without waiting.
+                    window.dispatchEvent(new CustomEvent('bornastar-optimistic-ready'))
+                  } catch {}
+                }
+                rightButton = (
+                  <button
+                    onClick={markReady}
+                    className="rounded-md bg-white px-3 py-1 text-[11px] font-semibold text-zinc-900 shadow-sm hover:bg-zinc-100"
+                  >
+                    Mark ready for review
+                  </button>
+                )
+              }
+            } else if (activeGitStatus && !chatWorking) {
+              // While the chat is working, the bar is "owned" by the
+              // Working… indicator on the left — hide the action buttons
+              // so the user's attention stays on the in-flight task. PR
+              // banners (above) keep priority and still take over.
+              const uncommitted = activeGitStatus.uncommitted
+              const ahead = activeGitStatus.commitsAhead
+              const buttons: React.ReactNode[] = []
+              if (uncommitted > 0 || (ahead > 0 && !activeWorktreeId)) {
+                // Commit-and-push covers both "dirty tree" and "main has
+                // unpushed commits". Single action either way.
+                buttons.push(
+                  <button
+                    key="commit"
+                    onClick={() => setRightPanelTab('checks')}
+                    title="Commit and push"
+                    className="flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-300 hover:border-amber-500/60 hover:bg-amber-500/20"
+                  >
+                    {/* Up-arrow into a tray = push */}
+                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 7.5m0 0L7.5 12m4.5-4.5v12" />
+                    </svg>
+                    Commit and push
+                  </button>
+                )
+              }
+              if ((uncommitted > 0 || ahead > 0) && activeWorktreeId) {
+                buttons.push(
+                  <SplitCreatePRButton
+                    key="pr"
+                    variant="emerald"
+                    onCreate={(asDraft) => {
+                      // Delegate to ChecksPanel (it owns the whole
+                      // create flow: suggestion → auto-commit → push →
+                      // PR POST → worktree rename). Switching to the
+                      // tab also ensures the user sees the result.
+                      setRightPanelTab('checks')
+                      window.dispatchEvent(new CustomEvent('bornastar-create-pr', { detail: { asDraft } }))
+                    }}
+                  />
+                )
+              }
+              if (buttons.length > 0) rightButton = <>{buttons}</>
+            }
+
+            return (
+              <div className={`flex min-h-[40px] shrink-0 items-center justify-between border-b ${border} px-3 py-2`} style={{ backgroundColor: bg }}>
+                <div className="flex min-w-0 items-center gap-2">
+                  {isLoud && pr ? (
+                    <>
+                      {/* Worktree icon + PR number — single chip that
+                          always links out to the PR on GitHub. Hover
+                          reveals an "Open on GitHub" tooltip so the
+                          affordance is discoverable across states. */}
+                      <a
+                        href={pr.html_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="group/prchip relative flex items-center gap-1.5 rounded-md bg-white/10 px-2 py-1 text-[11px] font-semibold text-white hover:bg-white/15"
+                      >
+                        <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor">
+                          <circle cx="6" cy="6" r="2" />
+                          <circle cx="6" cy="18" r="2" />
+                          <circle cx="18" cy="18" r="2" />
+                          <path d="M6 8v8M8 6h6a4 4 0 014 4v8" strokeLinecap="round" />
+                        </svg>
+                        #{pr.number}
+                        <svg className="h-2.5 w-2.5 opacity-60 group-hover/prchip:opacity-100" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
+                        </svg>
+                        <span className="pointer-events-none absolute left-0 top-full z-30 mt-1 whitespace-nowrap rounded-md border border-white/10 bg-zinc-900 px-2 py-1 text-[10px] font-normal text-zinc-100 opacity-0 shadow-lg transition-opacity duration-150 group-hover/prchip:opacity-100">
+                          Open on GitHub
+                        </span>
+                      </a>
+                      {/* Status label next to the chip — bigger, prominent. */}
+                      <span className="text-[13px] font-semibold text-white">{pillLabel}</span>
+                    </>
+                  ) : null}
+                  {chatWorking && (
+                    <span className="flex items-center gap-2 text-[11px] font-medium text-emerald-300">
+                      {/* Pulsing dot — calmer than a full spinner but
+                          still reads as "alive". Two layers: a soft glow
+                          ring + a solid center. */}
+                      <span className="relative flex h-2 w-2 items-center justify-center">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                      </span>
+                      {/* Shimmering label — the gradient sweeps left→right
+                          while the agent is busy, gives the bar a feeling
+                          of being "in motion" without spinning anything. */}
+                      <span
+                        className="bg-clip-text text-transparent"
+                        style={{
+                          backgroundImage: 'linear-gradient(90deg, rgba(110,231,183,0.7) 0%, rgba(110,231,183,1) 50%, rgba(110,231,183,0.7) 100%)',
+                          backgroundSize: '200% 100%',
+                          animation: 'bornastar-shimmer 1.6s linear infinite',
+                        }}
+                      >
+                        Working
+                      </span>
+                      {/* Animated trailing dots — staggered so they bounce
+                          one after the other. */}
+                      <span className="inline-flex gap-0.5">
+                        <span className="h-1 w-1 rounded-full bg-emerald-400" style={{ animation: 'bornastar-bounce 1s infinite', animationDelay: '0ms' }} />
+                        <span className="h-1 w-1 rounded-full bg-emerald-400" style={{ animation: 'bornastar-bounce 1s infinite', animationDelay: '160ms' }} />
+                        <span className="h-1 w-1 rounded-full bg-emerald-400" style={{ animation: 'bornastar-bounce 1s infinite', animationDelay: '320ms' }} />
+                      </span>
+                      <style>{`
+                        @keyframes bornastar-shimmer {
+                          0% { background-position: 200% 0; }
+                          100% { background-position: -200% 0; }
+                        }
+                        @keyframes bornastar-bounce {
+                          0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+                          40% { transform: translateY(-2px); opacity: 1; }
+                        }
+                      `}</style>
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {rightButton}
+                </div>
+              </div>
+            )
+          })()}
+          {/* Tabs row. Only Explorer is visible when no workspace is
+              active (main state is a read-only snapshot — Changes and
+              Checks don't apply until the user starts a workspace). */}
+          <div className="flex shrink-0 items-center border-b border-[#2B2B2B] px-3" style={{ backgroundColor: '#1F1F1F' }}>
+            {activeWorktreeId && (
+              <button
+                onClick={() => setRightPanelTab('changes')}
+                className={`relative flex items-center gap-1.5 px-3 py-2.5 text-[12px] font-medium transition-colors ${
+                  rightPanelTab === 'changes'
+                    ? 'text-zinc-100'
+                    : 'text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                Changes
+                {changedFilesCount > 0 && (
+                  <span className="rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-400">
+                    {changedFilesCount}
+                  </span>
+                )}
+                {rightPanelTab === 'changes' && (
+                  <span className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full bg-white" />
+                )}
+              </button>
+            )}
             <button
               onClick={() => { setRightPanelTab('explorer'); setChangesSelectMode(false) }}
               className={`relative flex items-center gap-1.5 px-3 py-2.5 text-[12px] font-medium transition-colors ${
@@ -2090,25 +2591,21 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                 <span className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full bg-white" />
               )}
             </button>
-            <button
-              onClick={() => setRightPanelTab('checks')}
-              className={`relative flex items-center gap-1.5 px-3 py-2.5 text-[12px] font-medium transition-colors ${
-                rightPanelTab === 'checks'
-                  ? 'text-zinc-100'
-                  : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              Checks
-              {statusBadge && (
-                // Amber whenever there's anything pending (uncommitted,
-                // unpushed, PR open, behind main). Keeps the tab badge
-                // simple — either "work pending" or nothing.
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-500" title={statusBadge.label} />
-              )}
-              {rightPanelTab === 'checks' && (
-                <span className="absolute bottom-0 left-2 right-2 h-[2px] rounded-full bg-white" />
-              )}
-            </button>
+            {activeWorktreeId && (
+              <button
+                onClick={() => setRightPanelTab('checks')}
+                className={`relative flex items-center gap-1.5 px-3 py-2.5 text-[12px] font-medium transition-colors ${
+                  statusBadge
+                    ? (rightPanelTab === 'checks' ? 'text-amber-300' : 'text-amber-400 hover:text-amber-300')
+                    : (rightPanelTab === 'checks' ? 'text-zinc-100' : 'text-zinc-500 hover:text-zinc-300')
+                }`}
+              >
+                Checks
+                {rightPanelTab === 'checks' && (
+                  <span className={`absolute bottom-0 left-2 right-2 h-[2px] rounded-full ${statusBadge ? 'bg-amber-400' : 'bg-white'}`} />
+                )}
+              </button>
+            )}
             {/* Select-mode toggle — only on Changes tab. Swaps the whole
                 panel into multi-select so the user can bulk-attach several
                 changed files (and all their hunks) to a chat in one go. */}
@@ -2126,17 +2623,11 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
               </button>
             )}
             <div className="flex-1" />
-            {statusBadge && (
-              <span className="mr-2 flex items-center gap-1.5 text-[10px] text-zinc-400">
-                <span className={`h-1.5 w-1.5 rounded-full ${statusBadge.color}`} />
-                {statusBadge.label}
+            {activeWorktreeId && (
+              <span className="mr-2 text-[11px] font-medium text-zinc-500">
+                {worktrees.find((w) => w.id === activeWorktreeId)?.branchName ?? 'branch'} (branch)
               </span>
             )}
-            <span className="mr-2 text-[11px] font-medium text-zinc-500">
-              {activeWorktreeId
-                ? `${worktrees.find((w) => w.id === activeWorktreeId)?.branchName ?? 'branch'} (branch)`
-                : 'main'}
-            </span>
             {/* Expand/collapse panel toggle */}
             <button
               onClick={() => setRightPanelExpanded(!rightPanelExpanded)}
@@ -2151,9 +2642,9 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
           </div>
 
           {/* Panel content — takes remaining space above terminal */}
-          <div className="min-h-0 flex-1 overflow-y-auto" style={{ backgroundColor: '#181818' }}>
+          <div className="min-h-0 flex-1 overflow-hidden" style={{ backgroundColor: '#181818' }}>
             {rightPanelTab === 'explorer' && (
-              <FileTree projectId={projectId} hasActiveSession={!!activeSessionId} />
+              <FileTree key={activeWorktreeId ?? 'main'} projectId={projectId} hasActiveSession={!!activeSessionId} mainState={!activeWorktreeId} />
             )}
             {rightPanelTab === 'changes' && (
               <ChangesList
@@ -2178,6 +2669,8 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                 projectId={projectId}
                 sessionId={activeSessionId}
                 worktreeId={activeWorktreeId}
+                mergedBannerDismissed={!!activeWorktreeId && continuedMergedWorktrees.has(activeWorktreeId)}
+                closedBannerDismissed={!!activeWorktreeId && startedOverClosedWorktrees.has(activeWorktreeId)}
                 onArchive={async () => {
                   if (!activeWorktreeId) return
                   const res = await fetch(`/api/projects/${projectId}/worktrees/${activeWorktreeId}/archive`, { method: 'POST' })
@@ -2606,7 +3099,8 @@ function FileIcon({ name, size = 20 }: { name: string; size?: number }) {
 
 
 // ── Changes List ─────────────────────────────────────────────────────────
-// ⚠️ MOCK data for visual testing. Replace with real git diff data later.
+// Data types — the real list will get hydrated from the per-worktree /
+// per-session change endpoints when the integration lands.
 
 interface DiffLine {
   type: 'context' | 'add' | 'remove'
@@ -2629,111 +3123,18 @@ interface MockChangedFile {
   added: number
   removed: number
   hunks: DiffHunk[]
-  // Optional: full file content with diff markers for the "Open file" view.
-  // Each line is a DiffLine so unchanged lines show as context and
-  // modified/added/removed lines render with highlight.
   fullDiff?: DiffLine[]
-  // True when the file differs from HEAD but hasn't been committed yet.
-  // Renders a "U" badge in the Changes list so the user can tell committed
-  // work apart from dirty-working-tree edits at a glance.
   uncommitted?: boolean
 }
 
-// Helper — find a mock change by path (used by the Explorer "Open file" flow
-// to render the file in diff view instead of the raw file viewer).
 function getMockChangeForPath(path: string): MockChangedFile | null {
   return MOCK_CHANGES.find((f) => f.path === path) ?? null
 }
 
-// ⚠️ MOCK data — simulates one chat "Add loading state to Button" having
-// produced two file changes (one modified + one added). Replace with real
-// git diff data from the active chat session when the backend lands.
-//
-// The data here is hand-crafted so every piece of the review flow can be
-// walked through in the UI: the list row, the hunk card, and the full-file
-// diff view that opens when the user clicks "Open file".
-const MOCK_CHAT_ID = 'mock-chat-loading-button'
-const MOCK_CHAT_NAME = 'Add loading state to Button'
-
-// ── Change 1 ────────────────────────────────────────────────────────────────
-// components/Button.tsx — Modified: add `loading` prop with spinner + disabled
-// while loading. A single hunk spanning the function signature and JSX.
-const MOCK_BUTTON_HUNK: DiffHunk = {
-  oldStart: 1,
-  newStart: 1,
-  lines: [
-    { type: 'context', content: "import { ReactNode } from 'react'", oldLine: 1, newLine: 1 },
-    { type: 'context', content: '', oldLine: 2, newLine: 2 },
-    { type: 'context', content: 'interface ButtonProps {', oldLine: 3, newLine: 3 },
-    { type: 'context', content: '  children: ReactNode', oldLine: 4, newLine: 4 },
-    { type: 'context', content: '  onClick?: () => void', oldLine: 5, newLine: 5 },
-    { type: 'context', content: "  variant?: 'primary' | 'secondary'", oldLine: 6, newLine: 6 },
-    { type: 'add',     content: '  loading?: boolean', newLine: 7 },
-    { type: 'context', content: '}', oldLine: 7, newLine: 8 },
-    { type: 'context', content: '', oldLine: 8, newLine: 9 },
-    { type: 'remove',  content: "export function Button({ children, onClick, variant = 'primary' }: ButtonProps) {", oldLine: 9 },
-    { type: 'add',     content: "export function Button({ children, onClick, variant = 'primary', loading = false }: ButtonProps) {", newLine: 10 },
-    { type: 'context', content: '  return (', oldLine: 10, newLine: 11 },
-    { type: 'remove',  content: '    <button onClick={onClick} className={`btn btn-${variant}`}>', oldLine: 11 },
-    { type: 'add',     content: '    <button onClick={onClick} disabled={loading} className={`btn btn-${variant} ${loading ? "btn-loading" : ""}`}>', newLine: 12 },
-    { type: 'add',     content: '      {loading && <span className="spinner" aria-hidden />}', newLine: 13 },
-    { type: 'context', content: '      {children}', oldLine: 12, newLine: 14 },
-    { type: 'context', content: '    </button>', oldLine: 13, newLine: 15 },
-    { type: 'context', content: '  )', oldLine: 14, newLine: 16 },
-    { type: 'context', content: '}', oldLine: 15, newLine: 17 },
-  ],
-}
-
-// ── Change 2 ────────────────────────────────────────────────────────────────
-// lib/useAsyncAction.ts — Added: new hook that wraps async handlers so the
-// Button can show a loading state during the call. Pure-add hunk (no context
-// lines since the file didn't exist before).
-const MOCK_HOOK_HUNK: DiffHunk = {
-  oldStart: 0,
-  newStart: 1,
-  lines: [
-    { type: 'add', content: "import { useCallback, useState } from 'react'", newLine: 1 },
-    { type: 'add', content: '', newLine: 2 },
-    { type: 'add', content: '// Wraps an async handler so callers get back a `pending` flag alongside', newLine: 3 },
-    { type: 'add', content: '// the bound action — useful for driving Button `loading` props without', newLine: 4 },
-    { type: 'add', content: '// each caller having to manage its own useState.', newLine: 5 },
-    { type: 'add', content: 'export function useAsyncAction<T extends unknown[]>(fn: (...args: T) => Promise<void>) {', newLine: 6 },
-    { type: 'add', content: '  const [pending, setPending] = useState(false)', newLine: 7 },
-    { type: 'add', content: '  const run = useCallback(async (...args: T) => {', newLine: 8 },
-    { type: 'add', content: '    setPending(true)', newLine: 9 },
-    { type: 'add', content: '    try { await fn(...args) } finally { setPending(false) }', newLine: 10 },
-    { type: 'add', content: '  }, [fn])', newLine: 11 },
-    { type: 'add', content: '  return { run, pending }', newLine: 12 },
-    { type: 'add', content: '}', newLine: 13 },
-  ],
-}
-
-const MOCK_CHANGES: MockChangedFile[] = [
-  {
-    path: 'components/Button.tsx',
-    status: 'M',
-    added: 4,
-    removed: 2,
-    hunks: [MOCK_BUTTON_HUNK],
-    fullDiff: MOCK_BUTTON_HUNK.lines,
-    // Imagine this one is committed (in the branch's history already).
-  },
-  {
-    path: 'lib/useAsyncAction.ts',
-    status: 'A',
-    added: 13,
-    removed: 0,
-    hunks: [MOCK_HOOK_HUNK],
-    fullDiff: MOCK_HOOK_HUNK.lines,
-    // This one is still sitting in the working tree — U badge appears.
-    uncommitted: true,
-  },
-]
-
-// Exposed so future integration can check "did this come from the mock chat"
-// and keep the two flows from cross-polluting.
-void MOCK_CHAT_ID
-void MOCK_CHAT_NAME
+// Empty until the real change feed is wired. Populate via API once the
+// worktree changes endpoint is hooked in; ChangesList handles empty
+// state natively.
+const MOCK_CHANGES: MockChangedFile[] = []
 
 const STATUS_ICONS: Record<string, { symbol: string; text: string; bg: string; border: string }> = {
   M: { symbol: '•', text: 'text-amber-400', bg: 'bg-amber-400/10', border: 'border-amber-400/30' },
@@ -3035,6 +3436,32 @@ function HunkActionButton({
 // Plain file viewer using shiki (VS Code Dark+ theme) — shown when the
 // user opens a file without diff data. Wraps long lines, keeps line numbers
 // sticky, and inherits color from the theme.
+// Read-only Shiki renderer — used inside the main-state file overlay.
+// Same engine that powers the diff views: one-dark-pro theme, custom
+// indent guides, VS Code-ish proportions. Sits body-only inside the
+// parent overlay so the parent renders the header / back button.
+function ReadOnlyShikiView({ path, content }: { path: string; content: string }) {
+  const htmlLines = useShikiLines(content, path)
+  const plainLines = content.split('\n')
+  const effIndents = getEffectiveIndents(plainLines)
+  return (
+    <div className="h-full overflow-y-auto overflow-x-hidden text-[13px] leading-[1.5] font-mono" style={{ backgroundColor: '#1F1F1F' }}>
+      {htmlLines.map((lineHtml, i) => (
+        <div key={i} className="flex w-full min-w-0 hover:bg-white/5">
+          <span className="w-12 shrink-0 select-none pr-3 text-right align-top text-[11px] text-zinc-500">
+            {i + 1}
+          </span>
+          <code
+            className="min-w-0 flex-1 block pr-4"
+            style={getCodeLineStyle(plainLines[i] ?? '', effIndents[i])}
+            dangerouslySetInnerHTML={{ __html: stripLeadingWhitespaceHtml(lineHtml) || '&nbsp;' }}
+          />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function ShikiFileView({
   path,
   content,
@@ -3262,7 +3689,7 @@ function DiffHunkView({
 
 // ── File Tree ──────────────────────────────────────────────────────────────
 
-function FileTree({ projectId, hasActiveSession }: { projectId: string; hasActiveSession?: boolean }) {
+function FileTree({ projectId, hasActiveSession, mainState }: { projectId: string; hasActiveSession?: boolean; mainState?: boolean }) {
   const [files, setFiles] = useState<FileEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
@@ -3481,7 +3908,7 @@ function FileTree({ projectId, hasActiveSession }: { projectId: string; hasActiv
   const tree = buildTree(filteredFiles)
 
   return (
-    <div className="relative flex w-full min-w-0 flex-col border-r border-[#2B2B2B]" style={{ backgroundColor: '#181818' }}>
+    <div className="relative flex h-full w-full min-w-0 flex-col border-r border-[#2B2B2B]" style={{ backgroundColor: '#181818' }}>
       {/* Inline diff editor overlay — shown when the user opens a file that
           has pending changes. Context and add lines are editable; removed
           lines are read-only red widgets for visual reference only. Saves
@@ -3577,14 +4004,21 @@ function FileTree({ projectId, hasActiveSession }: { projectId: string; hasActiv
             </div>
           </div>
           <div className="flex-1 min-h-0">
-            <CodeMirrorFileView
-              ref={editorRef}
-              projectId={projectId}
-              filePath={viewingFile.path}
-              initialContent={viewingFile.content}
-              worktreeId={viewingFile.worktreeId ?? null}
-              onDirtyChange={setEditorDirty}
-            />
+            {/* Workspace file = editable CodeMirror. Main-state file =
+                read-only Shiki view (syntax-highlighted + indent
+                guides, matches the look of the diff renderer). */}
+            {viewingFile.worktreeId ? (
+              <CodeMirrorFileView
+                ref={editorRef}
+                projectId={projectId}
+                filePath={viewingFile.path}
+                initialContent={viewingFile.content}
+                worktreeId={viewingFile.worktreeId}
+                onDirtyChange={setEditorDirty}
+              />
+            ) : (
+              <ReadOnlyShikiView path={viewingFile.path} content={viewingFile.content} />
+            )}
           </div>
 
           {showCloseConfirm && (
@@ -3629,36 +4063,37 @@ function FileTree({ projectId, hasActiveSession }: { projectId: string; hasActiv
       <div className="flex items-center justify-between border-b border-[#2B2B2B] px-3 py-2">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">Explorer</span>
         <div className="flex items-center gap-0.5">
-          {modifiedFiles.length > 0 && (
+          {modifiedFiles.length > 0 && !mainState && (
             <span className="mr-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
               {modifiedFiles.length}
             </span>
           )}
-          {/* New File */}
-          <button onClick={() => { setCreatingType('file'); setCreatingName('') }} title="New File" className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 hover:bg-white/10 hover:text-zinc-300">
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-            </svg>
-          </button>
-          {/* New Folder */}
-          <button onClick={() => { setCreatingType('folder'); setCreatingName('') }} title="New Folder" className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 hover:bg-white/10 hover:text-zinc-300">
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 10.5v6m3-3H9m4.06-7.19l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
-            </svg>
-          </button>
-          {/* Diff / Changes */}
-          <button onClick={() => setShowDiffModal(true)} title="View Changes" className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 hover:bg-white/10 hover:text-zinc-300">
-            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
-            </svg>
-          </button>
-          {/* Search */}
+          {/* Edit actions — hidden in main state (read-only preview) */}
+          {!mainState && (
+            <>
+              <button onClick={() => { setCreatingType('file'); setCreatingName('') }} title="New File" className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 hover:bg-white/10 hover:text-zinc-300">
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                </svg>
+              </button>
+              <button onClick={() => { setCreatingType('folder'); setCreatingName('') }} title="New Folder" className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 hover:bg-white/10 hover:text-zinc-300">
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 10.5v6m3-3H9m4.06-7.19l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+                </svg>
+              </button>
+              <button onClick={() => setShowDiffModal(true)} title="View Changes" className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 hover:bg-white/10 hover:text-zinc-300">
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+                </svg>
+              </button>
+            </>
+          )}
+          {/* Always-on: search + collapse */}
           <button onClick={() => setShowSearch(!showSearch)} title="Search Files" className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 hover:bg-white/10 hover:text-zinc-300">
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
             </svg>
           </button>
-          {/* Collapse All */}
           <button onClick={() => setCollapseKey((k) => k + 1)} title="Collapse All" className="flex h-5 w-5 items-center justify-center rounded text-zinc-500 hover:bg-white/10 hover:text-zinc-300">
             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
@@ -4394,6 +4829,18 @@ function ChatPanel({
   const [attachments, setAttachments] = useState<{ file: File; preview: string; type: 'image' | 'pdf' | 'text' }[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const [contextPaths, setContextPaths] = useState<string[]>([])
+
+  // External prompts — e.g. "Resolve with agent" on the Conflicts top
+  // bar fires this event with a prefilled message. We drop it into the
+  // input so the user can tweak before sending (safer than auto-send).
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ text?: string }>).detail
+      if (detail?.text) setInput((prev) => prev ? prev : detail.text!)
+    }
+    window.addEventListener('bornastar-agent-prompt', handler)
+    return () => window.removeEventListener('bornastar-agent-prompt', handler)
+  }, [])
   const [showToolbarMenu, setShowToolbarMenu] = useState(false)
   const [showContextPicker, setShowContextPicker] = useState(false)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
@@ -4610,6 +5057,11 @@ function ChatPanel({
     setInput('')
     setAttachments([])
     if (hunkAttachments.length > 0) onClearAllHunkAttachments()
+    // Sending a message implies the user is continuing to work on this
+    // worktree — if there's a lingering Merged or Closed banner,
+    // dismiss both automatically. No-op when neither is up.
+    window.dispatchEvent(new CustomEvent('bornastar-continue-merged'))
+    window.dispatchEvent(new CustomEvent('bornastar-start-over-closed'))
     setSending(true)
 
     // Start polling for real-time tool calls (all modes)
