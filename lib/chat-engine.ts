@@ -727,8 +727,10 @@ async function handleEdit(req: ChatRequest, token: string, userMessage: ChatRepl
 
 async function refreshFileTree(projectId: string): Promise<void> {
   try {
-    const { execInSandbox } = await import('@/lib/sandbox-manager')
-    const result = await execInSandbox(projectId, `find /home/user/project -type f -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' -not -path '*/.next/*' -not -path '*/dist/*' | sed 's|/home/user/project/||' | sort`)
+    const { ensureSandboxRunning, execInSandbox } = await import('@/lib/sandbox-manager')
+    const projectPath = await ensureSandboxRunning(projectId)
+    if (!projectPath) return
+    const result = await execInSandbox(projectId, `find ${projectPath} -type f -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' -not -path '*/.next/*' -not -path '*/dist/*' | sed 's|${projectPath}/||' | sort`)
     if (result.stdout.trim()) {
       await prisma.repository.update({
         where: { projectId },

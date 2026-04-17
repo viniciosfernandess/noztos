@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyProjectAccess } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { loadProjectGitContext, PROJECT_ROOT, runGit } from '@/lib/git'
-import { E2BProvider } from '@/lib/compute-e2b'
+import { LocalProvider } from '@/lib/compute-local'
 
-const compute = new E2BProvider()
+const compute = new LocalProvider()
 
 interface RouteContext { params: Promise<{ id: string }> }
 

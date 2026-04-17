@@ -15,11 +15,21 @@
 import { prisma } from '@/lib/db'
 import { decrypt } from '@/lib/crypto'
 import { ensureSandboxRunning } from '@/lib/sandbox-manager'
-import { E2BProvider } from '@/lib/compute-e2b'
+import { LocalProvider } from '@/lib/compute-local'
 
-const compute = new E2BProvider()
+const compute = new LocalProvider()
 
-export const PROJECT_ROOT = '/home/user/project'
+// In cloud mode this was a fixed sandbox path. In local mode, the
+// "project root" is wherever `ensureSandboxRunning()` resolved the
+// project on the user's disk. Callers that need the root should call
+// `getProjectRoot(projectId)` instead of using a constant.
+export async function getProjectRoot(projectId: string): Promise<string> {
+  const path = await ensureSandboxRunning(projectId)
+  return path ?? process.cwd()
+}
+// Backward compat for routes that import this constant — they'll
+// need to migrate to getProjectRoot() but this prevents compile errors.
+export const PROJECT_ROOT = process.cwd()
 
 // ── Project metadata lookup ────────────────────────────────────────────────
 
@@ -63,7 +73,7 @@ export async function loadProjectGitContext(projectId: string): Promise<ProjectG
 // Given a worktreeId (possibly null = main), resolve the on-disk working dir
 // we should run git commands from.
 export async function resolveWorkingDir(projectId: string, worktreeId?: string | null): Promise<string | null> {
-  if (!worktreeId) return PROJECT_ROOT
+  if (!worktreeId) return getProjectRoot(projectId)
   const wt = await prisma.worktree.findUnique({
     where: { id: worktreeId },
     select: { projectId: true, worktreePath: true },

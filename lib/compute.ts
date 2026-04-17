@@ -42,7 +42,9 @@ export interface ComputeProvider {
   writeFile(sandboxId: string, path: string, content: string): Promise<void>
 }
 
-// Active provider — swap between E2B and AWS
+// Active provider — swap between Local, E2B, and AWS based on
+// BORNASTAR_MODE env var. Defaults to 'local' for companion-first
+// development. Set to 'cloud' to use E2B sandboxes.
 let activeProvider: ComputeProvider | null = null
 
 export function setComputeProvider(provider: ComputeProvider) {
@@ -52,4 +54,17 @@ export function setComputeProvider(provider: ComputeProvider) {
 export function getComputeProvider(): ComputeProvider {
   if (!activeProvider) throw new Error('No compute provider configured. Call setComputeProvider() first.')
   return activeProvider
+}
+
+export function isLocalMode(): boolean {
+  return (process.env.BORNASTAR_MODE ?? 'local') === 'local'
+}
+
+export async function getDefaultProvider(): Promise<ComputeProvider> {
+  if (isLocalMode()) {
+    const { LocalProvider } = await import('./compute-local')
+    return new LocalProvider()
+  }
+  const { E2BProvider } = await import('./compute-e2b')
+  return new E2BProvider()
 }

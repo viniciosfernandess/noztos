@@ -1,27 +1,44 @@
 import { prisma } from '@/lib/db'
 import { ensureSandboxRunning } from '@/lib/sandbox-manager'
-import { E2BProvider } from '@/lib/compute-e2b'
+import { LocalProvider } from '@/lib/compute-local'
 
 // ── Worktree Manager ──────────────────────────────────────────────────────
 //
 // A Worktree is an isolated git branch + working directory inside the
-// project's sandbox. Multiple chat sessions can collaborate inside the same
-// worktree, sharing the working files. When a chat has no worktreeId, it
-// operates directly on the project's main directory ("local mode").
+// project's sandbox (cloud) or the user's local disk (local mode).
+// Multiple chat sessions can collaborate inside the same worktree.
 //
-// Layout inside the sandbox:
-//   /home/user/project                ← main: shared root used by chats
-//                                      with no worktreeId
-//   /home/user/worktrees/<worktreeId> ← isolated branch for a worktree
-//                                      (multiple chats can live here)
+// Layout (cloud mode — E2B sandbox):
+//   /home/user/project                ← main root
+//   /home/user/worktrees/<worktreeId> ← isolated branches
 //
-// Diffs are always compared against the worktree's `baseCommit` (the main
-// HEAD at the time the worktree was created), so commits the agent makes
-// inside the worktree still appear in the stats.
+// Layout (local mode — user's machine):
+//   ~/projects/my-app                  ← main root (wherever the user cloned)
+//   ~/projects/my-app/.worktrees/<id>  ← isolated branches (git worktree add)
+//
+// Paths are resolved via the project's DB record, so the layout
+// difference is transparent to callers.
 
-const compute = new E2BProvider()
-const SHARED_PROJECT_ROOT = '/home/user/project'
-const WORKTREES_DIR = '/home/user/worktrees'
+const compute = new LocalProvider()
+
+// In cloud mode these were fixed sandbox paths. In local mode they're
+// resolved dynamically from the project's actual disk location.
+// `getProjectPaths()` returns both, looking up the project path from
+// `ensureSandboxRunning()`. Functions that need paths call this once
+// at the top.
+async function getProjectPaths(projectId: string): Promise<{ root: string; worktrees: string }> {
+  const projectPath = await ensureSandboxRunning(projectId)
+  const root = projectPath ?? process.cwd()
+  return {
+    root,
+    worktrees: `${root}/.bornastar-worktrees`,
+  }
+}
+
+// Backward-compat constants — used by code that hasn't been migrated
+// to getProjectPaths() yet. Will break in local mode for those paths.
+const SHARED_PROJECT_ROOT = process.cwd()
+const WORKTREES_DIR = `${process.cwd()}/.bornastar-worktrees`
 
 // Each worktree reserves PORTS_PER_WORKTREE consecutive ports starting at
 // portBase. The user can reference them as $BORNASTAR_PORT through

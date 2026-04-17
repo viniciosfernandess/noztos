@@ -1,14 +1,14 @@
 import { prisma } from '@/lib/db'
 import { ensureSandboxRunning } from '@/lib/sandbox-manager'
-import { E2BProvider } from '@/lib/compute-e2b'
+import { LocalProvider } from '@/lib/compute-local'
 
 // ── Repository Tools ──────────────────────────────────────────────────────
 //
-// All file operations go through the container (single source of truth).
-// Container auto-starts when needed.
+// All file operations go through the local filesystem or cloud sandbox.
+// In local mode, commands execute directly on the user's machine.
 // DB stores only metadata (tasks, chat, teams, etc.) — NOT files.
 
-const compute = new E2BProvider()
+const compute = new LocalProvider()
 
 // Read-only tools — available in ALL modes (conversation, review, analyze, build)
 export const READ_TOOLS = [
@@ -298,7 +298,9 @@ export async function executeTool(
 
 // ── All operations go to container ────────────────────────────────────────
 
-export const DEFAULT_PROJECT_ROOT = '/home/user/project'
+// Dynamic in local mode — falls back to cwd when not resolved yet.
+// Cloud mode used '/home/user/project'; local mode uses real disk path.
+export const DEFAULT_PROJECT_ROOT = process.cwd()
 
 const READ_FILE_MAX_CHARS = 100_000 // ~25K tokens — prevents context explosion on large files
 

@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyProjectAccess } from '@/lib/auth'
 import { ensureSandboxRunning } from '@/lib/sandbox-manager'
-import { E2BProvider } from '@/lib/compute-e2b'
+import { LocalProvider } from '@/lib/compute-local'
 
-const compute = new E2BProvider()
+const compute = new LocalProvider()
 
 interface RouteParams {
   params: Promise<{ id: string; path: string }>
@@ -23,8 +23,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const worktreeIdParam = request.nextUrl.searchParams.get('worktree')
   const sessionId = request.nextUrl.searchParams.get('session')
 
-  // Resolve which working directory to read from
-  let projectRoot = '/home/user/project'
+  // Resolve which working directory to read from — in local mode this
+  // is the actual path on the user's disk.
+  const resolvedProjectPath = await ensureSandboxRunning(id)
+  if (!resolvedProjectPath) return NextResponse.json({ error: 'Project not available' }, { status: 503 })
+
+  let projectRoot = resolvedProjectPath
 
   if (worktreeIdParam) {
     const wt = await prisma.worktree.findUnique({
@@ -47,8 +51,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
   }
 
-  const sandboxId = await ensureSandboxRunning(id)
-  if (!sandboxId) return NextResponse.json({ error: 'Container not available' }, { status: 503 })
+  const sandboxId = resolvedProjectPath
 
   try {
     const content = await compute.readFile(sandboxId, `${projectRoot}/${filePath}`)
@@ -96,7 +99,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   }
 
   // Same resolution logic as GET — keep them in lockstep.
-  let projectRoot = '/home/user/project'
+  const resolvedPath = await ensureSandboxRunning(id)
+  if (!resolvedPath) return NextResponse.json({ error: 'Project not available' }, { status: 503 })
+
+  let projectRoot = resolvedPath
 
   if (worktreeIdParam) {
     const wt = await prisma.worktree.findUnique({
@@ -119,8 +125,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
   }
 
-  const sandboxId = await ensureSandboxRunning(id)
-  if (!sandboxId) return NextResponse.json({ error: 'Container not available' }, { status: 503 })
+  const sandboxId = resolvedPath
 
   try {
     await compute.writeFile(sandboxId, `${projectRoot}/${filePath}`, body.content)

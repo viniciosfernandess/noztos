@@ -16,8 +16,10 @@ import { chunkFile, type Chunk } from './chunker'
 
 async function readFileFromSandbox(projectId: string, filePath: string): Promise<string | null> {
   try {
-    // Quote the path to handle special characters in directory names (e.g. Next.js route groups like (admin))
-    const result = await execInSandbox(projectId, `cat '/home/user/project/${filePath}' 2>/dev/null`)
+    const { ensureSandboxRunning } = await import('@/lib/sandbox-manager')
+    const projectPath = await ensureSandboxRunning(projectId)
+    if (!projectPath) return null
+    const result = await execInSandbox(projectId, `cat '${projectPath}/${filePath}' 2>/dev/null`)
     if (result.exitCode !== 0 || !result.stdout.trim()) return null
     return result.stdout
   } catch {

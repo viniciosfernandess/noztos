@@ -1,76 +1,98 @@
 import { prisma } from '@/lib/db'
-import { E2BProvider } from '@/lib/compute-e2b'
+import { LocalProvider } from '@/lib/compute-local'
+import { existsSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 
 // ── Sandbox Manager ───────────────────────────────────────────────────────
 //
-// Container is the SINGLE SOURCE OF TRUTH for all code.
-// DB stores only metadata (tasks, chat, teams, configs).
+// In LOCAL MODE, the user's machine IS the sandbox. No container lifecycle
+// needed — the project is always "running" on disk.
 //
-// Rules:
-//   - Container auto-starts when ANY file operation is needed
-//   - Container stays alive for 15 min after last activity
-//   - All reads and writes go to container
+// `ensureSandboxRunning()` returns the project's LOCAL PATH instead of a
+// cloud sandbox ID. All callers pass this into `compute.exec(path, cmd)`
+// and LocalProvider executes in that directory.
 //
-// Idle timer: 15 min of no activity → container stops
-// Any new activity resets the timer and restarts if needed
+// The local path is stored in `Repository.sandboxId` (repurposed — it's
+// just a string identifier, doesn't have to be a UUID).
+//
+// In CLOUD MODE (future), swap LocalProvider back to E2BProvider and
+// restore the idle-timer lifecycle.
 
-const provider = new E2BProvider()
-const IDLE_TIMEOUT = 15 * 60 * 1000 // 15 minutes
-const idleTimers = new Map<string, NodeJS.Timeout>()
+const provider = new LocalProvider()
+
+// Common directories where devs keep projects — used as fallback when
+// the companion hasn't explicitly registered a path.
+const PROJECT_SEARCH_DIRS = [
+  join(homedir(), 'projects'),
+  join(homedir(), 'Desktop', 'projects'),
+  join(homedir(), 'dev'),
+  join(homedir(), 'code'),
+  join(homedir(), 'repos'),
+  join(homedir(), 'Documents', 'projects'),
+]
 
 /**
- * Reset the idle timer for a project. Called on every activity.
- */
-function resetIdleTimer(projectId: string) {
-  // Clear existing timer
-  const existing = idleTimers.get(projectId)
-  if (existing) clearTimeout(existing)
-
-  // Set new timer
-  const timer = setTimeout(async () => {
-    idleTimers.delete(projectId)
-    // Check if still not needed before stopping
-    const needed = await isSandboxNeeded(projectId)
-    if (!needed) {
-      console.log(`[sandbox-manager] Idle 15 min — stopping sandbox for ${projectId}`)
-      await stopSandbox(projectId)
-    } else {
-      // Still needed — reset timer again
-      resetIdleTimer(projectId)
-    }
-  }, IDLE_TIMEOUT)
-
-  idleTimers.set(projectId, timer)
-}
-
-/**
- * Ensure a sandbox is running for a project. Creates or reconnects.
- * Resets the idle timer on every call.
+ * Ensure a project is accessible. In local mode, this finds (or clones)
+ * the project on the user's disk and returns the absolute path.
+ *
+ * The path is persisted in `Repository.sandboxId` so subsequent calls
+ * return instantly without re-scanning.
  */
 export async function ensureSandboxRunning(projectId: string): Promise<string | null> {
   const repo = await prisma.repository.findUnique({
     where: { projectId },
-    select: { id: true, sandboxId: true, sandboxStatus: true, githubOwner: true, githubRepo: true },
+    select: {
+      id: true,
+      sandboxId: true,
+      sandboxStatus: true,
+      githubOwner: true,
+      githubRepo: true,
+    },
   })
 
   if (!repo) return null
 
-  // Already running? Check if still alive
-  if (repo.sandboxId && repo.sandboxStatus === 'running') {
-    const running = await provider.isRunning(repo.sandboxId)
-    if (running) {
-      resetIdleTimer(projectId)
+  // Already resolved to a local path? Verify it still exists.
+  if (repo.sandboxId && repo.sandboxId.startsWith('/')) {
+    if (existsSync(repo.sandboxId)) {
       return repo.sandboxId
     }
-
-    // Dead — clean up
+    // Path disappeared — clear and re-resolve below
     await prisma.repository.update({
       where: { projectId },
       data: { sandboxId: null, sandboxStatus: 'stopped' },
     })
   }
 
-  // Start new sandbox
+  // Cloud sandbox ID from before? Ignore it in local mode — resolve fresh.
+  const repoName = repo.githubRepo ?? 'project'
+
+  // 1. Check common project directories for existing clone
+  for (const dir of PROJECT_SEARCH_DIRS) {
+    const candidate = join(dir, repoName)
+    if (existsSync(join(candidate, '.git'))) {
+      await prisma.repository.update({
+        where: { projectId },
+        data: { sandboxId: candidate, sandboxStatus: 'running' },
+      })
+      await buildFileTree(projectId, candidate)
+      return candidate
+    }
+  }
+
+  // 2. Try CWD (dev might be running Next.js from the project itself)
+  const cwdCandidate = process.cwd()
+  if (existsSync(join(cwdCandidate, '.git'))) {
+    await prisma.repository.update({
+      where: { projectId },
+      data: { sandboxId: cwdCandidate, sandboxStatus: 'running' },
+    })
+    await buildFileTree(projectId, cwdCandidate)
+    return cwdCandidate
+  }
+
+  // 3. Clone fresh to ~/projects/
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     select: { userId: true },
@@ -96,94 +118,76 @@ export async function ensureSandboxRunning(projectId: string): Promise<string | 
 
   try {
     const sandbox = await provider.createSandbox(repoUrl)
-
     await prisma.repository.update({
       where: { projectId },
       data: { sandboxId: sandbox.id, sandboxStatus: 'running', sandboxStartedAt: new Date() },
     })
-
-    // Build file tree after clone — stored in DB, used by all chats as project map
-    try {
-      const findResult = await provider.exec(sandbox.id, `find /home/user/project -type f -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' -not -path '*/.next/*' -not -path '*/dist/*' | sed 's|/home/user/project/||' | sort`)
-      if (!findResult.stderr?.includes('SANDBOX_DEAD') && findResult.stdout.trim()) {
-        await prisma.repository.update({
-          where: { projectId },
-          data: { fileTree: findResult.stdout.trim(), fileTreeUpdatedAt: new Date() },
-        })
-        console.log(`[filetree] Built: ${findResult.stdout.trim().split('\n').length} files`)
-      }
-    } catch (err) {
-      console.error('[filetree] Failed to build:', err)
-    }
-
-    // Build semantic index after clone — fire and forget, doesn't block the response
-    import('@/lib/embeddings/indexer').then(({ buildIndex }) => {
-      buildIndex(projectId).catch((err) => console.error('[indexer] Failed to build:', err))
-    })
-
-    resetIdleTimer(projectId)
+    await buildFileTree(projectId, sandbox.id)
     return sandbox.id
   } catch (err) {
-    console.error('[sandbox-manager] Failed to start:', err)
+    console.error('[sandbox-manager] Failed to resolve local project:', err)
     return null
   }
 }
 
 /**
- * Stop a sandbox.
+ * Build and persist the file tree for a project.
  */
-export async function stopSandbox(projectId: string): Promise<void> {
-  // Clear idle timer
-  const timer = idleTimers.get(projectId)
-  if (timer) { clearTimeout(timer); idleTimers.delete(projectId) }
-
-  const repo = await prisma.repository.findUnique({
-    where: { projectId },
-    select: { sandboxId: true },
-  })
-
-  if (repo?.sandboxId) {
-    try { await provider.stopSandbox(repo.sandboxId) } catch {}
-    await prisma.repository.update({
-      where: { projectId },
-      data: { sandboxId: null, sandboxStatus: 'stopped' },
-    })
+async function buildFileTree(projectId: string, projectPath: string): Promise<void> {
+  try {
+    const findResult = await provider.exec(
+      projectPath,
+      `find ${projectPath} -type f -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' -not -path '*/.next/*' -not -path '*/dist/*' | sed 's|${projectPath}/||' | sort`,
+    )
+    if (findResult.stdout.trim()) {
+      await prisma.repository.update({
+        where: { projectId },
+        data: { fileTree: findResult.stdout.trim(), fileTreeUpdatedAt: new Date() },
+      })
+    }
+  } catch (err) {
+    console.error('[filetree] Failed to build:', err)
   }
 }
 
 /**
- * Execute a command in the project's sandbox. Auto-starts if needed.
- *
- * Optionally runs the command in a specific working directory (`cwd`) and
- * with extra environment variables. Used by per-chat terminals to isolate
- * shells inside their own worktree and inject BORNASTAR_PORT.
+ * Stop/cleanup. No-op in local mode (disk doesn't stop).
+ */
+export async function stopSandbox(projectId: string): Promise<void> {
+  await prisma.repository.update({
+    where: { projectId },
+    data: { sandboxStatus: 'stopped' },
+  })
+}
+
+/**
+ * Execute a command in the project directory. In local mode, runs directly
+ * on the user's filesystem. The `cwd` option overrides the working
+ * directory (used for worktree-scoped terminals).
  */
 export async function execInSandbox(
   projectId: string,
   command: string,
   options?: { cwd?: string; env?: Record<string, string> },
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  const sandboxId = await ensureSandboxRunning(projectId)
-  if (!sandboxId) throw new Error('No repository connected or sandbox failed to start')
+  const projectPath = await ensureSandboxRunning(projectId)
+  if (!projectPath) throw new Error('Project not found or could not be resolved locally')
 
-  // Build the wrapped command. Env vars come first as `KEY=value` exports,
-  // then optional `cd`, then the user command. Everything inside one bash -c
-  // so the variables are visible to the command itself.
   const envParts = options?.env
     ? Object.entries(options.env).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(' ')
     : ''
   const cdPart = options?.cwd ? `cd ${options.cwd} && ` : ''
 
   if (!envParts && !cdPart) {
-    return provider.exec(sandboxId, command)
+    return provider.exec(projectPath, command)
   }
 
   const wrapped = `${envParts ? `export ${envParts} && ` : ''}${cdPart}${command}`
-  return provider.exec(sandboxId, wrapped)
+  return provider.exec(projectPath, wrapped)
 }
 
 /**
- * Check if sandbox is still needed (active tasks or terminal).
+ * Check if sandbox is still needed.
  */
 export async function isSandboxNeeded(projectId: string): Promise<boolean> {
   const runningTask = await prisma.task.findFirst({

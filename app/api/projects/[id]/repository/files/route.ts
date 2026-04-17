@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyProjectAccess } from '@/lib/auth'
 import { ensureSandboxRunning } from '@/lib/sandbox-manager'
-import { E2BProvider } from '@/lib/compute-e2b'
+import { LocalProvider } from '@/lib/compute-local'
 import { getAllProjectChanges } from '@/lib/worktree'
 
-const compute = new E2BProvider()
+const compute = new LocalProvider()
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -25,13 +25,13 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
   const repo = await prisma.repository.findUnique({ where: { projectId: id } })
   if (!repo) return NextResponse.json({ files: [] })
 
-  const sandboxId = await ensureSandboxRunning(id)
-  if (!sandboxId) return NextResponse.json({ files: [], error: 'Container not available' })
+  const projectPath = await ensureSandboxRunning(id)
+  if (!projectPath) return NextResponse.json({ files: [], error: 'Project not available' })
 
   try {
     // Run main file listing and worktree changes in parallel
     const [listResult, changes] = await Promise.all([
-      compute.exec(sandboxId, `cd /home/user/project && find . -type f -not -path './.git/*' -not -path './node_modules/*' -not -path './__pycache__/*' -not -path './venv/*' -not -path './.next/*' -not -path './dist/*' | sed 's|^\\./||' | sort`),
+      compute.exec(projectPath, `cd ${projectPath} && find . -type f -not -path './.git/*' -not -path './node_modules/*' -not -path './__pycache__/*' -not -path './venv/*' -not -path './.next/*' -not -path './dist/*' | sed 's|^\\./||' | sort`),
       getAllProjectChanges(id),
     ])
 
@@ -107,10 +107,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const { path, action } = body
   if (!path || !action) return NextResponse.json({ error: 'path and action required' }, { status: 400 })
 
-  const sandboxId = await ensureSandboxRunning(id)
-  if (!sandboxId) return NextResponse.json({ error: 'Container not available' }, { status: 503 })
+  const projectPath = await ensureSandboxRunning(id)
+  if (!projectPath) return NextResponse.json({ error: 'Project not available' }, { status: 503 })
 
-  const PROJECT_ROOT = '/home/user/project'
+  const sandboxId = projectPath
+  const PROJECT_ROOT = projectPath
 
   try {
     switch (action) {

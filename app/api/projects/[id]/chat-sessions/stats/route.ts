@@ -2,15 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyProjectAccess } from '@/lib/auth'
 import { ensureSandboxRunning } from '@/lib/sandbox-manager'
-import { E2BProvider } from '@/lib/compute-e2b'
+import { LocalProvider } from '@/lib/compute-local'
 
-const compute = new E2BProvider()
+const compute = new LocalProvider()
 
 interface RouteContext {
   params: Promise<{ id: string }>
 }
 
-const PROJECT_ROOT = '/home/user/project'
+// Dynamic — resolved from ensureSandboxRunning() per request
 
 // GET — diff stats per main chat session in one round trip.
 // Returns { [sessionId]: { added, removed, files } }.
@@ -41,30 +41,28 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     return NextResponse.json(Object.fromEntries(sessions.map((s) => [s.id, { added: 0, removed: 0, files: 0 }])))
   }
 
-  const sandboxId = await ensureSandboxRunning(id)
-  if (!sandboxId) {
+  const projectPath = await ensureSandboxRunning(id)
+  if (!projectPath) {
     return NextResponse.json(Object.fromEntries(sessions.map((s) => [s.id, { added: 0, removed: 0, files: 0 }])))
   }
 
   // Detect which ref to diff against: prefer origin/main, fall back to HEAD
-  // (covers fresh repos that haven't been pushed yet, or repos with no remote).
   const refCheck = await compute.exec(
-    sandboxId,
-    `cd ${PROJECT_ROOT} && git rev-parse --verify origin/main 2>/dev/null && echo OK || echo MISSING`,
+    projectPath,
+    `cd ${projectPath} && git rev-parse --verify origin/main 2>/dev/null && echo OK || echo MISSING`,
   )
   const ref = refCheck.stdout?.trim().endsWith('OK') ? 'origin/main' : 'HEAD'
 
   // Build one big shell command that emits stats for every session in one
   // round trip — keeps the polling cheap regardless of session count.
   const blocks = sessionsWithPaths.map((s) => {
-    // Quote each path defensively
     const quotedPaths = s.touchedPaths.map((p) => `'${p.replace(/'/g, "'\\''")}'`).join(' ')
-    return `echo '---${s.id}---'; cd ${PROJECT_ROOT} && git diff --shortstat ${ref} -- ${quotedPaths} 2>/dev/null`
+    return `echo '---${s.id}---'; cd ${projectPath} && git diff --shortstat ${ref} -- ${quotedPaths} 2>/dev/null`
   }).join(' ; ')
 
   let combined = ''
   try {
-    const res = await compute.exec(sandboxId, blocks)
+    const res = await compute.exec(projectPath, blocks)
     combined = res.stdout ?? ''
   } catch {
     // fall through to empty stats

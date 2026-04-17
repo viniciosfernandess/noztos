@@ -41,7 +41,8 @@
       "Bash(grep -n \"^]$\\\\|^const STATUS_ICONS\" /Users/viniciosfernandes/Desktop/projects/bornastar/components/WorkPanel.tsx)",
       "Bash(kill %1)",
       "Bash(lsof -ti:3000)",
-      "Bash(xargs kill:*)"
+      "Bash(xargs kill:*)",
+      "Bash(node dist/bin/bornastar.js --help)"
     ],
     "additionalDirectories": [
       "/Users/viniciosfernandes/Desktop/projects/bornastar/app/api/projects/[id]",
