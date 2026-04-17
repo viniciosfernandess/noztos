@@ -93,7 +93,7 @@ interface UseCompanionStreamReturn {
   } | null
   sessionId: string | null
   costUsd: number
-  sendPrompt: (projectId: string, prompt: string) => Promise<void>
+  sendPrompt: (projectId: string, prompt: string, mode?: 'plan' | 'edit' | 'auto' | 'agent') => Promise<void>
   interrupt: (projectId: string) => Promise<void>
   clearMessages: () => void
 }
@@ -339,8 +339,7 @@ export function useCompanionStream(): UseCompanionStreamReturn {
   }, [parseEvent])
 
   // Send prompt to companion
-  const sendPrompt = useCallback(async (projectId: string, prompt: string) => {
-    // Add user message locally
+  const sendPrompt = useCallback(async (projectId: string, prompt: string, mode?: 'plan' | 'edit' | 'auto' | 'agent') => {
     setMessages((prev) => [...prev, {
       id: nextId(),
       role: 'user',
@@ -356,6 +355,7 @@ export function useCompanionStream(): UseCompanionStreamReturn {
         projectId,
         prompt,
         sessionId,
+        mode: mode ?? 'auto',
       }),
     })
   }, [sessionId])

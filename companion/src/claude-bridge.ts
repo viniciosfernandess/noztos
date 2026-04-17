@@ -14,16 +14,31 @@ import type { ClaudeStreamEvent } from './types.js'
 //   await bridge.prompt('Add dark mode to the settings page')
 //   bridge.interrupt()  // Ctrl-C equivalent
 
+// Maps Bornastar UI mode names to Claude Code CLI --permission-mode values
+export type BornastarMode = 'plan' | 'edit' | 'auto' | 'agent'
+const MODE_MAP: Record<BornastarMode, string> = {
+  plan: 'plan',
+  edit: 'acceptEdits',
+  auto: 'auto',
+  agent: 'bypassPermissions',
+}
+
 export class ClaudeBridge extends EventEmitter {
   private cwd: string
   private process: ChildProcess | null = null
   private sessionId: string | null = null
   private buffer = ''
+  private mode: BornastarMode = 'auto'
 
-  constructor(cwd: string, sessionId?: string) {
+  constructor(cwd: string, sessionId?: string, mode?: BornastarMode) {
     super()
     this.cwd = cwd
     this.sessionId = sessionId ?? null
+    this.mode = mode ?? 'auto'
+  }
+
+  setMode(mode: BornastarMode): void {
+    this.mode = mode
   }
 
   async prompt(text: string): Promise<void> {
@@ -31,10 +46,11 @@ export class ClaudeBridge extends EventEmitter {
       throw new Error('A prompt is already running. Interrupt first or wait for completion.')
     }
 
+    const permissionMode = MODE_MAP[this.mode] ?? 'auto'
     const args = [
       '-p', text,
       '--output-format', 'stream-json',
-      '--permission-mode', 'bypassPermissions',
+      '--permission-mode', permissionMode,
       '--verbose',
     ]
 

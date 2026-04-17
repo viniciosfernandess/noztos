@@ -21,11 +21,27 @@ model User {
   createdAt      DateTime      @default(now())
   lastActive     DateTime      @updatedAt
   githubToken    String?
-  chatMessages   ChatMessage[]
-  projects       Project[]
-  tasks          Task[]
+  chatMessages      ChatMessage[]
+  projects          Project[]
+  tasks             Task[]
+  companionTokens   CompanionToken[]
 
   @@map("users")
+}
+
+model CompanionToken {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token       String   @unique
+  name        String   @default("Default")
+  lastUsedAt  DateTime?
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime?
+
+  @@index([token])
+  @@index([userId])
+  @@map("companion_tokens")
 }
 
 model Project {

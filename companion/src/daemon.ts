@@ -61,7 +61,7 @@ export class Daemon extends EventEmitter {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Cookie: `session=${this.authToken}`,
+          'Authorization': `Bearer ${this.authToken}`,
         },
         body: JSON.stringify(body),
       })
@@ -90,7 +90,7 @@ export class Daemon extends EventEmitter {
     try {
       await fetch(`${this.serverUrl}/api/companion/register`, {
         method: 'DELETE',
-        headers: { Cookie: `session=${this.authToken}` },
+        headers: { 'Authorization': `Bearer ${this.authToken}` },
       })
     } catch {}
   }
@@ -110,7 +110,7 @@ export class Daemon extends EventEmitter {
     const connect = async () => {
       try {
         const res = await fetch(url, {
-          headers: { Cookie: `session=${this.authToken}` },
+          headers: { 'Authorization': `Bearer ${this.authToken}` },
           signal: this.abortController!.signal,
         })
 
@@ -221,7 +221,7 @@ export class Daemon extends EventEmitter {
       return
     }
 
-    bridge = new ClaudeBridge(project.path, cmd.sessionId ?? undefined)
+    bridge = new ClaudeBridge(project.path, cmd.sessionId ?? undefined, cmd.mode ?? 'auto')
     this.bridges.set(project.id, bridge)
 
     bridge.on('event', (event: ClaudeStreamEvent) => {

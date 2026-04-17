@@ -266,13 +266,14 @@ export function ModeSelector({
   mode,
   onChange,
 }: {
-  mode: 'plan' | 'edit' | 'agent'
-  onChange: (mode: 'plan' | 'edit' | 'agent') => void
+  mode: 'plan' | 'edit' | 'auto' | 'agent'
+  onChange: (mode: 'plan' | 'edit' | 'auto' | 'agent') => void
 }) {
   const modes = [
     { id: 'plan' as const, label: 'Plan', desc: 'Research only, no edits', icon: '📋' },
     { id: 'edit' as const, label: 'Edit', desc: 'Edit files, confirm commands', icon: '✏️' },
-    { id: 'agent' as const, label: 'Agent', desc: 'Full autonomy', icon: '🤖' },
+    { id: 'auto' as const, label: 'Auto', desc: 'Smart — classifier decides safety', icon: '⚡' },
+    { id: 'agent' as const, label: 'Agent', desc: 'Full autonomy, no prompts', icon: '🤖' },
   ]
 
   return (

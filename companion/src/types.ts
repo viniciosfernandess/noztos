@@ -59,6 +59,8 @@ export interface CompanionCommand {
   sessionId?: string
   projectId?: string
   prompt?: string
+  // Claude Code permission mode
+  mode?: 'plan' | 'edit' | 'auto' | 'agent'
   // clone/create
   repoUrl?: string
   projectName?: string
