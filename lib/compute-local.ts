@@ -117,15 +117,22 @@ export class LocalProvider implements ComputeProvider {
     }
   }
 
-  // Read a file from the local filesystem.
-  async readFile(_sandboxId: string, path: string): Promise<string> {
+  // Read a file from the local filesystem. Path must resolve within
+  // the project root (sandboxId) to prevent traversal attacks.
+  async readFile(sandboxId: string, path: string): Promise<string> {
     const fullPath = resolve(path)
+    if (sandboxId && sandboxId !== '/' && !fullPath.startsWith(sandboxId)) {
+      throw new Error(`Path traversal blocked: ${path} is outside project root`)
+    }
     return fsReadFile(fullPath, 'utf-8')
   }
 
-  // Write a file to the local filesystem.
-  async writeFile(_sandboxId: string, path: string, content: string): Promise<void> {
+  // Write a file to the local filesystem. Same boundary check.
+  async writeFile(sandboxId: string, path: string, content: string): Promise<void> {
     const fullPath = resolve(path)
+    if (sandboxId && sandboxId !== '/' && !fullPath.startsWith(sandboxId)) {
+      throw new Error(`Path traversal blocked: ${path} is outside project root`)
+    }
     await mkdir(dirname(fullPath), { recursive: true })
     await fsWriteFile(fullPath, content, 'utf-8')
   }

@@ -1,4 +1,4 @@
-import { execSync } from 'node:child_process'
+import { execSync, execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 import { randomBytes } from 'node:crypto'
@@ -75,7 +75,7 @@ export function cloneRepo(repoUrl: string, targetDir: string): ProjectConfig {
   mkdirSync(targetDir, { recursive: true })
 
   try {
-    execSync(`git clone ${repoUrl} ${targetDir}`, {
+    execFileSync('git', ['clone', repoUrl, targetDir], {
       encoding: 'utf-8',
       stdio: 'pipe',
       timeout: 120_000,

@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, mkdirSync, chmodSync, existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { CompanionConfig, ProjectConfig } from './types.js'
@@ -34,6 +34,7 @@ export function loadConfig(): CompanionConfig {
 export function saveConfig(cfg: CompanionConfig): void {
   ensureConfigDir()
   writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8')
+  chmodSync(CONFIG_FILE, 0o600)
 }
 
 export function addProject(project: ProjectConfig): CompanionConfig {
