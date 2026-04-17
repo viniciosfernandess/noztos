@@ -12,6 +12,8 @@ import { ConflictResolver } from './ConflictResolver'
 import { ResolveConflictsSplitButton } from './ResolveConflictsSplitButton'
 import { MOCK_CONFLICTS, MOCK_GIT_STATUS } from '@/lib/mocks/checks-demo'
 import { useGitStatus, deriveBadge, deriveUnsupportedLabel } from '@/lib/hooks/useGitStatus'
+import { useCompanionStream, type ChatMessage } from '@/lib/hooks/useCompanionStream'
+import { ClaudeToolCard, SessionResultCard, ModeSelector, CompanionStatusBadge, CostTracker } from './ClaudeToolCard'
 import { ReportBadge } from './ChatReport'
 import type { ChatReport } from '@/lib/report-types'
 
@@ -4888,6 +4890,13 @@ function ChatPanel({
   const [isDragging, setIsDragging] = useState(false)
   const [contextPaths, setContextPaths] = useState<string[]>([])
 
+  // ── Companion stream (Claude Code CLI) ──────────────────────────
+  // When the companion daemon is connected, chat messages flow through
+  // the SSE relay instead of the old Bornastar Engine polling.
+  const companion = useCompanionStream()
+  const companionConnected = companion.status === 'connected'
+  const [claudeMode, setClaudeMode] = useState<'plan' | 'edit' | 'auto' | 'agent'>('auto')
+
   // External prompts — e.g. "Resolve with agent" on the Conflicts top
   // bar fires this event with a prefilled message. We drop it into the
   // input so the user can tweak before sending (safer than auto-send).
@@ -5085,15 +5094,37 @@ function ChatPanel({
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault()
     const userText = input.trim()
-    // Allow sending with just attachments (no text) when hunks are pinned
     if ((!userText && attachments.length === 0 && hunkAttachments.length === 0) || sending || teamProcessing) return
 
-    // Prepend each hunk attachment in order so the agent sees them all as
-    // part of the user's context. All chips clear on send.
     const content = hunkAttachments.length > 0
       ? `${hunkAttachments.map((h) => h.formattedContent).join('')}${userText}`
       : userText
 
+    // Auto-rename the chat using the first user message
+    const allMessages = companionConnected ? companion.messages : messages
+    const isFirstMessage = allMessages.filter(m => 'sender' in m ? m.sender === 'user' : m.role === 'user').length === 0
+    if (isFirstMessage && userText) {
+      const title = userText.split(/\s+/).slice(0, 5).join(' ').slice(0, 40)
+      onSessionRenamed(title)
+    }
+
+    setInput('')
+    setAttachments([])
+    if (hunkAttachments.length > 0) onClearAllHunkAttachments()
+    window.dispatchEvent(new CustomEvent('bornastar-continue-merged'))
+    window.dispatchEvent(new CustomEvent('bornastar-start-over-closed'))
+
+    // ── Companion mode: send via Claude Code CLI ──────────────────
+    if (companionConnected) {
+      // Find the first registered project to send the prompt to
+      const companionProject = companion.companionInfo?.projects?.[0]
+      if (companionProject) {
+        await companion.sendPrompt(companionProject.id, content, claudeMode)
+      }
+      return
+    }
+
+    // ── Legacy engine mode (fallback when no companion) ───────────
     const userMsg: Message = {
       id: `temp-${Date.now()}`,
       content,
@@ -5103,23 +5134,8 @@ function ChatPanel({
       report: null,
       createdAt: new Date().toISOString(),
     }
-    // Auto-rename the chat using the first user message (first 5 words)
-    const isFirstMessage = messages.filter(m => m.sender === 'user').length === 0
-    if (isFirstMessage && userText) {
-      const title = userText.split(/\s+/).slice(0, 5).join(' ').slice(0, 40)
-      onSessionRenamed(title)
-    }
-
     setMessages((prev) => [...prev, userMsg])
-    setLiveStepIds(new Set()) // clear previous session's live steps
-    setInput('')
-    setAttachments([])
-    if (hunkAttachments.length > 0) onClearAllHunkAttachments()
-    // Sending a message implies the user is continuing to work on this
-    // worktree — if there's a lingering Merged or Closed banner,
-    // dismiss both automatically. No-op when neither is up.
-    window.dispatchEvent(new CustomEvent('bornastar-continue-merged'))
-    window.dispatchEvent(new CustomEvent('bornastar-start-over-closed'))
+    setLiveStepIds(new Set())
     setSending(true)
 
     // Start polling for real-time tool calls (all modes)
@@ -5368,69 +5384,115 @@ function ChatPanel({
         </div>
       )}
 
-      {/* Messages */}
+      {/* Messages — renders companion stream or legacy engine */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {messages.length === 0 && (
-          <div className="flex h-full items-center justify-center">
-            <p className="text-sm text-zinc-400">Send a message or type <strong>/</strong> to select a skill</p>
-          </div>
-        )}
-        {messages.map((msg) => {
-          // Never show plan messages
-          if (msg.sender === 'plan') return null
 
-          // Step messages — only show if they're from the current live session
-          if (msg.sender === 'step') {
-            if (!liveStepIds.has(msg.id)) return null
-            return <LiveStepMessage key={msg.id} content={msg.content} />
-          }
-
-          // User message — bubble
-          if (msg.sender === 'user') {
-            return (
-              <div key={msg.id} className="flex justify-end">
-                <div className="max-w-[85%] rounded-xl bg-[#3C3C3C] px-4 py-2 text-sm text-zinc-100">
-                  {msg.content}
-                </div>
+        {/* ── Companion mode (Claude Code CLI) ─────────────────────── */}
+        {companionConnected && (
+          <>
+            {companion.messages.length === 0 && (
+              <div className="flex h-full flex-col items-center justify-center gap-3">
+                <CompanionStatusBadge status={companion.status} info={companion.companionInfo} />
+                <p className="text-sm text-zinc-400">Send a message to start coding with Claude Code</p>
               </div>
-            )
-          }
-
-          // System message — subtle warning
-          if (msg.sender === 'system') {
-            return (
-              <div key={msg.id} className="flex justify-start">
-                <p className="text-xs italic text-amber-400">{msg.content}</p>
-              </div>
-            )
-          }
-
-          // AI / employee response — no bubble, full width
-          return (
-            <div key={msg.id} className="flex justify-start">
-              <div className="w-full max-w-[90%]">
-                {msg.sender !== 'claude' && (
-                  <div className="mb-1.5 flex items-center gap-1.5">
-                    <span className={`inline-block rounded bg-gradient-to-br ${getSenderColor(msg.sender)} px-1.5 py-0.5 text-[9px] font-bold text-white`}>
-                      {msg.sender}
-                    </span>
+            )}
+            {companion.messages.map((msg: ChatMessage) => {
+              if (msg.role === 'user') {
+                return (
+                  <div key={msg.id} className="flex justify-end">
+                    <div className="max-w-[85%] rounded-xl bg-[#3C3C3C] px-4 py-2 text-sm text-zinc-100">
+                      {msg.content}
+                    </div>
                   </div>
-                )}
-                <MarkdownRenderer content={msg.content} />
-                {msg.report && (
-                  <ReportBadge report={msg.report as unknown as ChatReport} projectId={projectId} sessionId={sessionId} />
-                )}
-              </div>
-            </div>
-          )
-        })}
-        {/* Thinking indicator — dynamic status messages */}
-        {(sending || teamProcessing) && (
-          <ThinkingIndicator
-            mode={teamProcessing ? 'team' : activeMode === 'skill' && activeEmployee ? 'skill' : 'direct'}
-            employeeName={activeMode === 'skill' && activeEmployee ? activeEmployee.name : undefined}
-          />
+                )
+              }
+              if (msg.role === 'tool') {
+                return <ClaudeToolCard key={msg.id} message={msg} />
+              }
+              if (msg.role === 'system') {
+                if (msg.costUsd !== undefined) {
+                  return <SessionResultCard key={msg.id} message={msg} />
+                }
+                return (
+                  <div key={msg.id} className="flex justify-start">
+                    <p className="text-xs italic text-zinc-500">{msg.content}</p>
+                  </div>
+                )
+              }
+              // assistant
+              return (
+                <div key={msg.id} className="flex justify-start">
+                  <div className="w-full max-w-[90%]">
+                    <MarkdownRenderer content={msg.content} />
+                  </div>
+                </div>
+              )
+            })}
+          </>
         )}
+
+        {/* ── Legacy engine mode ───────────────────────────────────── */}
+        {!companionConnected && (
+          <>
+            {messages.length === 0 && (
+              <div className="flex h-full flex-col items-center justify-center gap-3">
+                <CompanionStatusBadge status={companion.status} info={companion.companionInfo} />
+                <p className="text-sm text-zinc-400">
+                  {companion.status === 'connecting' ? 'Connecting to companion…' :
+                   companion.status === 'error' ? 'Companion error — check terminal' :
+                   'Start the companion: bornastar start'}
+                </p>
+              </div>
+            )}
+            {messages.map((msg) => {
+              if (msg.sender === 'plan') return null
+              if (msg.sender === 'step') {
+                if (!liveStepIds.has(msg.id)) return null
+                return <LiveStepMessage key={msg.id} content={msg.content} />
+              }
+              if (msg.sender === 'user') {
+                return (
+                  <div key={msg.id} className="flex justify-end">
+                    <div className="max-w-[85%] rounded-xl bg-[#3C3C3C] px-4 py-2 text-sm text-zinc-100">
+                      {msg.content}
+                    </div>
+                  </div>
+                )
+              }
+              if (msg.sender === 'system') {
+                return (
+                  <div key={msg.id} className="flex justify-start">
+                    <p className="text-xs italic text-amber-400">{msg.content}</p>
+                  </div>
+                )
+              }
+              return (
+                <div key={msg.id} className="flex justify-start">
+                  <div className="w-full max-w-[90%]">
+                    {msg.sender !== 'claude' && (
+                      <div className="mb-1.5 flex items-center gap-1.5">
+                        <span className={`inline-block rounded bg-gradient-to-br ${getSenderColor(msg.sender)} px-1.5 py-0.5 text-[9px] font-bold text-white`}>
+                          {msg.sender}
+                        </span>
+                      </div>
+                    )}
+                    <MarkdownRenderer content={msg.content} />
+                    {msg.report && (
+                      <ReportBadge report={msg.report as unknown as ChatReport} projectId={projectId} sessionId={sessionId} />
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+            {(sending || teamProcessing) && (
+              <ThinkingIndicator
+                mode={teamProcessing ? 'team' : activeMode === 'skill' && activeEmployee ? 'skill' : 'direct'}
+                employeeName={activeMode === 'skill' && activeEmployee ? activeEmployee.name : undefined}
+              />
+            )}
+          </>
+        )}
+
         <div ref={bottomRef} />
       </div>
 
@@ -5651,6 +5713,14 @@ function ChatPanel({
                     </button>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* Companion mode bar — mode selector + cost tracker */}
+            {companionConnected && (
+              <div className="flex items-center justify-between border-t border-white/5 px-3 py-1.5">
+                <ModeSelector mode={claudeMode} onChange={setClaudeMode} />
+                <CostTracker costUsd={companion.costUsd} sessionId={companion.sessionId} />
               </div>
             )}
 

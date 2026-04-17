@@ -23,6 +23,11 @@ export * from './enums';
  */
 export type User = Prisma.UserModel
 /**
+ * Model CompanionToken
+ * 
+ */
+export type CompanionToken = Prisma.CompanionTokenModel
+/**
  * Model Project
  * 
  */

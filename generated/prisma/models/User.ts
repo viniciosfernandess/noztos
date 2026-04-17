@@ -249,6 +249,7 @@ export type UserWhereInput = {
   chatMessages?: Prisma.ChatMessageListRelationFilter
   projects?: Prisma.ProjectListRelationFilter
   tasks?: Prisma.TaskListRelationFilter
+  companionTokens?: Prisma.CompanionTokenListRelationFilter
 }
 
 export type UserOrderByWithRelationInput = {
@@ -268,6 +269,7 @@ export type UserOrderByWithRelationInput = {
   chatMessages?: Prisma.ChatMessageOrderByRelationAggregateInput
   projects?: Prisma.ProjectOrderByRelationAggregateInput
   tasks?: Prisma.TaskOrderByRelationAggregateInput
+  companionTokens?: Prisma.CompanionTokenOrderByRelationAggregateInput
 }
 
 export type UserWhereUniqueInput = Prisma.AtLeast<{
@@ -290,6 +292,7 @@ export type UserWhereUniqueInput = Prisma.AtLeast<{
   chatMessages?: Prisma.ChatMessageListRelationFilter
   projects?: Prisma.ProjectListRelationFilter
   tasks?: Prisma.TaskListRelationFilter
+  companionTokens?: Prisma.CompanionTokenListRelationFilter
 }, "id" | "email">
 
 export type UserOrderByWithAggregationInput = {
@@ -347,6 +350,7 @@ export type UserCreateInput = {
   chatMessages?: Prisma.ChatMessageCreateNestedManyWithoutUserInput
   projects?: Prisma.ProjectCreateNestedManyWithoutUserInput
   tasks?: Prisma.TaskCreateNestedManyWithoutUserInput
+  companionTokens?: Prisma.CompanionTokenCreateNestedManyWithoutUserInput
 }
 
 export type UserUncheckedCreateInput = {
@@ -366,6 +370,7 @@ export type UserUncheckedCreateInput = {
   chatMessages?: Prisma.ChatMessageUncheckedCreateNestedManyWithoutUserInput
   projects?: Prisma.ProjectUncheckedCreateNestedManyWithoutUserInput
   tasks?: Prisma.TaskUncheckedCreateNestedManyWithoutUserInput
+  companionTokens?: Prisma.CompanionTokenUncheckedCreateNestedManyWithoutUserInput
 }
 
 export type UserUpdateInput = {
@@ -385,6 +390,7 @@ export type UserUpdateInput = {
   chatMessages?: Prisma.ChatMessageUpdateManyWithoutUserNestedInput
   projects?: Prisma.ProjectUpdateManyWithoutUserNestedInput
   tasks?: Prisma.TaskUpdateManyWithoutUserNestedInput
+  companionTokens?: Prisma.CompanionTokenUpdateManyWithoutUserNestedInput
 }
 
 export type UserUncheckedUpdateInput = {
@@ -404,6 +410,7 @@ export type UserUncheckedUpdateInput = {
   chatMessages?: Prisma.ChatMessageUncheckedUpdateManyWithoutUserNestedInput
   projects?: Prisma.ProjectUncheckedUpdateManyWithoutUserNestedInput
   tasks?: Prisma.TaskUncheckedUpdateManyWithoutUserNestedInput
+  companionTokens?: Prisma.CompanionTokenUncheckedUpdateManyWithoutUserNestedInput
 }
 
 export type UserCreateManyInput = {
@@ -523,6 +530,20 @@ export type DateTimeFieldUpdateOperationsInput = {
   set?: Date | string
 }
 
+export type UserCreateNestedOneWithoutCompanionTokensInput = {
+  create?: Prisma.XOR<Prisma.UserCreateWithoutCompanionTokensInput, Prisma.UserUncheckedCreateWithoutCompanionTokensInput>
+  connectOrCreate?: Prisma.UserCreateOrConnectWithoutCompanionTokensInput
+  connect?: Prisma.UserWhereUniqueInput
+}
+
+export type UserUpdateOneRequiredWithoutCompanionTokensNestedInput = {
+  create?: Prisma.XOR<Prisma.UserCreateWithoutCompanionTokensInput, Prisma.UserUncheckedCreateWithoutCompanionTokensInput>
+  connectOrCreate?: Prisma.UserCreateOrConnectWithoutCompanionTokensInput
+  upsert?: Prisma.UserUpsertWithoutCompanionTokensInput
+  connect?: Prisma.UserWhereUniqueInput
+  update?: Prisma.XOR<Prisma.XOR<Prisma.UserUpdateToOneWithWhereWithoutCompanionTokensInput, Prisma.UserUpdateWithoutCompanionTokensInput>, Prisma.UserUncheckedUpdateWithoutCompanionTokensInput>
+}
+
 export type UserCreateNestedOneWithoutProjectsInput = {
   create?: Prisma.XOR<Prisma.UserCreateWithoutProjectsInput, Prisma.UserUncheckedCreateWithoutProjectsInput>
   connectOrCreate?: Prisma.UserCreateOrConnectWithoutProjectsInput
@@ -565,6 +586,98 @@ export type UserUpdateOneRequiredWithoutTasksNestedInput = {
   update?: Prisma.XOR<Prisma.XOR<Prisma.UserUpdateToOneWithWhereWithoutTasksInput, Prisma.UserUpdateWithoutTasksInput>, Prisma.UserUncheckedUpdateWithoutTasksInput>
 }
 
+export type UserCreateWithoutCompanionTokensInput = {
+  id?: string
+  email: string
+  passwordHash: string
+  name: string
+  company?: string | null
+  role?: string | null
+  avatarUrl?: string | null
+  anthropicToken?: string | null
+  slackToken?: string | null
+  emailVerified?: boolean
+  createdAt?: Date | string
+  lastActive?: Date | string
+  githubToken?: string | null
+  chatMessages?: Prisma.ChatMessageCreateNestedManyWithoutUserInput
+  projects?: Prisma.ProjectCreateNestedManyWithoutUserInput
+  tasks?: Prisma.TaskCreateNestedManyWithoutUserInput
+}
+
+export type UserUncheckedCreateWithoutCompanionTokensInput = {
+  id?: string
+  email: string
+  passwordHash: string
+  name: string
+  company?: string | null
+  role?: string | null
+  avatarUrl?: string | null
+  anthropicToken?: string | null
+  slackToken?: string | null
+  emailVerified?: boolean
+  createdAt?: Date | string
+  lastActive?: Date | string
+  githubToken?: string | null
+  chatMessages?: Prisma.ChatMessageUncheckedCreateNestedManyWithoutUserInput
+  projects?: Prisma.ProjectUncheckedCreateNestedManyWithoutUserInput
+  tasks?: Prisma.TaskUncheckedCreateNestedManyWithoutUserInput
+}
+
+export type UserCreateOrConnectWithoutCompanionTokensInput = {
+  where: Prisma.UserWhereUniqueInput
+  create: Prisma.XOR<Prisma.UserCreateWithoutCompanionTokensInput, Prisma.UserUncheckedCreateWithoutCompanionTokensInput>
+}
+
+export type UserUpsertWithoutCompanionTokensInput = {
+  update: Prisma.XOR<Prisma.UserUpdateWithoutCompanionTokensInput, Prisma.UserUncheckedUpdateWithoutCompanionTokensInput>
+  create: Prisma.XOR<Prisma.UserCreateWithoutCompanionTokensInput, Prisma.UserUncheckedCreateWithoutCompanionTokensInput>
+  where?: Prisma.UserWhereInput
+}
+
+export type UserUpdateToOneWithWhereWithoutCompanionTokensInput = {
+  where?: Prisma.UserWhereInput
+  data: Prisma.XOR<Prisma.UserUpdateWithoutCompanionTokensInput, Prisma.UserUncheckedUpdateWithoutCompanionTokensInput>
+}
+
+export type UserUpdateWithoutCompanionTokensInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  email?: Prisma.StringFieldUpdateOperationsInput | string
+  passwordHash?: Prisma.StringFieldUpdateOperationsInput | string
+  name?: Prisma.StringFieldUpdateOperationsInput | string
+  company?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  role?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  avatarUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  anthropicToken?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  slackToken?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  lastActive?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  githubToken?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  chatMessages?: Prisma.ChatMessageUpdateManyWithoutUserNestedInput
+  projects?: Prisma.ProjectUpdateManyWithoutUserNestedInput
+  tasks?: Prisma.TaskUpdateManyWithoutUserNestedInput
+}
+
+export type UserUncheckedUpdateWithoutCompanionTokensInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string
+  email?: Prisma.StringFieldUpdateOperationsInput | string
+  passwordHash?: Prisma.StringFieldUpdateOperationsInput | string
+  name?: Prisma.StringFieldUpdateOperationsInput | string
+  company?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  role?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  avatarUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  anthropicToken?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  slackToken?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  emailVerified?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  lastActive?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  githubToken?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  chatMessages?: Prisma.ChatMessageUncheckedUpdateManyWithoutUserNestedInput
+  projects?: Prisma.ProjectUncheckedUpdateManyWithoutUserNestedInput
+  tasks?: Prisma.TaskUncheckedUpdateManyWithoutUserNestedInput
+}
+
 export type UserCreateWithoutProjectsInput = {
   id?: string
   email: string
@@ -581,6 +694,7 @@ export type UserCreateWithoutProjectsInput = {
   githubToken?: string | null
   chatMessages?: Prisma.ChatMessageCreateNestedManyWithoutUserInput
   tasks?: Prisma.TaskCreateNestedManyWithoutUserInput
+  companionTokens?: Prisma.CompanionTokenCreateNestedManyWithoutUserInput
 }
 
 export type UserUncheckedCreateWithoutProjectsInput = {
@@ -599,6 +713,7 @@ export type UserUncheckedCreateWithoutProjectsInput = {
   githubToken?: string | null
   chatMessages?: Prisma.ChatMessageUncheckedCreateNestedManyWithoutUserInput
   tasks?: Prisma.TaskUncheckedCreateNestedManyWithoutUserInput
+  companionTokens?: Prisma.CompanionTokenUncheckedCreateNestedManyWithoutUserInput
 }
 
 export type UserCreateOrConnectWithoutProjectsInput = {
@@ -633,6 +748,7 @@ export type UserUpdateWithoutProjectsInput = {
   githubToken?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   chatMessages?: Prisma.ChatMessageUpdateManyWithoutUserNestedInput
   tasks?: Prisma.TaskUpdateManyWithoutUserNestedInput
+  companionTokens?: Prisma.CompanionTokenUpdateManyWithoutUserNestedInput
 }
 
 export type UserUncheckedUpdateWithoutProjectsInput = {
@@ -651,6 +767,7 @@ export type UserUncheckedUpdateWithoutProjectsInput = {
   githubToken?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   chatMessages?: Prisma.ChatMessageUncheckedUpdateManyWithoutUserNestedInput
   tasks?: Prisma.TaskUncheckedUpdateManyWithoutUserNestedInput
+  companionTokens?: Prisma.CompanionTokenUncheckedUpdateManyWithoutUserNestedInput
 }
 
 export type UserCreateWithoutChatMessagesInput = {
@@ -669,6 +786,7 @@ export type UserCreateWithoutChatMessagesInput = {
   githubToken?: string | null
   projects?: Prisma.ProjectCreateNestedManyWithoutUserInput
   tasks?: Prisma.TaskCreateNestedManyWithoutUserInput
+  companionTokens?: Prisma.CompanionTokenCreateNestedManyWithoutUserInput
 }
 
 export type UserUncheckedCreateWithoutChatMessagesInput = {
@@ -687,6 +805,7 @@ export type UserUncheckedCreateWithoutChatMessagesInput = {
   githubToken?: string | null
   projects?: Prisma.ProjectUncheckedCreateNestedManyWithoutUserInput
   tasks?: Prisma.TaskUncheckedCreateNestedManyWithoutUserInput
+  companionTokens?: Prisma.CompanionTokenUncheckedCreateNestedManyWithoutUserInput
 }
 
 export type UserCreateOrConnectWithoutChatMessagesInput = {
@@ -721,6 +840,7 @@ export type UserUpdateWithoutChatMessagesInput = {
   githubToken?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   projects?: Prisma.ProjectUpdateManyWithoutUserNestedInput
   tasks?: Prisma.TaskUpdateManyWithoutUserNestedInput
+  companionTokens?: Prisma.CompanionTokenUpdateManyWithoutUserNestedInput
 }
 
 export type UserUncheckedUpdateWithoutChatMessagesInput = {
@@ -739,6 +859,7 @@ export type UserUncheckedUpdateWithoutChatMessagesInput = {
   githubToken?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   projects?: Prisma.ProjectUncheckedUpdateManyWithoutUserNestedInput
   tasks?: Prisma.TaskUncheckedUpdateManyWithoutUserNestedInput
+  companionTokens?: Prisma.CompanionTokenUncheckedUpdateManyWithoutUserNestedInput
 }
 
 export type UserCreateWithoutTasksInput = {
@@ -757,6 +878,7 @@ export type UserCreateWithoutTasksInput = {
   githubToken?: string | null
   chatMessages?: Prisma.ChatMessageCreateNestedManyWithoutUserInput
   projects?: Prisma.ProjectCreateNestedManyWithoutUserInput
+  companionTokens?: Prisma.CompanionTokenCreateNestedManyWithoutUserInput
 }
 
 export type UserUncheckedCreateWithoutTasksInput = {
@@ -775,6 +897,7 @@ export type UserUncheckedCreateWithoutTasksInput = {
   githubToken?: string | null
   chatMessages?: Prisma.ChatMessageUncheckedCreateNestedManyWithoutUserInput
   projects?: Prisma.ProjectUncheckedCreateNestedManyWithoutUserInput
+  companionTokens?: Prisma.CompanionTokenUncheckedCreateNestedManyWithoutUserInput
 }
 
 export type UserCreateOrConnectWithoutTasksInput = {
@@ -809,6 +932,7 @@ export type UserUpdateWithoutTasksInput = {
   githubToken?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   chatMessages?: Prisma.ChatMessageUpdateManyWithoutUserNestedInput
   projects?: Prisma.ProjectUpdateManyWithoutUserNestedInput
+  companionTokens?: Prisma.CompanionTokenUpdateManyWithoutUserNestedInput
 }
 
 export type UserUncheckedUpdateWithoutTasksInput = {
@@ -827,6 +951,7 @@ export type UserUncheckedUpdateWithoutTasksInput = {
   githubToken?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   chatMessages?: Prisma.ChatMessageUncheckedUpdateManyWithoutUserNestedInput
   projects?: Prisma.ProjectUncheckedUpdateManyWithoutUserNestedInput
+  companionTokens?: Prisma.CompanionTokenUncheckedUpdateManyWithoutUserNestedInput
 }
 
 
@@ -838,12 +963,14 @@ export type UserCountOutputType = {
   chatMessages: number
   projects: number
   tasks: number
+  companionTokens: number
 }
 
 export type UserCountOutputTypeSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   chatMessages?: boolean | UserCountOutputTypeCountChatMessagesArgs
   projects?: boolean | UserCountOutputTypeCountProjectsArgs
   tasks?: boolean | UserCountOutputTypeCountTasksArgs
+  companionTokens?: boolean | UserCountOutputTypeCountCompanionTokensArgs
 }
 
 /**
@@ -877,6 +1004,13 @@ export type UserCountOutputTypeCountTasksArgs<ExtArgs extends runtime.Types.Exte
   where?: Prisma.TaskWhereInput
 }
 
+/**
+ * UserCountOutputType without action
+ */
+export type UserCountOutputTypeCountCompanionTokensArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  where?: Prisma.CompanionTokenWhereInput
+}
+
 
 export type UserSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
   id?: boolean
@@ -895,6 +1029,7 @@ export type UserSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = r
   chatMessages?: boolean | Prisma.User$chatMessagesArgs<ExtArgs>
   projects?: boolean | Prisma.User$projectsArgs<ExtArgs>
   tasks?: boolean | Prisma.User$tasksArgs<ExtArgs>
+  companionTokens?: boolean | Prisma.User$companionTokensArgs<ExtArgs>
   _count?: boolean | Prisma.UserCountOutputTypeDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["user"]>
 
@@ -951,6 +1086,7 @@ export type UserInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = 
   chatMessages?: boolean | Prisma.User$chatMessagesArgs<ExtArgs>
   projects?: boolean | Prisma.User$projectsArgs<ExtArgs>
   tasks?: boolean | Prisma.User$tasksArgs<ExtArgs>
+  companionTokens?: boolean | Prisma.User$companionTokensArgs<ExtArgs>
   _count?: boolean | Prisma.UserCountOutputTypeDefaultArgs<ExtArgs>
 }
 export type UserIncludeCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {}
@@ -962,6 +1098,7 @@ export type $UserPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs =
     chatMessages: Prisma.$ChatMessagePayload<ExtArgs>[]
     projects: Prisma.$ProjectPayload<ExtArgs>[]
     tasks: Prisma.$TaskPayload<ExtArgs>[]
+    companionTokens: Prisma.$CompanionTokenPayload<ExtArgs>[]
   }
   scalars: runtime.Types.Extensions.GetPayloadResult<{
     id: string
@@ -1374,6 +1511,7 @@ export interface Prisma__UserClient<T, Null = never, ExtArgs extends runtime.Typ
   chatMessages<T extends Prisma.User$chatMessagesArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$chatMessagesArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$ChatMessagePayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   projects<T extends Prisma.User$projectsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$projectsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$ProjectPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   tasks<T extends Prisma.User$tasksArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$tasksArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$TaskPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
+  companionTokens<T extends Prisma.User$companionTokensArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.User$companionTokensArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$CompanionTokenPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   /**
    * Attaches callbacks for the resolution and/or rejection of the Promise.
    * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -1878,6 +2016,30 @@ export type User$tasksArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs
   take?: number
   skip?: number
   distinct?: Prisma.TaskScalarFieldEnum | Prisma.TaskScalarFieldEnum[]
+}
+
+/**
+ * User.companionTokens
+ */
+export type User$companionTokensArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the CompanionToken
+   */
+  select?: Prisma.CompanionTokenSelect<ExtArgs> | null
+  /**
+   * Omit specific fields from the CompanionToken
+   */
+  omit?: Prisma.CompanionTokenOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.CompanionTokenInclude<ExtArgs> | null
+  where?: Prisma.CompanionTokenWhereInput
+  orderBy?: Prisma.CompanionTokenOrderByWithRelationInput | Prisma.CompanionTokenOrderByWithRelationInput[]
+  cursor?: Prisma.CompanionTokenWhereUniqueInput
+  take?: number
+  skip?: number
+  distinct?: Prisma.CompanionTokenScalarFieldEnum | Prisma.CompanionTokenScalarFieldEnum[]
 }
 
 /**

@@ -385,6 +385,7 @@ type FieldRefInputType<Model, FieldType> = Model extends never ? never : FieldRe
 
 export const ModelName = {
   User: 'User',
+  CompanionToken: 'CompanionToken',
   Project: 'Project',
   Repository: 'Repository',
   RepoFile: 'RepoFile',
@@ -418,7 +419,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "user" | "project" | "repository" | "repoFile" | "collaborator" | "team" | "worktree" | "todo" | "chatSession" | "chatMessage" | "task" | "taskIteration" | "taskSkillLog" | "taskBuildLog" | "taskSuggestion" | "slackLog" | "resourceUsage" | "teamRun" | "buildSession"
+    modelProps: "user" | "companionToken" | "project" | "repository" | "repoFile" | "collaborator" | "team" | "worktree" | "todo" | "chatSession" | "chatMessage" | "task" | "taskIteration" | "taskSkillLog" | "taskBuildLog" | "taskSuggestion" | "slackLog" | "resourceUsage" | "teamRun" | "buildSession"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -493,6 +494,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.UserCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.UserCountAggregateOutputType> | number
+        }
+      }
+    }
+    CompanionToken: {
+      payload: Prisma.$CompanionTokenPayload<ExtArgs>
+      fields: Prisma.CompanionTokenFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.CompanionTokenFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompanionTokenPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.CompanionTokenFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompanionTokenPayload>
+        }
+        findFirst: {
+          args: Prisma.CompanionTokenFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompanionTokenPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.CompanionTokenFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompanionTokenPayload>
+        }
+        findMany: {
+          args: Prisma.CompanionTokenFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompanionTokenPayload>[]
+        }
+        create: {
+          args: Prisma.CompanionTokenCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompanionTokenPayload>
+        }
+        createMany: {
+          args: Prisma.CompanionTokenCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.CompanionTokenCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompanionTokenPayload>[]
+        }
+        delete: {
+          args: Prisma.CompanionTokenDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompanionTokenPayload>
+        }
+        update: {
+          args: Prisma.CompanionTokenUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompanionTokenPayload>
+        }
+        deleteMany: {
+          args: Prisma.CompanionTokenDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.CompanionTokenUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.CompanionTokenUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompanionTokenPayload>[]
+        }
+        upsert: {
+          args: Prisma.CompanionTokenUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompanionTokenPayload>
+        }
+        aggregate: {
+          args: Prisma.CompanionTokenAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateCompanionToken>
+        }
+        groupBy: {
+          args: Prisma.CompanionTokenGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.CompanionTokenGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.CompanionTokenCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.CompanionTokenCountAggregateOutputType> | number
         }
       }
     }
@@ -1886,6 +1961,19 @@ export const UserScalarFieldEnum = {
 export type UserScalarFieldEnum = (typeof UserScalarFieldEnum)[keyof typeof UserScalarFieldEnum]
 
 
+export const CompanionTokenScalarFieldEnum = {
+  id: 'id',
+  userId: 'userId',
+  token: 'token',
+  name: 'name',
+  lastUsedAt: 'lastUsedAt',
+  createdAt: 'createdAt',
+  expiresAt: 'expiresAt'
+} as const
+
+export type CompanionTokenScalarFieldEnum = (typeof CompanionTokenScalarFieldEnum)[keyof typeof CompanionTokenScalarFieldEnum]
+
+
 export const ProjectScalarFieldEnum = {
   id: 'id',
   userId: 'userId',
@@ -2463,6 +2551,7 @@ export type PrismaClientOptions = ({
 }
 export type GlobalOmitConfig = {
   user?: Prisma.UserOmit
+  companionToken?: Prisma.CompanionTokenOmit
   project?: Prisma.ProjectOmit
   repository?: Prisma.RepositoryOmit
   repoFile?: Prisma.RepoFileOmit
