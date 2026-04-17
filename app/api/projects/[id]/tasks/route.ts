@@ -64,7 +64,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: access.error }, { status: access.status })
   }
 
-  let body: { name?: string; instruction?: string; teamId?: string; executorType?: string; executorId?: string; status?: string; scheduledAt?: string; isRecurring?: boolean; recurrenceConfig?: Record<string, unknown>; accumulatedContext?: Record<string, unknown>; context?: Record<string, unknown>; permissionMode?: 'leitura' | 'planejamento' | 'edicao' }
+  let body: { name?: string; instruction?: string; teamId?: string; executorType?: string; executorId?: string; status?: string; scheduledAt?: string; isRecurring?: boolean; recurrenceConfig?: Record<string, unknown>; accumulatedContext?: Record<string, unknown>; context?: Record<string, unknown>; permissionMode?: 'plan' | 'edit' | 'auto' | 'agent' }
   try {
     body = await request.json()
   } catch {
@@ -111,7 +111,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       recurrenceConfig: body.recurrenceConfig ? JSON.parse(JSON.stringify(body.recurrenceConfig)) : undefined,
       accumulatedContext: body.accumulatedContext ? JSON.parse(JSON.stringify(body.accumulatedContext)) : undefined,
       context: body.context ? JSON.parse(JSON.stringify(body.context)) : undefined,
-      permissionMode: body.permissionMode ?? 'edicao',
+      permissionMode: body.permissionMode ?? 'edit',
       queuePosition,
     },
     select: {

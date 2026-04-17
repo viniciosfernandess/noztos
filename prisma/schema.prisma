@@ -252,7 +252,7 @@ model ChatSession {
   userId         String
   name           String         @default("New Chat")
   status         String         @default("open")
-  permissionMode PermissionMode @default(leitura)
+  permissionMode PermissionMode @default(auto)
   // worktreeId — when null, this chat lives on main (the project root).
   // When set, the chat lives inside the parent Worktree (its branch + dir).
   worktreeId     String?
@@ -303,7 +303,7 @@ model Task {
   context             Json             @default("{}")
   accumulatedContext  Json             @default("{}")
   canModifyRepo       Boolean          @default(false)
-  permissionMode      PermissionMode   @default(edicao)
+  permissionMode      PermissionMode   @default(edit)
   executorType        ExecutorType     @default(no_skill)
   executorId          String?
   status              TaskStatus       @default(pending)
@@ -481,7 +481,8 @@ enum ExecutorType {
 }
 
 enum PermissionMode {
-  leitura
-  planejamento
-  edicao
+  plan
+  edit
+  auto
+  agent
 }

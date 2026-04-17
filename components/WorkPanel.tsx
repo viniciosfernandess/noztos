@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { diffLines } from 'diff'
 import { MarkdownRenderer } from './MarkdownRenderer'
-import { ChatTabs } from './ChatTabs'
+// ChatTabs removed — companion mode replaced tab-based chat
 import { CodeMirrorFileView, type CodeMirrorFileViewHandle } from './CodeMirrorFileView'
 import { InlineDiffEditor, type InlineDiffEditorHandle } from './InlineDiffEditor'
 import { ChecksPanel } from './ChecksPanel'
@@ -4914,7 +4914,7 @@ function ChatPanel({
   const [showReminderModal, setShowReminderModal] = useState(false)
   const [selectedModel, setSelectedModel] = useState<string>('sonnet')
   const [thinkingLevel, setThinkingLevel] = useState<string>('off')
-  const [permissionMode, setPermissionMode] = useState<'leitura' | 'planejamento' | 'edicao'>('leitura')
+  const [permissionMode, setPermissionMode] = useState<'plan' | 'edit' | 'auto' | 'agent'>('auto')
   const [contextPercentage, setContextPercentage] = useState(0)
   const [showContextTooltip, setShowContextTooltip] = useState(false)
   const [compacting, setCompacting] = useState(false)
@@ -5860,16 +5860,19 @@ function ChatPanel({
               <option value="high">Thinking: High</option>
             </select>
 
-            {/* Mode selector */}
-            <select
-              value={permissionMode}
-              onChange={(e) => setPermissionMode(e.target.value as 'leitura' | 'planejamento' | 'edicao')}
-              className="rounded border border-[#2B2B2B] bg-white/5 px-1.5 py-0.5 text-[10px] text-zinc-300 outline-none hover:bg-white/10"
-            >
-              <option value="leitura">Ask</option>
-              <option value="planejamento">Plan</option>
-              <option value="edicao">Agent</option>
-            </select>
+            {/* Legacy mode selector (hidden when companion connected — ModeSelector above replaces it) */}
+            {!companionConnected && (
+              <select
+                value={permissionMode}
+                onChange={(e) => setPermissionMode(e.target.value as 'plan' | 'edit' | 'auto' | 'agent')}
+                className="rounded border border-[#2B2B2B] bg-white/5 px-1.5 py-0.5 text-[10px] text-zinc-300 outline-none hover:bg-white/10"
+              >
+                <option value="plan">Plan</option>
+                <option value="edit">Edit</option>
+                <option value="auto">Auto</option>
+                <option value="agent">Agent</option>
+              </select>
+            )}
 
             {/* Submit / stop button — inside the card, rightmost */}
             {(sending || teamProcessing) ? (
