@@ -19,7 +19,7 @@ import { LocalProvider } from '@/lib/compute-local'
 
 const compute = new LocalProvider()
 
-// In cloud mode this was a fixed sandbox path. In local mode, the
+// The
 // "project root" is wherever `ensureSandboxRunning()` resolved the
 // project on the user's disk. Callers that need the root should call
 // `getProjectRoot(projectId)` instead of using a constant.

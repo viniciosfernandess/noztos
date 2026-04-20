@@ -17,7 +17,7 @@ import { LocalProvider } from '@/lib/compute-local'
 
 const compute = new LocalProvider()
 
-// In cloud mode these were fixed sandbox paths. In local mode they're
+// Paths are
 // resolved dynamically from the project's actual disk location.
 // `getProjectPaths()` returns both, looking up the project path from
 // `ensureSandboxRunning()`. Functions that need paths call this once

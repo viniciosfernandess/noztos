@@ -10,7 +10,7 @@ import { join } from 'node:path'
 // needed — the project is always "running" on disk.
 //
 // `ensureSandboxRunning()` returns the project's LOCAL PATH instead of a
-// cloud sandbox ID. All callers pass this into `compute.exec(path, cmd)`
+// All callers pass this into `compute.exec(path, cmd)`
 // and LocalProvider executes in that directory.
 //
 // The local path is stored in `Repository.sandboxId` (repurposed — it's
