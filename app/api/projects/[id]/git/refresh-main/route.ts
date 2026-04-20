@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyProjectAccess } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { loadProjectGitContext, PROJECT_ROOT, runGit } from '@/lib/git'
+import { loadProjectGitContext, runGit } from '@/lib/git'
 import { LocalProvider } from '@/lib/compute-local'
 
 const compute = new LocalProvider()
@@ -35,13 +35,13 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     ? `https://${ctx.githubToken}@github.com/${ctx.githubOwner}/${ctx.githubRepo}.git`
     : `https://github.com/${ctx.githubOwner}/${ctx.githubRepo}.git`
 
-  await runGit(ctx.sandboxId, PROJECT_ROOT, `fetch ${remote} main:refs/remotes/origin/main`)
-  await runGit(ctx.sandboxId, PROJECT_ROOT, `checkout main 2>&1 || true`)
-  const reset = await runGit(ctx.sandboxId, PROJECT_ROOT, `reset --hard origin/main`)
+  await runGit(ctx.sandboxId, ctx.sandboxId, `fetch ${remote} main:refs/remotes/origin/main`)
+  await runGit(ctx.sandboxId, ctx.sandboxId, `checkout main 2>&1 || true`)
+  const reset = await runGit(ctx.sandboxId, ctx.sandboxId, `reset --hard origin/main`)
   if ((reset.exitCode ?? 0) !== 0) {
     return NextResponse.json({ error: reset.stderr || 'reset failed' }, { status: 500 })
   }
-  await runGit(ctx.sandboxId, PROJECT_ROOT, `clean -fd`)
+  await runGit(ctx.sandboxId, ctx.sandboxId, `clean -fd`)
 
   // Refresh the persisted file tree so Explorer updates without
   // reloading the project. Mirrors the logic from sandbox-manager's
@@ -49,7 +49,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
   try {
     const findResult = await compute.exec(
       ctx.sandboxId,
-      `find ${PROJECT_ROOT} -type f -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' -not -path '*/.next/*' -not -path '*/dist/*' | sed 's|${PROJECT_ROOT}/||' | sort`,
+      `find ${ctx.sandboxId} -type f -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' -not -path '*/.next/*' -not -path '*/dist/*' | sed 's|${ctx.sandboxId}/||' | sort`,
     )
     if (!findResult.stderr?.includes('SANDBOX_DEAD') && findResult.stdout.trim()) {
       await prisma.repository.update({
@@ -62,7 +62,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
   }
 
   // Current SHA for the caller.
-  const sha = await runGit(ctx.sandboxId, PROJECT_ROOT, 'rev-parse HEAD')
+  const sha = await runGit(ctx.sandboxId, ctx.sandboxId, 'rev-parse HEAD')
   return NextResponse.json({
     ok: true,
     sha: sha.stdout.trim() || null,
