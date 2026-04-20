@@ -1,6 +1,7 @@
 import { execSync, execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
+import { homedir } from 'node:os'
 import { randomBytes } from 'node:crypto'
 import { addProject, removeProject, loadConfig } from './config.js'
 import type { ProjectConfig } from './types.js'
@@ -91,28 +92,33 @@ export function createProject(
   targetDir: string,
   options?: { template?: string },
 ): ProjectConfig {
-  if (existsSync(targetDir)) {
-    throw new Error(`Directory already exists: ${targetDir}`)
+  // Resolve ~ to home directory
+  const resolvedDir = targetDir.startsWith('~')
+    ? targetDir.replace('~', homedir())
+    : targetDir
+
+  if (existsSync(resolvedDir)) {
+    throw new Error(`Directory already exists: ${resolvedDir}`)
   }
 
-  mkdirSync(targetDir, { recursive: true })
+  mkdirSync(resolvedDir, { recursive: true })
 
   // Initialize git
-  execSync('git init', { cwd: targetDir, encoding: 'utf-8', stdio: 'pipe' })
+  execSync('git init', { cwd: resolvedDir, encoding: 'utf-8', stdio: 'pipe' })
 
   // Scaffold template if requested
   if (options?.template) {
-    const scaffoldCmd = getScaffoldCommand(options.template, targetDir)
+    const scaffoldCmd = getScaffoldCommand(options.template, resolvedDir)
     if (scaffoldCmd) {
       try {
-        execSync(scaffoldCmd, { cwd: targetDir, encoding: 'utf-8', stdio: 'pipe', timeout: 120_000 })
+        execSync(scaffoldCmd, { cwd: resolvedDir, encoding: 'utf-8', stdio: 'pipe', timeout: 120_000 })
       } catch {
         // Template scaffold failed — project still usable with empty git
       }
     }
   }
 
-  return initProject(targetDir)
+  return initProject(resolvedDir)
 }
 
 function getScaffoldCommand(template: string, _dir: string): string | null {

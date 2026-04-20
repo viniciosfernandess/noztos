@@ -7,20 +7,46 @@ interface RouteParams {
   params: Promise<{ id: string }>
 }
 
-// POST — Connect a GitHub repo to this project and sync files
+// POST — Connect a GitHub repo OR register a local path to this project
 export async function POST(request: NextRequest, { params }: RouteParams) {
   const { id } = await params
   const auth = await verifyProjectAccess(id)
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status })
 
-  const { owner, repo, branch } = (await request.json()) as {
-    owner: string
-    repo: string
+  const body = (await request.json()) as {
+    owner?: string
+    repo?: string
     branch?: string
+    localPath?: string
   }
 
+  // Local project — just register the path, no GitHub needed
+  if (body.localPath) {
+    const existing = await prisma.repository.findUnique({ where: { projectId: id } })
+    if (existing) {
+      return NextResponse.json({ error: 'Project already has a repository.' }, { status: 409 })
+    }
+    const repository = await prisma.repository.create({
+      data: {
+        projectId: id,
+        githubOwner: '',
+        githubRepo: '',
+        githubBranch: 'main',
+        sandboxId: body.localPath,
+        sandboxStatus: 'running',
+      },
+    })
+    return NextResponse.json({
+      success: true,
+      repositoryId: repository.id,
+      localPath: body.localPath,
+    }, { status: 201 })
+  }
+
+  // GitHub project — clone from remote
+  const { owner, repo, branch } = body
   if (!owner || !repo) {
-    return NextResponse.json({ error: 'owner and repo are required' }, { status: 400 })
+    return NextResponse.json({ error: 'owner and repo (or localPath) required' }, { status: 400 })
   }
 
   const user = await prisma.user.findUnique({

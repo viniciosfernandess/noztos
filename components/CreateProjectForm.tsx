@@ -114,54 +114,51 @@ function ProjectPickerModal({ onClose }: { onClose: () => void }) {
     })
   }
 
-  // From local folder — companion registers it
+  // From local folder — creates project + repository in DB with local path
   async function handleLocal() {
     if (!localPath.trim()) return
     setLoading(true)
     setError(null)
     try {
-      // Tell companion to register this path
-      const cmdRes = await fetch('/api/companion/command', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'clone',
-          repoUrl: localPath.trim(),
-          targetPath: localPath.trim(),
-        }),
-      })
-      if (!cmdRes.ok) {
-        const data = await cmdRes.json()
-        setError(data.error ?? data.message ?? 'Failed')
-        setLoading(false)
-        return
-      }
+      const path = localPath.trim()
+      const folderName = path.split('/').pop() ?? 'project'
 
       // Create project in DB
-      const folderName = localPath.trim().split('/').pop() ?? 'project'
       const res = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: folderName }),
       })
-      if (res.ok) {
-        const { id } = await res.json()
-        router.push(`/projects/${id}`)
-        router.refresh()
+      if (!res.ok) {
+        setError('Failed to create project')
+        setLoading(false)
+        return
       }
+      const { id } = await res.json()
+
+      // Create repository record with local path as sandboxId
+      await fetch(`/api/projects/${id}/repository`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ localPath: path }),
+      })
+
+      router.push(`/projects/${id}`)
+      router.refresh()
     } catch {
       setError('Something went wrong')
     }
     setLoading(false)
   }
 
-  // Create new — companion scaffolds it
+  // Create new — companion scaffolds it on user's machine
   async function handleCreate() {
     if (!projectName.trim()) return
     setLoading(true)
     setError(null)
     try {
-      const targetPath = `${process.env.HOME ?? '~'}/projects/${projectName.trim()}`
+      // ~/projects/ is resolved by the companion on the user's machine
+      const targetPath = `~/projects/${projectName.trim()}`
       const cmdRes = await fetch('/api/companion/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

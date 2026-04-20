@@ -99,9 +99,10 @@ export function ClaudeSetupModal({ onClose }: { onClose: () => void }) {
     return () => controller.abort()
   }, [])
 
-  // Auto-start setup on mount
+  // Auto-start setup on mount — small delay to ensure SSE listener is active first
   useEffect(() => {
-    startSetup()
+    const t = setTimeout(() => startSetup(), 500)
+    return () => clearTimeout(t)
   }, [startSetup])
 
   function copyCode() {

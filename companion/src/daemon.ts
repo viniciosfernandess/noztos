@@ -461,6 +461,15 @@ export class Daemon extends EventEmitter {
       env: { ...process.env },
     })
 
+    // Kill login process after 10 minutes if user never authorizes
+    const loginTimeout = setTimeout(() => {
+      loginProc.kill('SIGTERM')
+      this.send({
+        type: 'error',
+        payload: { message: 'Login timed out after 10 minutes. Try again.' },
+      })
+    }, 10 * 60 * 1000)
+
     let fullOutput = ''
 
     const processOutput = (chunk: Buffer) => {
@@ -496,6 +505,7 @@ export class Daemon extends EventEmitter {
     loginProc.stderr?.on('data', processOutput)
 
     loginProc.on('close', async (code) => {
+      clearTimeout(loginTimeout)
       if (code === 0) {
         // Re-check auth status
         const finalAuth = detectClaudeAuth()
