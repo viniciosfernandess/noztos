@@ -30,18 +30,23 @@ export async function POST(_request: NextRequest, context: RouteContext) {
   const ctx = await loadProjectGitContext(id)
   if (!ctx) return NextResponse.json({ error: 'No repository / sandbox unavailable' }, { status: 503 })
 
-  // Auth'd remote so private repos work during fetch.
-  const remote = ctx.githubToken
-    ? `https://${ctx.githubToken}@github.com/${ctx.githubOwner}/${ctx.githubRepo}.git`
-    : `https://github.com/${ctx.githubOwner}/${ctx.githubRepo}.git`
+  // Local projects: user manages their own git — never reset or fetch.
+  // Just refresh the file tree and return the current HEAD.
+  const isLocal = !ctx.githubOwner
 
-  await runGit(ctx.sandboxId, ctx.sandboxId, `fetch ${remote} main:refs/remotes/origin/main`)
-  await runGit(ctx.sandboxId, ctx.sandboxId, `checkout main 2>&1 || true`)
-  const reset = await runGit(ctx.sandboxId, ctx.sandboxId, `reset --hard origin/main`)
-  if ((reset.exitCode ?? 0) !== 0) {
-    return NextResponse.json({ error: reset.stderr || 'reset failed' }, { status: 500 })
+  if (!isLocal) {
+    const remote = ctx.githubToken
+      ? `https://${ctx.githubToken}@github.com/${ctx.githubOwner}/${ctx.githubRepo}.git`
+      : `https://github.com/${ctx.githubOwner}/${ctx.githubRepo}.git`
+
+    await runGit(ctx.sandboxId, ctx.sandboxId, `fetch ${remote} main:refs/remotes/origin/main`)
+    await runGit(ctx.sandboxId, ctx.sandboxId, `checkout main 2>&1 || true`)
+    const reset = await runGit(ctx.sandboxId, ctx.sandboxId, `reset --hard origin/main`)
+    if ((reset.exitCode ?? 0) !== 0) {
+      return NextResponse.json({ error: reset.stderr || 'reset failed' }, { status: 500 })
+    }
+    await runGit(ctx.sandboxId, ctx.sandboxId, `clean -fd`)
   }
-  await runGit(ctx.sandboxId, ctx.sandboxId, `clean -fd`)
 
   // Refresh the persisted file tree so Explorer updates without
   // reloading the project. Mirrors the logic from sandbox-manager's
