@@ -11,6 +11,15 @@ export function CompanionSetup() {
   const generateToken = useCallback(async () => {
     setGenerating(true)
     try {
+      // Revoke any existing tokens first — always 1 token at a time
+      const list = await fetch('/api/companion/tokens').then(r => r.json())
+      for (const t of list.tokens ?? []) {
+        await fetch('/api/companion/tokens', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tokenId: t.id }),
+        })
+      }
       const res = await fetch('/api/companion/tokens', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
