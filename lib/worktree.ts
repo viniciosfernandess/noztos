@@ -17,33 +17,12 @@ import { LocalProvider } from '@/lib/compute-local'
 
 const compute = new LocalProvider()
 
-// Paths are
-// resolved dynamically from the project's actual disk location.
-// `getProjectPaths()` returns both, looking up the project path from
-// `ensureSandboxRunning()`. Functions that need paths call this once
-// at the top.
-async function getProjectPaths(projectId: string): Promise<{ root: string; worktrees: string }> {
-  const projectPath = await ensureSandboxRunning(projectId)
-  const root = projectPath ?? process.cwd()
-  return {
-    root,
-    worktrees: `${root}/.bornastar-worktrees`,
-  }
-}
-
-// Backward-compat constants — used by code that hasn't been migrated
-// to getProjectPaths() yet. Will break in local mode for those paths.
-const SHARED_PROJECT_ROOT = process.cwd()
-const WORKTREES_DIR = `${process.cwd()}/.bornastar-worktrees`
-
 // Each worktree reserves PORTS_PER_WORKTREE consecutive ports starting at
 // portBase. The user can reference them as $BORNASTAR_PORT through
 // $BORNASTAR_PORT+9 in their run scripts.
 const PORT_RANGE_START = 4000
 const PORTS_PER_WORKTREE = 10
 const PORT_RANGE_END = 4990
-
-export const SHARED_PROJECT_ROOT_PATH = SHARED_PROJECT_ROOT
 
 // Pool of single-word city codenames used to label new worktrees. Branches
 // look like `kampala-v1`, `oslo-v2`, etc — short, memorable, ASCII-safe so
@@ -91,10 +70,6 @@ export async function generateWorktreeCodename(
   // Pathological fallback — every city × every version exhausted (>6k worktrees)
   const fallback = `wt-${Date.now().toString(36)}`
   return { name: fallback, branchName: fallback }
-}
-
-function worktreePathForId(worktreeId: string): string {
-  return `${WORKTREES_DIR}/${worktreeId}`
 }
 
 export interface WorktreeInfo {
@@ -149,19 +124,19 @@ export async function provisionWorktree(
     return null
   }
 
-  const worktreePath = worktreePathForId(worktreeId)
+  const worktreesDir = `${sandboxId}/.bornastar-worktrees`
 
   try {
-    await compute.exec(sandboxId, `mkdir -p ${WORKTREES_DIR}`)
+    await compute.exec(sandboxId, `mkdir -p ${worktreesDir}`)
 
     // Get current HEAD on main as the baseline
     const headRes = await compute.exec(
       sandboxId,
-      `cd ${SHARED_PROJECT_ROOT} && git rev-parse HEAD 2>/dev/null || echo NONE`,
+      `cd ${sandboxId} && git rev-parse HEAD 2>/dev/null || echo NONE`,
     )
     const baseCommit = headRes.stdout?.trim()
     if (!baseCommit || baseCommit === 'NONE') {
-      console.warn(`[worktree] No git HEAD found at ${SHARED_PROJECT_ROOT}`)
+      console.warn(`[worktree] No git HEAD found at ${sandboxId}`)
       return null
     }
 
@@ -172,6 +147,8 @@ export async function provisionWorktree(
     }
 
     // Reuse if the directory already exists
+    const worktreePath = `${worktreesDir}/${worktreeId}`
+
     const existsRes = await compute.exec(
       sandboxId,
       `test -d ${worktreePath}/.git -o -f ${worktreePath}/.git && echo yes || echo no`,
@@ -184,13 +161,13 @@ export async function provisionWorktree(
     // Create new worktree on a fresh branch from current main HEAD
     const createRes = await compute.exec(
       sandboxId,
-      `cd ${SHARED_PROJECT_ROOT} && git worktree add ${worktreePath} -b ${branchName} 2>&1`,
+      `cd ${sandboxId} && git worktree add ${worktreePath} -b ${branchName} 2>&1`,
     )
     if (createRes.exitCode !== 0) {
       // Branch may already exist — try without -b
       const fallbackRes = await compute.exec(
         sandboxId,
-        `cd ${SHARED_PROJECT_ROOT} && git worktree add ${worktreePath} ${branchName} 2>&1`,
+        `cd ${sandboxId} && git worktree add ${worktreePath} ${branchName} 2>&1`,
       )
       if (fallbackRes.exitCode !== 0) {
         console.warn(`[worktree] Failed to create worktree: ${createRes.stdout} | ${fallbackRes.stdout}`)
@@ -254,11 +231,11 @@ export async function removeWorktreePhysical(
   try {
     await compute.exec(
       sandboxId,
-      `cd ${SHARED_PROJECT_ROOT} && git worktree remove --force ${worktreePath} 2>&1 || true`,
+      `cd ${sandboxId} && git worktree remove --force ${worktreePath} 2>&1 || true`,
     )
     await compute.exec(
       sandboxId,
-      `cd ${SHARED_PROJECT_ROOT} && git branch -D ${branchName} 2>&1 || true`,
+      `cd ${sandboxId} && git branch -D ${branchName} 2>&1 || true`,
     )
     console.log(`[worktree] Removed ${branchName}`)
   } catch (err) {
@@ -291,7 +268,7 @@ export async function getWorktreeDiffStats(
   try {
     const res = await compute.exec(
       sandboxId,
-      `cd ${wt.worktreePath} && (git diff --shortstat origin/main 2>/dev/null || git diff --shortstat ${wt.baseCommit} 2>/dev/null)`,
+      `cd ${wt.worktreePath} && git diff --shortstat ${wt.baseCommit} 2>/dev/null || true`,
     )
     return parseShortstat(res.stdout?.trim() ?? '')
   } catch (err) {
@@ -318,21 +295,10 @@ export async function getWorktreeChangedFiles(
   const sandboxId = await ensureSandboxRunning(projectId)
   if (!sandboxId) return []
 
-  // Determine which ref to diff against: prefer origin/main, fall back to baseCommit
-  const refCheck = await compute.exec(
-    sandboxId,
-    `cd ${wt.worktreePath} && git rev-parse --verify origin/main 2>/dev/null && echo OK || echo MISSING`,
-  )
-  const ref = refCheck.stdout?.trim().endsWith('OK') ? 'origin/main' : wt.baseCommit
-
   try {
-    // Run the two diffs separately. The old `&&`-chained version was failing
-    // with exit 129 when either diff had no output, because shell chaining
-    // propagates the first command's status. Separate execs are cheap and
-    // let us recover from either one returning empty.
     const [numstatRes, nameStatusRes] = await Promise.all([
-      compute.exec(sandboxId, `cd ${wt.worktreePath} && git diff --numstat ${ref} || true`),
-      compute.exec(sandboxId, `cd ${wt.worktreePath} && git diff --name-status ${ref} || true`),
+      compute.exec(sandboxId, `cd ${wt.worktreePath} && git diff --numstat ${wt.baseCommit} || true`),
+      compute.exec(sandboxId, `cd ${wt.worktreePath} && git diff --name-status ${wt.baseCommit} || true`),
     ])
     const numstatBlock = numstatRes.stdout?.trim() ?? ''
     const nameStatusBlock = nameStatusRes.stdout?.trim() ?? ''
