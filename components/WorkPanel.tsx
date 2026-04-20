@@ -5116,7 +5116,6 @@ function ChatPanel({
 
     // ── Companion mode: send via Claude Code CLI ──────────────────
     if (companionConnected) {
-      // Find the first registered project to send the prompt to
       const companionProject = companion.companionInfo?.projects?.[0]
       if (companionProject) {
         await companion.sendPrompt(companionProject.id, content, claudeMode)
@@ -5124,193 +5123,19 @@ function ChatPanel({
       return
     }
 
-    // ── Legacy engine mode (fallback when no companion) ───────────
-    const userMsg: Message = {
-      id: `temp-${Date.now()}`,
-      content,
-      sender: 'user',
+    // ── Companion not running ──────────────────────────────────────
+    // All chat goes through Claude Code. If the companion isn't connected,
+    // surface the instruction instead of silently failing.
+    setMessages((prev) => [...prev, {
+      id: `sys-${Date.now()}`,
+      content: 'Companion not running. Start it with: bornastar start',
+      sender: 'system',
       mode: activeMode,
-      activeSkillId: activeSkillId,
+      activeSkillId: null,
       report: null,
       createdAt: new Date().toISOString(),
-    }
-    setMessages((prev) => [...prev, userMsg])
-    setLiveStepIds(new Set())
-    setSending(true)
-
-    // Start polling for real-time tool calls (all modes)
-    const pollAfter = new Date().toISOString()
-    const seenAgentStepIds = new Set<string>()
-    agentPollingRef.current = setInterval(async () => {
-      try {
-        const r = await fetch(`/api/projects/${projectId}/chat/status?after=${pollAfter}`)
-        if (!r.ok) return
-        const d = await r.json()
-        const newSteps = (d.messages ?? []).filter((m: Message) =>
-          m.sender === 'step' && !seenAgentStepIds.has(m.id)
-        )
-        if (newSteps.length > 0) {
-          newSteps.forEach((m: Message) => seenAgentStepIds.add(m.id))
-          setMessages(prev => [...prev, ...newSteps])
-          setLiveStepIds(prev => {
-            const next = new Set(prev)
-            newSteps.forEach((m: Message) => next.add(m.id))
-            return next
-          })
-        }
-      } catch { /* ignore */ }
-    }, 1000)
-
-    try {
-      const res = await fetch(`/api/projects/${projectId}/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content,
-          mode: activeMode,
-          activeSkillId: activeSkillId ?? undefined,
-          activeTeamId: activeTeamId ?? undefined,
-          sessionId: sessionId ?? undefined,
-          model: selectedModel !== 'sonnet' ? selectedModel : undefined,
-          thinkingBudget: thinkingLevel !== 'off' ? { off: 0, low: 5000, medium: 10000, high: 30000 }[thinkingLevel] : undefined,
-          permissionMode,
-          contextPaths: contextPaths.length > 0 ? contextPaths : undefined,
-          teamConfig: activeTeam ? {
-            order: activeTeam.order,
-            canRecreateTasks: activeTeam.canRecreateTasks,
-            hasBuilder: activeTeam.hasBuilder,
-          } : undefined,
-        }),
-      })
-
-      if (res.ok) {
-        const data = await res.json()
-
-        if (data.processing) {
-          // Team mode — stop agent polling, start team polling
-          if (agentPollingRef.current) { clearInterval(agentPollingRef.current); agentPollingRef.current = null }
-          setTeamProcessing(true)
-          setSending(false)
-          const pollAfter = new Date().toISOString()
-          const seenIds = new Set<string>()
-          const pollStartTime = Date.now()
-          const POLL_TIMEOUT = 5 * 60 * 1000 // 5 minutes
-
-          pollingRef.current = setInterval(async () => {
-            // Timeout check
-            if (Date.now() - pollStartTime > POLL_TIMEOUT) {
-              if (pollingRef.current) clearInterval(pollingRef.current)
-              pollingRef.current = null
-              setTeamProcessing(false)
-              setMessages((prev) => [...prev, {
-                id: `timeout-${Date.now()}`,
-                content: 'Team processing timed out. Please try again.',
-                sender: 'system',
-                mode: 'team',
-                activeSkillId: null,
-                report: null,
-                createdAt: new Date().toISOString(),
-              }])
-              return
-            }
-
-            try {
-              // Poll for new chat messages
-              const pollRes = await fetch(`/api/projects/${projectId}/chat/status?after=${pollAfter}`)
-              if (pollRes.ok) {
-                const pollData = await pollRes.json()
-
-                // Filter: show employee responses in chat, keep plan/step for mini map
-                const allNewMsgs = (pollData.messages ?? []).filter((m: Message) => {
-                  if (seenIds.has(m.id) || m.sender === 'user') return false
-                  seenIds.add(m.id)
-                  return true
-                })
-
-                // Add all to messages (mini map reads plan/step, chat filters them out)
-                if (allNewMsgs.length > 0) {
-                  setMessages((prev) => [...prev, ...allNewMsgs.map((m: Message) => ({
-                    ...m,
-                    createdAt: m.createdAt ?? new Date().toISOString(),
-                  }))])
-                }
-
-                // Also poll TeamRun state for mini map
-                const runRes = await fetch(`/api/projects/${projectId}/team-run`)
-                if (runRes.ok) {
-                  const runData = await runRes.json()
-                  if (runData.lastRun?.state) {
-                    // Update parent state via a custom event (will be picked up by WorkPanel)
-                    window.dispatchEvent(new CustomEvent('teamrun-update', { detail: runData.lastRun.state }))
-                  }
-                }
-
-                // Check if team is done
-                const isDone = allNewMsgs.some((m: Message) => m.sender === 'team')
-                if (isDone) {
-                  if (pollingRef.current) clearInterval(pollingRef.current)
-                  pollingRef.current = null
-                  setTeamProcessing(false)
-                }
-              }
-            } catch { /* ignore polling errors */ }
-          }, 1500)
-
-          return
-        }
-
-        // Sync mode (no_skill / skill)
-        if (data.replies) {
-          const newMsgs = data.replies.map((r: ChatReplyRaw) => ({
-            id: r.id,
-            content: r.content,
-            sender: r.sender,
-            mode: r.mode,
-            activeSkillId: r.activeSkillId,
-            report: null,
-            createdAt: new Date().toISOString(),
-          }))
-          setMessages((prev) => [...prev, ...newMsgs])
-        }
-      } else {
-        // API returned error
-        try {
-          const errData = await res.json()
-          setMessages((prev) => [...prev, {
-            id: `err-${Date.now()}`,
-            content: errData.error || 'Something went wrong. Please try again.',
-            sender: 'system',
-            mode: activeMode,
-            activeSkillId: null,
-            report: null,
-            createdAt: new Date().toISOString(),
-          }])
-        } catch {
-          setMessages((prev) => [...prev, {
-            id: `err-${Date.now()}`,
-            content: 'Something went wrong. Please try again.',
-            sender: 'system',
-            mode: activeMode,
-            activeSkillId: null,
-            report: null,
-            createdAt: new Date().toISOString(),
-          }])
-        }
-      }
-    } catch (err) {
-      setMessages((prev) => [...prev, {
-        id: `err-${Date.now()}`,
-        content: `Connection error: ${err instanceof Error ? err.message : 'Please check your connection and try again.'}`,
-        sender: 'system',
-        mode: activeMode,
-        activeSkillId: null,
-        report: null,
-        createdAt: new Date().toISOString(),
-      }])
-    }
-    // Stop agent polling
-    if (agentPollingRef.current) { clearInterval(agentPollingRef.current); agentPollingRef.current = null }
-    setSending(false)
+    }])
+    return
   }
 
   const hasAnyone = hiredEmployees.length > 0 || teams.length > 0
