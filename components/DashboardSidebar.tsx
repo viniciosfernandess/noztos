@@ -53,10 +53,12 @@ export function DashboardSidebar() {
         const data = await res.json()
         setStatus((prev) => ({
           ...prev,
-          claude: data.connected ? 'connected' : 'offline',
-          claudeDetail: data.connected
-            ? `Claude Code ${data.authInfo?.version?.split(' ')[0] ?? ''} — ${data.authInfo?.plan ?? 'subscription'}`
-            : 'Companion not running',
+          claude: !data.connected ? 'offline' : data.authInfo?.authenticated === false ? 'offline' : 'connected',
+          claudeDetail: !data.connected
+            ? 'Companion not running'
+            : data.authInfo?.authenticated === false
+              ? 'Claude not authenticated — run: claude login'
+              : `Claude Code ${data.authInfo?.version?.split(' ')[0] ?? ''} — ${data.authInfo?.plan ?? 'subscription'}`,
           machine: data.connected ? 'connected' : 'offline',
           machineName: data.machineName ?? data.authInfo?.tokenName ?? 'Local Machine',
           lastSeen: data.lastSeen,

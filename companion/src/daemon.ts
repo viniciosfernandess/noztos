@@ -537,7 +537,7 @@ export class Daemon extends EventEmitter {
   private startHeartbeat(): void {
     this.heartbeatTimer = setInterval(async () => {
       await this.post('/api/companion/register', {
-        authInfo: detectClaudeAuth(),
+        authInfo: { ...detectClaudeAuth(), version: getClaudeVersion() },
         projects: listProjects(),
       })
     }, HEARTBEAT_INTERVAL_MS)
