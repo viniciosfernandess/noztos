@@ -51,6 +51,13 @@ export async function ensureSandboxRunning(projectId: string): Promise<string | 
 
   if (!repo) return null
 
+  // Resolve ~ to homedir if stored with tilde
+  if (repo.sandboxId?.startsWith('~')) {
+    const resolved = repo.sandboxId.replace('~', homedir())
+    await prisma.repository.update({ where: { projectId }, data: { sandboxId: resolved } })
+    repo.sandboxId = resolved
+  }
+
   // Already resolved to a local path? Verify it still exists.
   if (repo.sandboxId && repo.sandboxId.startsWith('/')) {
     if (existsSync(repo.sandboxId)) {

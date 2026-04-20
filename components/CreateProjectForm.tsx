@@ -183,6 +183,13 @@ function ProjectPickerModal({ onClose }: { onClose: () => void }) {
       })
       if (res.ok) {
         const { id } = await res.json()
+        // Register the local path so the file tree and git ops work
+        // Server resolves ~ via homedir() on the same machine
+        await fetch(`/api/projects/${id}/repository`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ localPath: targetPath }),
+        })
         router.push(`/projects/${id}`)
         router.refresh()
       }
