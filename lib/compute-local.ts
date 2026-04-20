@@ -96,25 +96,6 @@ export class LocalProvider implements ComputeProvider {
     // Local filesystem doesn't need cleanup
   }
 
-  // Always "running" in local mode.
-  async isRunning(_sandboxId: string): Promise<boolean> {
-    return true
-  }
-
-  // List files in a directory.
-  async listFiles(sandboxId: string, path: string): Promise<string[]> {
-    const fullPath = path.startsWith('/') ? path : join(sandboxId, path)
-    try {
-      const { stdout } = await execPromise(
-        `find "${fullPath}" -type f -not -path '*/.git/*' -not -path '*/node_modules/*' -not -path '*/__pycache__/*' -not -path '*/.next/*' -not -path '*/dist/*' | sort`,
-        { cwd: sandboxId, timeout: DEFAULT_TIMEOUT_MS, maxBuffer: MAX_BUFFER },
-      )
-      return stdout.split('\n').filter(Boolean)
-    } catch {
-      return []
-    }
-  }
-
   // Read a file from the local filesystem. Path must resolve within
   // the project root (sandboxId) to prevent traversal attacks.
   async readFile(sandboxId: string, path: string): Promise<string> {
