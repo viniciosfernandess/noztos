@@ -547,20 +547,50 @@ export function useCompanionStream(
       ...(opts?.model && { model: opts.model }),
     }])
 
-    await fetch('/api/companion/command', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'prompt',
-        projectId,
-        prompt,
-        claudeSessionId: sessionId,
-        bornastarSessionId,
-        mode: mode ?? 'auto',
-        model: opts?.model,
-        thinking: opts?.thinking ?? 'off',
-      }),
-    })
+    // Fire the command. If the companion daemon is flapping (dev-server
+    // hot reload killed its SSE, reconnect not finished) the server
+    // returns 503 immediately — reset the running flag so the spinner
+    // doesn't hang forever and surface a readable error in the chat
+    // instead of a silent stuck state.
+    try {
+      const res = await fetch('/api/companion/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'prompt',
+          projectId,
+          prompt,
+          claudeSessionId: sessionId,
+          bornastarSessionId,
+          mode: mode ?? 'auto',
+          model: opts?.model,
+          thinking: opts?.thinking ?? 'off',
+        }),
+      })
+      if (!res.ok) {
+        setIsRunning(false)
+        let msg = 'Failed to reach Claude Code companion.'
+        try {
+          const data = await res.json()
+          if (data?.message) msg = data.message
+          else if (data?.error) msg = data.error
+        } catch { /* body wasn't JSON */ }
+        setMessages((prev) => [...prev, {
+          id: nextId(),
+          role: 'system',
+          content: `Error: ${msg}`,
+          timestamp: Date.now(),
+        }])
+      }
+    } catch {
+      setIsRunning(false)
+      setMessages((prev) => [...prev, {
+        id: nextId(),
+        role: 'system',
+        content: 'Error: Network failed reaching the companion. Try again.',
+        timestamp: Date.now(),
+      }])
+    }
   }, [sessionId])
 
   // Interrupt running agent for a specific chat (matches the bridge key).

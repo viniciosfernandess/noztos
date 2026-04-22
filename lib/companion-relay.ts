@@ -91,8 +91,22 @@ class RelayChannel {
   }
 }
 
-// Global relay store — one channel per user
-const channels = new Map<string, RelayChannel>()
+// Global relay store — one channel per user.
+//
+// Hot-reloads in Next dev (Turbopack) reset module-level variables,
+// which would drop every connected-companion state the daemon has
+// heartbeated up to now. The browser would then see "companion
+// disconnected" for up to one heartbeat window (25 s) every time we
+// ship a code change. We pin the Map on `globalThis` so it survives
+// module re-evaluation. Production (single cold start) is unaffected.
+const globalForRelay = globalThis as unknown as {
+  __bornastarCompanionChannels?: Map<string, RelayChannel>
+}
+const channels: Map<string, RelayChannel> =
+  globalForRelay.__bornastarCompanionChannels ?? new Map<string, RelayChannel>()
+if (process.env.NODE_ENV !== 'production') {
+  globalForRelay.__bornastarCompanionChannels = channels
+}
 
 export function getChannel(userId: string): RelayChannel {
   let ch = channels.get(userId)

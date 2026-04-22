@@ -191,6 +191,22 @@ export async function provisionWorktree(
       }
     }
 
+    // Copy gitignored dev-local env files from the project root into the
+    // new worktree. Git only carries tracked files, so `.env` (and the
+    // like) never appear inside `git worktree add`'d directories on
+    // their own — Claude Code + dev scripts would fail silently looking
+    // for them. Mirrors Conductor's behaviour: each worktree gets its
+    // own copy, so experimenting with new env vars in a feature branch
+    // doesn't leak to main. Mismatches the user has to manage manually
+    // if credentials diverge (rare).
+    const ENV_FILES = ['.env', '.env.local', '.env.development', '.env.development.local']
+    for (const f of ENV_FILES) {
+      await compute.exec(
+        sandboxId,
+        `[ -f ${sandboxId}/${f} ] && cp -n ${sandboxId}/${f} ${worktreePath}/${f} || true`,
+      )
+    }
+
     console.log(`[isolation] worktree created branch=${branchName} path=${worktreePath} base=${baseCommit.slice(0, 8)} port=${portBase}`)
     return { worktreePath, branchName, baseCommit, portBase }
   } catch (err) {

@@ -18,8 +18,8 @@ import type { CompanionCommand, CompanionMessage, ClaudeStreamEvent } from './ty
 // so no port-forwarding, firewall, or WebSocket upgrade needed.
 // Works with stock Next.js API routes.
 
-const RECONNECT_DELAY_MS = 5_000
-const HEARTBEAT_INTERVAL_MS = 25_000
+const RECONNECT_DELAY_MS = 1_000
+const HEARTBEAT_INTERVAL_MS = 10_000
 
 export class Daemon extends EventEmitter {
   private serverUrl: string
