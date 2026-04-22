@@ -13,7 +13,7 @@ import { ResolveConflictsSplitButton } from './ResolveConflictsSplitButton'
 import { MOCK_CONFLICTS, MOCK_GIT_STATUS } from '@/lib/mocks/checks-demo'
 import { useGitStatus, deriveBadge, deriveUnsupportedLabel } from '@/lib/hooks/useGitStatus'
 import { useCompanionStream, type ChatMessage } from '@/lib/hooks/useCompanionStream'
-import { ClaudeToolCard, SessionResultCard, ModeSelector, ModelSelector, ThinkingSelector, CompanionStatusBadge } from './ClaudeToolCard'
+import { ClaudeToolCard, SessionResultCard, ModeSelector, ModelSelector, ThinkingSelector, CompanionStatusBadge, WorkBlock } from './ClaudeToolCard'
 import { ReportBadge } from './ChatReport'
 import type { ChatReport } from '@/lib/report-types'
 
@@ -5564,37 +5564,79 @@ function ChatPanel({
             </p>
           </div>
         )}
-        {companion.messages.map((msg: ChatMessage) => {
-          if (msg.role === 'user') {
+        {(() => {
+          // Group "Claude working" messages (tools, thinking, intermediate
+          // text) into a single work block per turn. The LAST assistant
+          // text of a run is popped out and rendered as the turn's final
+          // response, so the user reads the conclusion in the chat flow
+          // while the process details collapse to "Thought for Xs".
+          type Item =
+            | { kind: 'single'; msg: ChatMessage }
+            | { kind: 'work'; msgs: ChatMessage[]; key: string }
+          const items: Item[] = []
+          const isBoundary = (m: ChatMessage) =>
+            m.role === 'user' || (m.role === 'system' && m.costUsd !== undefined)
+          const isWorking = (m: ChatMessage) =>
+            m.role === 'tool' || m.role === 'thinking' || m.role === 'assistant'
+          for (let i = 0; i < companion.messages.length; i++) {
+            const m = companion.messages[i]
+            if (isBoundary(m)) { items.push({ kind: 'single', msg: m }); continue }
+            if (!isWorking(m)) { items.push({ kind: 'single', msg: m }); continue }
+            const group: ChatMessage[] = [m]
+            while (
+              i + 1 < companion.messages.length
+              && !isBoundary(companion.messages[i + 1])
+              && isWorking(companion.messages[i + 1])
+            ) {
+              i++; group.push(companion.messages[i])
+            }
+            // The final assistant text in the run is Claude's response
+            // to the user — it belongs in the chat flow, not inside the
+            // collapsible work block. Pop it out.
+            const last = group[group.length - 1]
+            let finalText: ChatMessage | null = null
+            if (last && last.role === 'assistant') {
+              finalText = group.pop()!
+            }
+            if (group.length > 0) items.push({ kind: 'work', msgs: group, key: group[0].id })
+            if (finalText) items.push({ kind: 'single', msg: finalText })
+          }
+          const lastWorkIndex = (() => {
+            for (let i = items.length - 1; i >= 0; i--) if (items[i].kind === 'work') return i
+            return -1
+          })()
+          return items.map((item, idx) => {
+            if (item.kind === 'work') {
+              const isActive = companion.isRunning && idx === lastWorkIndex
+              return <WorkBlock key={item.key} messages={item.msgs} active={isActive} />
+            }
+            const msg = item.msg
+            if (msg.role === 'user') {
+              return (
+                <div key={msg.id} className="flex justify-end">
+                  <div className="max-w-[85%] rounded-xl bg-[#3C3C3C] px-4 py-2 text-sm text-zinc-100">
+                    {msg.content}
+                  </div>
+                </div>
+              )
+            }
+            if (msg.role === 'system') {
+              if (msg.costUsd !== undefined) return null
+              return (
+                <div key={msg.id} className="flex justify-start">
+                  <p className="text-xs italic text-zinc-500">{msg.content}</p>
+                </div>
+              )
+            }
             return (
-              <div key={msg.id} className="flex justify-end">
-                <div className="max-w-[85%] rounded-xl bg-[#3C3C3C] px-4 py-2 text-sm text-zinc-100">
-                  {msg.content}
+              <div key={msg.id} className="flex justify-start">
+                <div className="w-full max-w-[90%]">
+                  <MarkdownRenderer content={msg.content} />
                 </div>
               </div>
             )
-          }
-          if (msg.role === 'tool') {
-            return <ClaudeToolCard key={msg.id} message={msg} />
-          }
-          if (msg.role === 'system') {
-            // Skip the per-turn cost/duration/turns card — that noise after
-            // every reply is distracting and adds nothing for day-to-day use.
-            if (msg.costUsd !== undefined) return null
-            return (
-              <div key={msg.id} className="flex justify-start">
-                <p className="text-xs italic text-zinc-500">{msg.content}</p>
-              </div>
-            )
-          }
-          return (
-            <div key={msg.id} className="flex justify-start">
-              <div className="w-full max-w-[90%]">
-                <MarkdownRenderer content={msg.content} />
-              </div>
-            </div>
-          )
-        })}
+          })
+        })()}
         {companion.isRunning && (
           <ThinkingIndicator mode="direct" />
         )}

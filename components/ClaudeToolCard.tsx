@@ -3,6 +3,330 @@
 import { useState, useRef, useEffect } from 'react'
 import type { ChatMessage } from '@/lib/hooks/useCompanionStream'
 
+// ── Work block (groups consecutive tool messages) ───────────────────
+//
+// Mirrors the VSCode Claude Code layout: while Claude is working, the
+// tool events show up in a fixed-height scrollable column — older rows
+// scroll out of view as new ones arrive, the overall chat never grows
+// unbounded. When the turn finishes the block collapses to a single
+// summary row ("Thought for 12s · 5 steps") that expands on click.
+
+function shortPath(p: string | undefined): string {
+  if (!p) return ''
+  // Strip the `.bornastar-worktrees/<id>/` prefix if present so paths
+  // read like `src/foo.ts` instead of the full absolute path.
+  const worktreeIdx = p.lastIndexOf('.bornastar-worktrees/')
+  if (worktreeIdx >= 0) {
+    const afterId = p.indexOf('/', worktreeIdx + '.bornastar-worktrees/'.length)
+    if (afterId >= 0) return p.slice(afterId + 1)
+  }
+  // Otherwise keep the last 3 segments at most — enough context, not noisy.
+  const parts = p.split('/')
+  if (parts.length > 3) return '…/' + parts.slice(-3).join('/')
+  return p
+}
+
+function lineRangeFromInput(input?: Record<string, unknown>): string {
+  if (!input) return ''
+  const offset = input.offset as number | undefined
+  const limit = input.limit as number | undefined
+  if (typeof offset === 'number' && typeof limit === 'number') {
+    return ` (lines ${offset}-${offset + limit})`
+  }
+  return ''
+}
+
+// Truncate a string to one line preview.
+function preview(s: string, max = 120): string {
+  const flat = s.replace(/\s+/g, ' ').trim()
+  return flat.length > max ? flat.slice(0, max) + '…' : flat
+}
+
+// ── Bash IN / OUT block ─────────────────────────────────────────────
+// Always rendered inline under the bullet. Default shows a clipped
+// preview (≈6 lines) so a noisy command doesn't blow up the chat
+// height. An explicit expand button opens the full output without
+// forcing an internal scrollbar — the block just grows.
+function BashBlock({ message }: { message: ChatMessage }) {
+  const [expanded, setExpanded] = useState(false)
+  const output = typeof message.toolResult === 'string' ? message.toolResult : ''
+  const outLines = output ? output.split('\n') : []
+  const cmd = message.command ?? ''
+  // Cap command (IN) and stdout (OUT) to 3 lines each by default. The
+  // Show more / Collapse button below reveals or hides the rest — we
+  // never add an internal scrollbar, the whole block grows.
+  const PREVIEW_LINES = 3
+  const cmdClamp = !expanded ? 'line-clamp-3' : ''
+  const outClamp = !expanded ? 'line-clamp-3' : ''
+  const outTruncated = !expanded && outLines.length > PREVIEW_LINES
+  const cmdTruncated = !expanded && cmd.split('\n').length > PREVIEW_LINES
+  const truncated = outTruncated || cmdTruncated
+  const hidden = Math.max(0, outLines.length - PREVIEW_LINES)
+
+  return (
+    <div className="ml-3 mt-0.5 max-w-2xl overflow-hidden rounded border border-white/5 text-[11px] leading-5">
+      <div className="flex border-b border-white/5 bg-white/[0.02] px-2 py-1">
+        <span className="mr-2 font-mono text-[10px] uppercase tracking-wide text-zinc-500">IN</span>
+        <span className={`min-w-0 flex-1 whitespace-pre-wrap break-all font-mono text-zinc-300 ${cmdClamp}`}>{cmd}</span>
+      </div>
+      <div className={`flex ${message.toolError ? 'border-l-2 border-red-500/50' : ''}`}>
+        <span className="mx-2 mt-1 font-mono text-[10px] uppercase tracking-wide text-zinc-500">OUT</span>
+        <pre className={`min-w-0 flex-1 whitespace-pre-wrap break-all py-1 pr-2 font-mono ${message.toolError ? 'text-red-300' : 'text-zinc-400'} ${outClamp}`}>
+          {output || (message.toolResult === undefined ? '…' : '(empty)')}
+        </pre>
+      </div>
+      {truncated && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="w-full border-t border-white/5 bg-white/[0.02] py-1 text-[10px] text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-300"
+        >
+          Show {hidden > 0 ? `${hidden} more ${hidden === 1 ? 'line' : 'lines'}` : 'more'}
+        </button>
+      )}
+      {expanded && (outLines.length > PREVIEW_LINES || cmd.split('\n').length > PREVIEW_LINES) && (
+        <button
+          type="button"
+          onClick={() => setExpanded(false)}
+          className="w-full border-t border-white/5 bg-white/[0.02] py-1 text-[10px] text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-300"
+        >
+          Collapse
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ── Edit diff block (green/red lines, inline compact) ──────────────
+function EditDiffBlock({ message }: { message: ChatMessage }) {
+  // Lazy-require the diff package to avoid loading it on every row.
+  // Compute line-level diff between old_string and new_string.
+  const rows: { kind: 'add' | 'remove' | 'context'; text: string }[] = []
+  const oldStr = message.oldString ?? ''
+  const newStr = message.newString ?? ''
+  let added = 0
+  let removed = 0
+  if (oldStr || newStr) {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { diffLines } = require('diff') as typeof import('diff')
+    const parts = diffLines(oldStr, newStr)
+    for (const part of parts) {
+      const lines = part.value.split('\n')
+      // Drop the trailing empty line diffLines tends to leave.
+      if (lines[lines.length - 1] === '') lines.pop()
+      for (const line of lines) {
+        if (part.added) { rows.push({ kind: 'add', text: line }); added++ }
+        else if (part.removed) { rows.push({ kind: 'remove', text: line }); removed++ }
+        else rows.push({ kind: 'context', text: line })
+      }
+    }
+  }
+  return (
+    <div className="ml-3 mt-0.5 overflow-hidden rounded border border-white/5 text-[11px] leading-5">
+      <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-2 py-1 text-[10px] text-zinc-500">
+        <span>{message.filePath ? shortPath(message.filePath) : 'Edit'}</span>
+        <span>
+          {added > 0 && <span className="text-emerald-400">+{added}</span>}
+          {added > 0 && removed > 0 && ' '}
+          {removed > 0 && <span className="text-red-400">-{removed}</span>}
+        </span>
+      </div>
+      <div className="max-h-64 overflow-auto">
+        {rows.map((row, i) => (
+          <div
+            key={i}
+            className={`flex font-mono ${
+              row.kind === 'add' ? 'bg-emerald-500/10 text-emerald-200'
+              : row.kind === 'remove' ? 'bg-red-500/10 text-red-200'
+              : 'text-zinc-400'
+            }`}
+          >
+            <span className="w-4 shrink-0 select-none text-center text-zinc-600">
+              {row.kind === 'add' ? '+' : row.kind === 'remove' ? '-' : ' '}
+            </span>
+            <span className="min-w-0 flex-1 whitespace-pre-wrap pr-2">{row.text || ' '}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// One compact line per item — bullet + label + preview. Handles tool,
+// thinking and intermediate assistant text rows inside the work block.
+function CompactToolRow({ message }: { message: ChatMessage }) {
+  const [expanded, setExpanded] = useState(false)
+
+  // Thinking / intermediate assistant text — single-line preview,
+  // click expands to the full text in italics.
+  if (message.role === 'thinking' || message.role === 'assistant') {
+    const isThinking = message.role === 'thinking'
+    const text = message.content ?? ''
+    return (
+      <div className="group">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex w-full items-start gap-2 px-1 py-0.5 text-left text-[12px] leading-5 transition-colors hover:bg-white/5"
+        >
+          <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-zinc-500" />
+          <span className="min-w-0 flex-1">
+            {isThinking && <span className="font-medium text-zinc-300">Thinking</span>}
+            {isThinking && <span className="mx-1.5 text-zinc-600">·</span>}
+            <span className={`text-zinc-500 ${isThinking ? 'italic' : ''}`}>{preview(text)}</span>
+          </span>
+        </button>
+        {expanded && (
+          <div className={`ml-3 mt-0.5 whitespace-pre-wrap rounded border border-white/5 bg-black/30 px-2 py-1.5 text-[11px] leading-5 ${isThinking ? 'italic text-zinc-400' : 'text-zinc-300'}`}>
+            {text}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // Tool row — bullet + label + filename/command + status dot.
+  const label = TOOL_CONFIG[message.toolName ?? '']?.label ?? message.toolName ?? 'Tool'
+  const isLoading = message.toolResult === undefined
+  const isError = message.toolError
+  const hasResult = !isLoading
+  const detail = message.filePath
+    ? `${shortPath(message.filePath)}${lineRangeFromInput(message.toolInput)}`
+    : message.command
+      ? message.command.length > 70 ? message.command.slice(0, 70) + '…' : message.command
+      : message.searchPattern
+        ? `"${message.searchPattern}"`
+        : ''
+
+  // Bash and Edit get rich inline blocks — always visible, no click.
+  const isBash = message.toolName === 'Bash'
+  const isEdit = message.toolName === 'Edit' || message.toolName === 'MultiEdit'
+  const inlineBlock = isBash
+    ? hasResult || isLoading ? <BashBlock message={message} /> : null
+    : isEdit && (message.oldString || message.newString)
+      ? <EditDiffBlock message={message} />
+      : null
+
+  return (
+    <div className="group">
+      <button
+        type="button"
+        onClick={() => !inlineBlock && hasResult && setExpanded((v) => !v)}
+        className="flex w-full items-start gap-2 px-1 py-0.5 text-left text-[12px] leading-5 transition-colors hover:bg-white/5"
+      >
+        <span className={`mt-[7px] h-1 w-1 shrink-0 rounded-full ${
+          isError ? 'bg-red-400'
+          : isLoading ? 'bg-amber-400 animate-pulse'
+          : 'bg-zinc-500'
+        }`} />
+        <span className="min-w-0 flex-1">
+          <span className="font-medium text-zinc-300">{label}</span>
+          {detail && !isBash && (
+            <span className="ml-1.5 font-mono text-zinc-500">{detail}</span>
+          )}
+        </span>
+      </button>
+      {/* Rich inline block for Bash / Edit — always open, compact. */}
+      {inlineBlock}
+      {/* Generic click-to-expand for other tools. */}
+      {!inlineBlock && expanded && hasResult && (
+        <div className="ml-4 mt-0.5 max-h-64 overflow-auto rounded border border-white/5 bg-black/30 px-2 py-1.5 font-mono text-[11px] text-zinc-400">
+          {typeof message.toolResult === 'string' ? (
+            <pre className="whitespace-pre-wrap">{message.toolResult}</pre>
+          ) : (
+            <pre className="whitespace-pre-wrap">{JSON.stringify(message.toolResult, null, 2)}</pre>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// A run of consecutive tool messages. Active = still streaming (shows
+// a fixed-height scroller that follows the newest row). Collapsed =
+// turn finished; a one-line summary with the elapsed time + step count,
+// click to expand the whole log.
+export function WorkBlock({
+  messages,
+  active,
+  durationMs,
+}: {
+  messages: ChatMessage[]
+  active: boolean
+  durationMs?: number
+}) {
+  const [expanded, setExpanded] = useState(active)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setExpanded(active)
+  }, [active])
+
+  // Auto-scroll to newest row while the block is streaming.
+  useEffect(() => {
+    if (!active) return
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollTop = el.scrollHeight
+  }, [active, messages.length])
+
+  if (messages.length === 0) return null
+
+  const durationSec = typeof durationMs === 'number'
+    ? (durationMs / 1000).toFixed(1)
+    : (() => {
+        const first = messages[0].timestamp
+        const last = messages[messages.length - 1].timestamp
+        return ((last - first) / 1000).toFixed(1)
+      })()
+  const summaryLabel = active ? 'Working…' : `Thought for ${durationSec}s`
+
+  return (
+    <div className="my-1">
+      {/* Summary row — plain text floating in the chat, no box/border.
+          Hover subtly lifts the text color so the user can see it's
+          clickable when the turn is collapsed. During an active turn
+          the amber dot signals "working", the text sits muted, and
+          the click-to-expand is disabled (already expanded). */}
+      <button
+        type="button"
+        onClick={() => !active && setExpanded((v) => !v)}
+        className={`group flex w-full items-center gap-2 py-0.5 text-left text-[11px] transition-colors ${
+          active ? 'cursor-default text-zinc-400' : 'cursor-pointer text-zinc-500 hover:text-zinc-200'
+        }`}
+      >
+        {active && (
+          <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-amber-400" />
+        )}
+        <span className="flex-1 font-medium">{summaryLabel}</span>
+        {!active && (
+          <svg
+            className={`h-3 w-3 shrink-0 text-zinc-600 transition-all group-hover:text-zinc-400 ${expanded ? 'rotate-180' : ''}`}
+            fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+          </svg>
+        )}
+      </button>
+
+      {/* Steps — inline in the chat flow, no container. While the turn
+          is active we cap the height so the chat doesn't scroll down
+          with every new tool; after completion we allow more room
+          because the user explicitly asked to see it. */}
+      {expanded && (
+        <div
+          ref={scrollRef}
+          className={`overflow-y-auto ${active ? 'max-h-48' : 'max-h-96'}`}
+        >
+          {messages.map((m) => (
+            <CompactToolRow key={m.id} message={m} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Tool Card Icons ─────────────────────────────────────────────────
 
 const TOOL_CONFIG: Record<string, {

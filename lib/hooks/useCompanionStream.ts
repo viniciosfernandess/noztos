@@ -5,9 +5,11 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 // ── Stream-JSON event types from Claude Code CLI ──────────────────────
 
 export interface ClaudeContentBlock {
-  type: 'text' | 'tool_use' | 'tool_result'
+  type: 'text' | 'tool_use' | 'tool_result' | 'thinking' | 'redacted_thinking'
   // text
   text?: string
+  // thinking (extended-thinking mode only)
+  thinking?: string
   // tool_use
   id?: string
   name?: string
@@ -56,7 +58,7 @@ export interface ClaudeEvent {
 // Parsed message for rendering — flattened from stream events
 export interface ChatMessage {
   id: string
-  role: 'user' | 'assistant' | 'system' | 'tool'
+  role: 'user' | 'assistant' | 'system' | 'tool' | 'thinking'
   content: string
   timestamp: number
   // Tool info (when role = 'tool')
@@ -265,6 +267,17 @@ export function useCompanionStream(
       case 'assistant':
         if (actual.message?.content) {
           for (const block of actual.message.content) {
+            if (block.type === 'thinking' && block.thinking) {
+              // Extended-thinking content — Claude's private reasoning
+              // before it starts acting. Rendered as a row inside the
+              // work block so the user can follow the chain of thought.
+              parsed.push({
+                id: nextId(),
+                role: 'thinking',
+                content: block.thinking,
+                timestamp: Date.now(),
+              })
+            }
             if (block.type === 'text' && block.text) {
               parsed.push({
                 id: nextId(),
