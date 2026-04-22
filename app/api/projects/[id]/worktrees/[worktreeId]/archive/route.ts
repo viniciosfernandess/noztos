@@ -1,17 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyProjectAccess } from '@/lib/auth'
-import { getWorktreeDiffStats } from '@/lib/worktree'
 
 interface RouteContext {
   params: Promise<{ id: string; worktreeId: string }>
 }
 
-// POST — archive a worktree.
+// POST — archive a worktree and every chat inside it.
 //
-// Refuses if the worktree has uncommitted changes (returns 409 with stats).
-// Archived worktrees keep their on-disk state and can be restored later
-// with everything intact.
+// Archive preserves the full state as-is: uncommitted changes, staged
+// files, the PR the user opened, the current branch HEAD. Nothing is
+// touched on disk. Restoring later brings the worktree back exactly as
+// it was — yellow indicator, changes list, PR status, everything.
+//
+// Any dirty-state confirmation the UI wants to show belongs in the
+// client; the server always accepts and preserves.
 export async function POST(_request: NextRequest, context: RouteContext) {
   const { id, worktreeId } = await context.params
   const access = await verifyProjectAccess(id)
@@ -27,16 +30,15 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: 'Worktree not found' }, { status: 404 })
   }
 
-  const stats = await getWorktreeDiffStats(id, worktreeId)
-  if (stats && (stats.added > 0 || stats.removed > 0)) {
-    return NextResponse.json(
-      { error: 'has_pending_changes', stats },
-      { status: 409 },
-    )
-  }
-
+  // Archive the worktree and take every chat inside with it. Individually-
+  // archived chats stay in 'archived' — restoring the worktree later will
+  // restore them all together (see /restore route).
   await prisma.worktree.update({
     where: { id: worktreeId },
+    data: { status: 'archived' },
+  })
+  await prisma.chatSession.updateMany({
+    where: { worktreeId, status: 'open' },
     data: { status: 'archived' },
   })
 

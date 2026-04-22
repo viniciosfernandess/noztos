@@ -25,10 +25,24 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: 'Cannot restore — worktree is not archived or trashed' }, { status: 400 })
   }
 
-  await prisma.worktree.update({
-    where: { id: worktreeId },
-    data: { status: 'open', trashedAt: null },
-  })
+  // Cascading restore: bring back every chat this worktree owns, no
+  // matter whether it was individually trashed/archived before the
+  // worktree itself was put away. The user's mental model is "the
+  // worktree plus its chats move together" — when restoring the
+  // container, every chat rides along.
+  await prisma.$transaction([
+    prisma.worktree.update({
+      where: { id: worktreeId },
+      data: { status: 'open', trashedAt: null },
+    }),
+    prisma.chatSession.updateMany({
+      where: {
+        worktreeId,
+        status: { in: ['archived', 'trashed'] },
+      },
+      data: { status: 'open', trashedAt: null },
+    }),
+  ])
 
   return NextResponse.json({ success: true })
 }

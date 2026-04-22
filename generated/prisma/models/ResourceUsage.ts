@@ -497,14 +497,6 @@ export type ResourceUsageUncheckedUpdateManyWithoutTaskNestedInput = {
   deleteMany?: Prisma.ResourceUsageScalarWhereInput | Prisma.ResourceUsageScalarWhereInput[]
 }
 
-export type FloatFieldUpdateOperationsInput = {
-  set?: number
-  increment?: number
-  decrement?: number
-  multiply?: number
-  divide?: number
-}
-
 export type ResourceUsageCreateWithoutProjectInput = {
   id?: string
   userId: string

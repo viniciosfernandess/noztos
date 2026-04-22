@@ -13,7 +13,7 @@ import { ResolveConflictsSplitButton } from './ResolveConflictsSplitButton'
 import { MOCK_CONFLICTS, MOCK_GIT_STATUS } from '@/lib/mocks/checks-demo'
 import { useGitStatus, deriveBadge, deriveUnsupportedLabel } from '@/lib/hooks/useGitStatus'
 import { useCompanionStream, type ChatMessage } from '@/lib/hooks/useCompanionStream'
-import { ClaudeToolCard, SessionResultCard, ModeSelector, CompanionStatusBadge, CostTracker } from './ClaudeToolCard'
+import { ClaudeToolCard, SessionResultCard, ModeSelector, ModelSelector, ThinkingSelector, CompanionStatusBadge } from './ClaudeToolCard'
 import { ReportBadge } from './ChatReport'
 import type { ChatReport } from '@/lib/report-types'
 
@@ -768,10 +768,15 @@ function ArchivedModal({
   onClose: () => void
   onRestored: () => void
 }) {
-  const [items, setItems] = useState<{ id: string; name: string; updatedAt: string }[]>([])
+  type ArchivedChat = { id: string; name: string; updatedAt: string }
+  type ArchivedWorktree = {
+    id: string; name: string; branchName: string; updatedAt: string
+    sessions: { id: string; name: string }[]
+  }
+  const [chats, setChats] = useState<ArchivedChat[]>([])
+  const [worktrees, setWorktrees] = useState<ArchivedWorktree[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Lock background scroll while the modal is mounted
   useEffect(() => {
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -779,28 +784,44 @@ function ArchivedModal({
   }, [])
 
   useEffect(() => {
-    fetch(`/api/projects/${projectId}/chat-sessions/archived`)
-      .then((r) => r.json())
-      .then((d) => setItems(d.sessions ?? []))
+    // Archived lives forever — no expiration. Load chats + worktrees in
+    // parallel; the chats endpoint already excludes any chat whose parent
+    // worktree is also archived (those surface nested under the worktree).
+    Promise.all([
+      fetch(`/api/projects/${projectId}/chat-sessions/archived`).then((r) => r.ok ? r.json() : { sessions: [] }),
+      fetch(`/api/projects/${projectId}/worktrees/archived`).then((r) => r.ok ? r.json() : { worktrees: [] }),
+    ])
+      .then(([s, w]) => {
+        setChats(s.sessions ?? [])
+        setWorktrees(w.worktrees ?? [])
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [projectId])
 
-  async function restore(id: string) {
+  async function restoreChat(id: string) {
     await fetch(`/api/projects/${projectId}/chat-sessions/${id}/restore`, { method: 'POST' })
-    setItems((prev) => prev.filter((s) => s.id !== id))
+    setChats((prev) => prev.filter((s) => s.id !== id))
     onRestored()
   }
+
+  async function restoreWorktree(id: string) {
+    await fetch(`/api/projects/${projectId}/worktrees/${id}/restore`, { method: 'POST' })
+    setWorktrees((prev) => prev.filter((w) => w.id !== id))
+    onRestored()
+  }
+
+  const empty = !loading && chats.length === 0 && worktrees.length === 0
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
-        className="flex h-[560px] max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-xl border border-white/10 shadow-2xl"
+        className="flex h-[600px] max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-white/10 shadow-2xl"
         style={{ backgroundColor: '#181818' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex shrink-0 items-center justify-between border-b border-[#2B2B2B] px-5 py-3">
-          <h3 className="text-[13px] font-semibold text-zinc-100">Archived chats</h3>
+          <h3 className="text-[13px] font-semibold text-zinc-100">Archived</h3>
           <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300">
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -808,28 +829,59 @@ function ArchivedModal({
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {loading ? (
-            <p className="px-5 py-6 text-center text-[11px] text-zinc-500">Loading...</p>
-          ) : items.length === 0 ? (
-            <p className="px-5 py-6 text-center text-[11px] text-zinc-500">No archived chats.</p>
-          ) : (
-            items.map((s) => (
-              <div key={s.id} className="flex items-center justify-between border-b border-[#2B2B2B] px-5 py-3 last:border-b-0">
+          {loading && <p className="px-5 py-6 text-center text-[11px] text-zinc-500">Loading…</p>}
+          {empty && <p className="px-5 py-6 text-center text-[11px] text-zinc-500">Nothing archived yet.</p>}
+
+          {/* Archived worktrees — bundled with their chats */}
+          {worktrees.map((w) => (
+            <div key={w.id} className="border-b border-[#2B2B2B] px-5 py-3 last:border-b-0">
+              <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[12px] text-zinc-200">{s.name}</p>
+                  <div className="flex items-center gap-2">
+                    <svg className="h-3.5 w-3.5 text-zinc-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 8h14M5 8a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v1a2 2 0 01-2 2M5 8v11a2 2 0 002 2h10a2 2 0 002-2V8M10 12h4" />
+                    </svg>
+                    <p className="truncate text-[12px] font-medium text-zinc-100">{w.name}</p>
+                    <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-zinc-500">{w.branchName}</span>
+                  </div>
                   <p className="mt-0.5 text-[10px] text-zinc-600">
-                    Archived {new Date(s.updatedAt).toLocaleDateString()}
+                    Archived {new Date(w.updatedAt).toLocaleDateString()} · {w.sessions.length} {w.sessions.length === 1 ? 'chat' : 'chats'} inside
                   </p>
                 </div>
                 <button
-                  onClick={() => restore(s.id)}
-                  className="ml-3 rounded-md border border-[#3C3C3C] px-2.5 py-1 text-[11px] text-zinc-300 hover:border-white/30 hover:bg-white/5"
+                  onClick={() => restoreWorktree(w.id)}
+                  className="rounded-md border border-[#3C3C3C] px-2.5 py-1 text-[11px] text-zinc-300 hover:border-white/30 hover:bg-white/5"
                 >
                   Restore
                 </button>
               </div>
-            ))
-          )}
+              {w.sessions.length > 0 && (
+                <ul className="mt-2 ml-5 border-l border-[#2B2B2B] pl-3">
+                  {w.sessions.map((s) => (
+                    <li key={s.id} className="py-0.5 text-[11px] text-zinc-500 truncate">↳ {s.name}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+
+          {/* Standalone archived chats */}
+          {chats.map((s) => (
+            <div key={s.id} className="flex items-center justify-between border-b border-[#2B2B2B] px-5 py-3 last:border-b-0">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[12px] text-zinc-200">{s.name}</p>
+                <p className="mt-0.5 text-[10px] text-zinc-600">
+                  Archived {new Date(s.updatedAt).toLocaleDateString()}
+                </p>
+              </div>
+              <button
+                onClick={() => restoreChat(s.id)}
+                className="ml-3 rounded-md border border-[#3C3C3C] px-2.5 py-1 text-[11px] text-zinc-300 hover:border-white/30 hover:bg-white/5"
+              >
+                Restore
+              </button>
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -847,10 +899,15 @@ function TrashModal({
   onClose: () => void
   onChanged: () => void
 }) {
-  const [items, setItems] = useState<{ id: string; name: string; trashedAt: string; daysLeft: number }[]>([])
+  type TrashedChat = { id: string; name: string; trashedAt: string; daysLeft: number }
+  type TrashedWorktree = {
+    id: string; name: string; branchName: string; trashedAt: string; daysLeft: number
+    sessions: { id: string; name: string }[]
+  }
+  const [chats, setChats] = useState<TrashedChat[]>([])
+  const [worktrees, setWorktrees] = useState<TrashedWorktree[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Lock background scroll while the modal is mounted
   useEffect(() => {
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -859,9 +916,17 @@ function TrashModal({
 
   function reload() {
     setLoading(true)
-    fetch(`/api/projects/${projectId}/chat-sessions/trash`)
-      .then((r) => r.json())
-      .then((d) => setItems(d.sessions ?? []))
+    // Fetch both trash buckets in parallel. Worktree card bundles its
+    // child chats; the chats endpoint returns only items whose parent
+    // worktree is still active (standalone entries).
+    Promise.all([
+      fetch(`/api/projects/${projectId}/chat-sessions/trash`).then((r) => r.ok ? r.json() : { sessions: [] }),
+      fetch(`/api/projects/${projectId}/worktrees/trash`).then((r) => r.ok ? r.json() : { worktrees: [] }),
+    ])
+      .then(([s, w]) => {
+        setChats(s.sessions ?? [])
+        setWorktrees(w.worktrees ?? [])
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }
@@ -871,22 +936,36 @@ function TrashModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
 
-  async function restore(id: string) {
+  async function restoreChat(id: string) {
     await fetch(`/api/projects/${projectId}/chat-sessions/${id}/restore`, { method: 'POST' })
-    setItems((prev) => prev.filter((s) => s.id !== id))
+    setChats((prev) => prev.filter((s) => s.id !== id))
     onChanged()
   }
 
-  async function deleteForever(id: string) {
+  async function deleteChatForever(id: string) {
     await fetch(`/api/projects/${projectId}/chat-sessions/${id}/delete-forever`, { method: 'POST' })
-    setItems((prev) => prev.filter((s) => s.id !== id))
+    setChats((prev) => prev.filter((s) => s.id !== id))
     onChanged()
   }
+
+  async function restoreWorktree(id: string) {
+    await fetch(`/api/projects/${projectId}/worktrees/${id}/restore`, { method: 'POST' })
+    setWorktrees((prev) => prev.filter((w) => w.id !== id))
+    onChanged()
+  }
+
+  async function deleteWorktreeForever(id: string) {
+    await fetch(`/api/projects/${projectId}/worktrees/${id}/delete-forever`, { method: 'POST' })
+    setWorktrees((prev) => prev.filter((w) => w.id !== id))
+    onChanged()
+  }
+
+  const empty = !loading && chats.length === 0 && worktrees.length === 0
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
-        className="flex h-[560px] max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-xl border border-white/10 shadow-2xl"
+        className="flex h-[600px] max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-white/10 shadow-2xl"
         style={{ backgroundColor: '#181818' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -899,34 +978,73 @@ function TrashModal({
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto">
-          {loading ? (
-            <p className="px-5 py-6 text-center text-[11px] text-zinc-500">Loading...</p>
-          ) : items.length === 0 ? (
-            <p className="px-5 py-6 text-center text-[11px] text-zinc-500">Trash is empty.</p>
-          ) : (
-            items.map((s) => (
-              <div key={s.id} className="flex items-center justify-between gap-2 border-b border-[#2B2B2B] px-5 py-3 last:border-b-0">
+          {loading && <p className="px-5 py-6 text-center text-[11px] text-zinc-500">Loading…</p>}
+          {empty && <p className="px-5 py-6 text-center text-[11px] text-zinc-500">Trash is empty.</p>}
+
+          {/* Trashed worktrees — bundled with the chats they carried in */}
+          {worktrees.map((w) => (
+            <div key={w.id} className="border-b border-[#2B2B2B] px-5 py-3 last:border-b-0">
+              <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[12px] text-zinc-200">{s.name}</p>
+                  <div className="flex items-center gap-2">
+                    <svg className="h-3.5 w-3.5 text-zinc-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7h18M5 7v13a2 2 0 002 2h10a2 2 0 002-2V7M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2" />
+                    </svg>
+                    <p className="truncate text-[12px] font-medium text-zinc-100">{w.name}</p>
+                    <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-zinc-500">{w.branchName}</span>
+                  </div>
                   <p className="mt-0.5 text-[10px] text-zinc-600">
-                    Expires in {s.daysLeft} {s.daysLeft === 1 ? 'day' : 'days'}
+                    Expires in {w.daysLeft} {w.daysLeft === 1 ? 'day' : 'days'} · {w.sessions.length} {w.sessions.length === 1 ? 'chat' : 'chats'} inside
                   </p>
                 </div>
-                <button
-                  onClick={() => restore(s.id)}
-                  className="rounded-md border border-[#3C3C3C] px-2.5 py-1 text-[11px] text-zinc-300 hover:border-white/30 hover:bg-white/5"
-                >
-                  Restore
-                </button>
-                <button
-                  onClick={() => deleteForever(s.id)}
-                  className="rounded-md border border-red-500/30 px-2.5 py-1 text-[11px] text-red-400 hover:border-red-500/60 hover:bg-red-500/10"
-                >
-                  Delete forever
-                </button>
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => restoreWorktree(w.id)}
+                    className="rounded-md border border-[#3C3C3C] px-2.5 py-1 text-[11px] text-zinc-300 hover:border-white/30 hover:bg-white/5"
+                  >
+                    Restore
+                  </button>
+                  <button
+                    onClick={() => deleteWorktreeForever(w.id)}
+                    className="rounded-md border border-red-500/30 px-2.5 py-1 text-[11px] text-red-400 hover:border-red-500/60 hover:bg-red-500/10"
+                  >
+                    Delete forever
+                  </button>
+                </div>
               </div>
-            ))
-          )}
+              {w.sessions.length > 0 && (
+                <ul className="mt-2 ml-5 border-l border-[#2B2B2B] pl-3">
+                  {w.sessions.map((s) => (
+                    <li key={s.id} className="py-0.5 text-[11px] text-zinc-500 truncate">↳ {s.name}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+
+          {/* Standalone trashed chats — parent worktree is still active */}
+          {chats.map((s) => (
+            <div key={s.id} className="flex items-center justify-between gap-2 border-b border-[#2B2B2B] px-5 py-3 last:border-b-0">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[12px] text-zinc-200">{s.name}</p>
+                <p className="mt-0.5 text-[10px] text-zinc-600">
+                  Expires in {s.daysLeft} {s.daysLeft === 1 ? 'day' : 'days'}
+                </p>
+              </div>
+              <button
+                onClick={() => restoreChat(s.id)}
+                className="rounded-md border border-[#3C3C3C] px-2.5 py-1 text-[11px] text-zinc-300 hover:border-white/30 hover:bg-white/5"
+              >
+                Restore
+              </button>
+              <button
+                onClick={() => deleteChatForever(s.id)}
+                className="rounded-md border border-red-500/30 px-2.5 py-1 text-[11px] text-red-400 hover:border-red-500/60 hover:bg-red-500/10"
+              >
+                Delete forever
+              </button>
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -1158,7 +1276,14 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
   const [activeMode, setActiveMode] = useState<ChatMode>('no_skill')
   const [activeSkillId, setActiveSkillId] = useState<string | null>(null)
   const [activeTeamId, setActiveTeamId] = useState<string | null>(null)
-  const [chatMessages, setChatMessages] = useState<Message[]>([])
+  // chatMessages state removed — the legacy Bornastar engine that wrote
+  // into it is gone. Chat content lives in companion.messages inside the
+  // ChatPanel. Kept as a comment marker so nobody re-adds the old poll.
+  // Claude Code messages per Bornastar chat session. Lives here (parent of
+  // ChatPanel) so that switching between chats doesn't throw away each
+  // one's conversation — ChatPanel re-mounts on sessionId change to keep
+  // state isolated, and seeds itself from this store.
+  const [companionMessagesBySession, setCompanionMessagesBySession] = useState<Record<string, ChatMessage[]>>({})
   const [teamRunState, setTeamRunState] = useState<unknown>(null)
   const [teamRunActive, setTeamRunActive] = useState(false)
 
@@ -1215,8 +1340,20 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
       } catch { /* ignore */ }
     }
     fetchStats()
-    const interval = setInterval(fetchStats, 5000)
-    return () => { cancelled = true; clearInterval(interval) }
+    // Push-based — stats (per-worktree/chat diff rollups) depend on the
+    // same filesystem the explorer watches, so we piggy-back on the
+    // `bornastar-fs-change` signal instead of running a 5 s poll.
+    let debounce: ReturnType<typeof setTimeout> | null = null
+    function onFsChange() {
+      if (debounce) return
+      debounce = setTimeout(() => { debounce = null; fetchStats() }, 600)
+    }
+    window.addEventListener('bornastar-fs-change', onFsChange)
+    return () => {
+      cancelled = true
+      window.removeEventListener('bornastar-fs-change', onFsChange)
+      if (debounce) clearTimeout(debounce)
+    }
   }, [projectId])
 
   // Close worktree tab menu on outside click
@@ -1242,6 +1379,23 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
 
   const activeEmployee = hiredEmployees.find((e) => e.id === activeSkillId)
   const activeTeam = teams.find((t) => t.id === activeTeamId)
+
+  // Stable callback so ChatPanel's sync effect doesn't loop (a new inline
+  // reference each render would retrigger the effect → setState → render → …).
+  // We read activeSessionId from a ref so the callback stays referentially
+  // stable even when the active chat switches.
+  const activeSessionIdRef = useRef(activeSessionId)
+  useEffect(() => { activeSessionIdRef.current = activeSessionId }, [activeSessionId])
+  const handleCompanionMessagesChange = useCallback((msgs: ChatMessage[]) => {
+    const sid = activeSessionIdRef.current
+    if (!sid) return
+    setCompanionMessagesBySession((prev) => {
+      // Skip the set if identical reference — React still re-runs effects
+      // but at least no re-render storm on redundant updates.
+      if (prev[sid] === msgs) return prev
+      return { ...prev, [sid]: msgs }
+    })
+  }, [])
 
   // Load (or reload) main chats AND worktrees together. Used after any
   // mutation in the sidebar (create, archive, trash, restore).
@@ -1358,38 +1512,104 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
 
-  // Load messages when active session changes
+  // Persist "user viewed this chat" so unread state survives refresh /
+  // device switch. Fire-and-forget — the in-memory Set is already
+  // updated by the click handlers in the sidebar.
   useEffect(() => {
-    if (!activeSessionId) { setChatMessages([]); return }
-    fetch(`/api/projects/${projectId}/chat-sessions/${activeSessionId}`)
-      .then((r) => r.json())
-      .then((data) => setChatMessages((data.messages ?? []).map((m: Message) => ({ ...m, mode: m.mode ?? 'no_skill', activeSkillId: m.activeSkillId ?? null }))))
-      .catch(() => setChatMessages([]))
+    if (!activeSessionId) return
+    fetch(`/api/projects/${projectId}/chat-sessions/${activeSessionId}/mark-read`, {
+      method: 'POST',
+    }).catch(() => {})
   }, [activeSessionId, projectId])
 
-  // Detect new messages in non-active sessions — mark as unread
+  // ── Unread detection (SSE-driven, not polling) ─────────────────────
+  // Seed the initial unread set from the DB so a refresh / fresh tab
+  // picks up unread chats that accumulated while the user was offline.
   useEffect(() => {
-    let lastCheck = new Date().toISOString()
-    const interval = setInterval(async () => {
+    fetch(`/api/projects/${projectId}/chat-sessions/unread`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (!data?.unreadIds) return
+        setUnreadSessionIds(new Set<string>(data.unreadIds))
+      })
+      .catch(() => {})
+  }, [projectId])
+
+  // Subscribe to the same companion SSE stream the ChatPanel uses, but
+  // at the WorkPanel level and unfiltered. Whenever Claude emits an
+  // assistant / tool event, look at its bornastarSessionId — if it's a
+  // chat OTHER than the one the user is currently viewing, flag it as
+  // unread. The SSE bus already multiplexes every chat's events through
+  // one connection per user, so this costs no extra DB queries.
+  const activeSessionIdForUnreadRef = useRef<string | null>(activeSessionId)
+  useEffect(() => { activeSessionIdForUnreadRef.current = activeSessionId }, [activeSessionId])
+  useEffect(() => {
+    const controller = new AbortController()
+    async function listen() {
       try {
-        const r = await fetch(`/api/projects/${projectId}/chat/status?after=${lastCheck}`)
-        if (!r.ok) return
-        const d = await r.json()
-        const newMsgs: { sessionId?: string; sender: string }[] = d.messages ?? []
-        // Only mark assistant/employee messages — not user echoes or steps
-        const replies = newMsgs.filter(m => m.sender !== 'user' && m.sender !== 'step' && m.sessionId && m.sessionId !== activeSessionId)
-        if (replies.length > 0) {
-          setUnreadSessionIds((prev) => {
-            const next = new Set(prev)
-            replies.forEach(m => { if (m.sessionId) next.add(m.sessionId) })
-            return next
-          })
+        const res = await fetch('/api/companion/stream', { signal: controller.signal })
+        if (!res.ok || !res.body) return
+        const reader = res.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          buffer = lines.pop() ?? ''
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue
+            try {
+              const event = JSON.parse(line.slice(6)) as {
+                type?: string
+                payload?: {
+                  bornastarSessionId?: string
+                  event?: { type?: string; message?: { content?: { type?: string }[] } }
+                  projectPath?: string
+                  paths?: string[]
+                }
+              }
+
+              // File-system changes pushed by the companion watcher.
+              // Fires whenever a file in the project tree is created,
+              // edited or deleted. We dispatch a DOM event so the
+              // Explorer, Changes panel and stats rows can refetch on
+              // demand instead of polling on an interval.
+              if (event.type === 'fs_change') {
+                const paths = event.payload?.paths ?? []
+                window.dispatchEvent(new CustomEvent('bornastar-fs-change', {
+                  detail: { projectPath: event.payload?.projectPath, paths },
+                }))
+                continue
+              }
+
+              if (event.type !== 'claude_event') continue
+              const inner = event.payload?.event
+              const sid = event.payload?.bornastarSessionId
+              if (!sid || sid === activeSessionIdForUnreadRef.current) continue
+              // Only assistant text/tool_use blocks count — system
+              // metrics ('result') and user echoes shouldn't mark unread.
+              const isContentEvent =
+                inner?.type === 'assistant'
+                || (inner?.type === 'user' && inner.message?.content?.some((c) => c.type === 'tool_result'))
+              if (!isContentEvent) continue
+              setUnreadSessionIds((prev) => {
+                if (prev.has(sid)) return prev
+                const next = new Set(prev)
+                next.add(sid)
+                return next
+              })
+            } catch { /* non-JSON line, skip */ }
+          }
         }
-        lastCheck = new Date().toISOString()
-      } catch { /* ignore */ }
-    }, 3000)
-    return () => clearInterval(interval)
-  }, [projectId, activeSessionId])
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') { /* ignore stream errors */ }
+      }
+    }
+    listen()
+    return () => controller.abort()
+  }, [projectId])
 
   // Check for active team run
   useEffect(() => {
@@ -1441,7 +1661,6 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
       setMainChats((prev) => [...prev, { id: session.id, name: session.name, worktreeId: null }])
       setActiveSessionId(session.id)
       setActiveWorktreeId(null)
-      setChatMessages([])
     }
   }
 
@@ -1462,7 +1681,6 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
       }])
       setActiveWorktreeId(worktree.id)
       setActiveSessionId(session.id)
-      setChatMessages([])
     }
   }
 
@@ -1482,7 +1700,6 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
       ))
       setActiveWorktreeId(worktreeId)
       setActiveSessionId(session.id)
-      setChatMessages([])
     }
   }
 
@@ -1635,7 +1852,6 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
       const wt = worktrees.find((w) => w.id === worktreeId)
       const remaining = wt?.sessions.filter((s) => s.id !== sessionId) ?? []
       setActiveSessionId(remaining[0]?.id ?? null)
-      setChatMessages([])
     }
   }
 
@@ -1892,7 +2108,6 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                         onClick={() => {
                           setActiveWorktreeId(null)
                           setActiveSessionId(null)
-                          setChatMessages([])
                         }}
                         title="Minimize worktree"
                         className="text-zinc-500 transition-colors hover:text-zinc-300"
@@ -2018,14 +2233,14 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                   key={activeSessionId ?? 'empty'}
                   projectId={projectId}
                   sessionId={activeSessionId}
+                  initialCompanionMessages={activeSessionId ? (companionMessagesBySession[activeSessionId] ?? []) : []}
+                  onCompanionMessagesChange={handleCompanionMessagesChange}
                   sessionName={
                     activeWorktreeId
                       ? worktrees.find((w) => w.id === activeWorktreeId)?.sessions.find((s) => s.id === activeSessionId)?.name ?? 'Chat'
                       : mainChats.find((s) => s.id === activeSessionId)?.name ?? 'Chat'
                   }
                   isWorktreeChat={!!activeWorktreeId}
-                  messages={chatMessages}
-                  setMessages={setChatMessages}
                   activeMode={activeMode}
                   activeSkillId={activeSkillId}
                   activeTeamId={activeTeamId}
@@ -2049,7 +2264,6 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                   onMinimize={() => {
                     setActiveSessionId(null)
                     setActiveWorktreeId(null)
-                    setChatMessages([])
                   }}
                   onOpenScratchpad={() => setShowScratchpad(true)}
                   onBusyChange={handleBusyChange}
@@ -3376,8 +3590,20 @@ function ChangesList({
       }
     }
     load()
-    const interval = setInterval(load, 5000)
-    return () => { cancelled = true; clearInterval(interval) }
+    // Push-based refresh — refetch only when the companion watcher
+    // reports a real filesystem change. Debounced to coalesce burst
+    // saves (editor format-on-save hits us 3-4x per save).
+    let debounce: ReturnType<typeof setTimeout> | null = null
+    function onFsChange() {
+      if (debounce) return
+      debounce = setTimeout(() => { debounce = null; load() }, 400)
+    }
+    window.addEventListener('bornastar-fs-change', onFsChange)
+    return () => {
+      cancelled = true
+      window.removeEventListener('bornastar-fs-change', onFsChange)
+      if (debounce) clearTimeout(debounce)
+    }
   }, [projectId, worktreeId])
 
   const filtered = realChanges
@@ -3985,9 +4211,20 @@ function FileTree({ projectId, worktreeId, hasActiveSession, mainState }: { proj
 
   useEffect(() => {
     fetchFiles()
-    // Re-fetch every 5s so changes from any active chat appear in the tree
-    const interval = setInterval(fetchFiles, 5000)
-    return () => clearInterval(interval)
+    // No polling — the companion daemon's fs watcher pushes a
+    // `bornastar-fs-change` window event whenever a real file is added,
+    // edited or deleted. We refetch only on that signal (plus a tiny
+    // debounce so burst saves don't fire N requests).
+    let debounce: ReturnType<typeof setTimeout> | null = null
+    function onFsChange() {
+      if (debounce) return
+      debounce = setTimeout(() => { debounce = null; fetchFiles() }, 400)
+    }
+    window.addEventListener('bornastar-fs-change', onFsChange)
+    return () => {
+      window.removeEventListener('bornastar-fs-change', onFsChange)
+      if (debounce) clearTimeout(debounce)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, worktreeId])
 
@@ -4845,8 +5082,8 @@ function ChatPanel({
   sessionId,
   sessionName,
   isWorktreeChat,
-  messages,
-  setMessages,
+  initialCompanionMessages,
+  onCompanionMessagesChange,
   activeMode,
   activeSkillId,
   activeTeamId,
@@ -4882,8 +5119,8 @@ function ChatPanel({
   }>
   onClearHunkAttachment: (index: number) => void
   onClearAllHunkAttachments: () => void
-  messages: Message[]
-  setMessages: React.Dispatch<React.SetStateAction<Message[]>>
+  initialCompanionMessages: ChatMessage[]
+  onCompanionMessagesChange: (msgs: ChatMessage[]) => void
   activeMode: ChatMode
   activeSkillId: string | null
   activeTeamId: string | null
@@ -4903,13 +5140,110 @@ function ChatPanel({
   const [isDragging, setIsDragging] = useState(false)
   const [contextPaths, setContextPaths] = useState<string[]>([])
 
+  // ── Persistence seed (with pagination) ────────────────────────────
+  // On mount, hydrate the most recent page from the DB. Older messages
+  // load on demand when the user scrolls to the top — a full chat with
+  // thousands of turns stays snappy because we never hold everything at
+  // once in memory or fling it over the wire.
+  const PAGE_SIZE = 100
+  const [dbSeed, setDbSeed] = useState<{ messages: ChatMessage[]; claudeSessionId: string | null } | null>(null)
+  const [hasMoreOlder, setHasMoreOlder] = useState(false)
+  const [oldestMessageId, setOldestMessageId] = useState<string | null>(null)
+  const [loadingOlder, setLoadingOlder] = useState(false)
+
+  type DbMessage = {
+    id: string; role: ChatMessage['role']; content: string; createdAt: string
+    toolName?: string | null; toolInput?: unknown; toolResult?: unknown
+    toolUseId?: string | null; toolError?: boolean
+    costUsd?: number | null; durationMs?: number | null
+  }
+  const mapDbMessages = (msgs: DbMessage[]): ChatMessage[] => msgs.map((m) => ({
+    id: m.id,
+    role: m.role,
+    content: m.content,
+    timestamp: new Date(m.createdAt).getTime(),
+    toolName: m.toolName ?? undefined,
+    toolInput: m.toolInput as Record<string, unknown> | undefined,
+    toolResult: typeof m.toolResult === 'string'
+      ? m.toolResult
+      : (m.toolResult ? JSON.stringify(m.toolResult) : undefined),
+    toolUseId: m.toolUseId ?? undefined,
+    toolError: m.toolError ?? undefined,
+    costUsd: m.costUsd ?? undefined,
+    durationMs: m.durationMs ?? undefined,
+  }))
+
+  // Fetch the latest page. Defer hydration into the hook until after it
+  // mounts (companion ref available) so we replace / merge correctly
+  // instead of relying on the mount-time seed.
+  useEffect(() => {
+    if (!sessionId) return
+    let cancelled = false
+    fetch(`/api/projects/${projectId}/chat-sessions/${sessionId}/messages?limit=${PAGE_SIZE}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (cancelled || !data) return
+        const msgs = mapDbMessages(data.messages ?? [])
+        setDbSeed({ messages: msgs, claudeSessionId: data.claudeSessionId ?? null })
+        setHasMoreOlder(!!data.hasMore)
+        setOldestMessageId(msgs[0]?.id ?? null)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, sessionId])
+
+  // Pick the richest seed available: the DB has the authoritative copy,
+  // but while it loads we use whatever the parent cached for this chat.
+  const seedMessages = dbSeed?.messages ?? initialCompanionMessages
+
   // ── Companion stream (Claude Code CLI) ──────────────────────────
-  // When the companion daemon is connected, chat messages flow through
-  // the SSE relay instead of the old Bornastar Engine polling. We pass
-  // the Bornastar chat session so the hook filters out events from other
-  // chats sharing the same user-level companion channel.
-  const companion = useCompanionStream(sessionId)
+  // Tag the hook with this chat's Bornastar session so it filters events
+  // belonging to other chats, and hand it the persistence config so
+  // every streamed event mirrors to the DB in real time.
+  const companion = useCompanionStream(
+    sessionId,
+    seedMessages,
+    sessionId ? { projectId, initialClaudeSessionId: dbSeed?.claudeSessionId ?? null } : undefined,
+  )
   const companionConnected = companion.status === 'connected'
+
+  // Mirror every change back up to the parent store so siblings (or this
+  // chat re-mounted later) can pick the conversation back up instantly.
+  useEffect(() => {
+    onCompanionMessagesChange(companion.messages)
+  }, [companion.messages, onCompanionMessagesChange])
+
+  // Hydrate the hook with the first DB page as soon as it lands. The
+  // hook guards against clobbering in-flight streaming state, so this
+  // is safe to fire even if the user already started typing / Claude
+  // already started replying.
+  useEffect(() => {
+    if (!dbSeed) return
+    companion.hydrate(dbSeed.messages, dbSeed.claudeSessionId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dbSeed])
+
+  // Load the next older page on scroll-to-top. Uses the hook's
+  // prependMessages so the already-rendered array grows upward without
+  // tripping over dbSeed (which is the hydrate source, not the render source).
+  const loadOlderMessages = useCallback(async () => {
+    if (!sessionId || !hasMoreOlder || loadingOlder || !oldestMessageId) return
+    setLoadingOlder(true)
+    try {
+      const res = await fetch(`/api/projects/${projectId}/chat-sessions/${sessionId}/messages?limit=${PAGE_SIZE}&before=${oldestMessageId}`)
+      if (!res.ok) return
+      const data = await res.json()
+      const older = mapDbMessages(data.messages ?? [])
+      if (older.length > 0) {
+        companion.prependMessages(older)
+        setOldestMessageId(older[0].id)
+      }
+      setHasMoreOlder(!!data.hasMore)
+    } catch { /* ignore */ }
+    setLoadingOlder(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, sessionId, hasMoreOlder, loadingOlder, oldestMessageId])
   const [claudeMode, setClaudeMode] = useState<'plan' | 'edit' | 'auto' | 'agent'>('auto')
 
   // The companion daemon has its own project registry with hex IDs keyed by
@@ -4991,7 +5325,7 @@ function ChatPanel({
         window.dispatchEvent(new CustomEvent('session-replaced', { detail: { oldId: sessionId, newId: newSession.id, name: newSession.name } }))
       }
     }
-    setMessages([])
+    companion.clearMessages()
     setContextPaths([])
     setAttachments([])
     setInput('')
@@ -5006,7 +5340,14 @@ function ChatPanel({
     })
   }
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
+  // Auto-scroll to the newest message. Reduce the companion stream to a
+  // single primitive signature (count + last content length) so the dep
+  // array stays a fixed shape and doesn't churn on unrelated state changes.
+  const lastCompanion = companion.messages[companion.messages.length - 1]
+  const scrollSignature = `${companion.messages.length}:${lastCompanion?.content?.length ?? 0}:${companion.isRunning ? 1 : 0}`
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [scrollSignature])
 
   // Listen for pin-context events from the file tree
   useEffect(() => {
@@ -5114,7 +5455,12 @@ function ChatPanel({
     // Bornastar session ID so the server can resolve the worktree path and
     // so each chat's bridge is keyed independently on the daemon.
     if (companionConnected && companionProjectId) {
-      await companion.sendPrompt(companionProjectId, content, claudeMode, sessionId)
+      await companion.sendPrompt(companionProjectId, content, claudeMode, sessionId, {
+        model: selectedModel,
+        // Haiku has no extended-thinking support — force 'off' regardless
+        // of the stored selector state (UI already disables the picker).
+        thinking: selectedModel === 'haiku' ? 'off' : (thinkingLevel as 'off' | 'low' | 'medium' | 'high'),
+      })
     }
   }
 
@@ -5190,7 +5536,21 @@ function ChatPanel({
       )}
 
       {/* Messages — renders companion stream or legacy engine */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div
+        className="flex-1 overflow-y-auto p-4 space-y-3"
+        onScroll={(e) => {
+          // When the user scrolls near the top, fetch the previous page
+          // of messages. 100px threshold so the scrollbar settles on the
+          // loading row without fighting the fetch.
+          if (e.currentTarget.scrollTop < 100) loadOlderMessages()
+        }}
+      >
+        {/* Infinite-scroll sentinel — visible when older messages exist. */}
+        {hasMoreOlder && (
+          <div className="flex justify-center py-2 text-[11px] text-zinc-500">
+            {loadingOlder ? 'Loading earlier messages…' : 'Scroll up for earlier messages'}
+          </div>
+        )}
 
         {/* ── Claude Code via companion ─────────────────────────────── */}
         {companion.messages.length === 0 && (
@@ -5218,9 +5578,8 @@ function ChatPanel({
             return <ClaudeToolCard key={msg.id} message={msg} />
           }
           if (msg.role === 'system') {
-            // Skip the per-turn cost/duration/turns card — the running total
-            // already lives in the CostTracker badge at the top of the panel,
-            // and the noise after every reply is distracting.
+            // Skip the per-turn cost/duration/turns card — that noise after
+            // every reply is distracting and adds nothing for day-to-day use.
             if (msg.costUsd !== undefined) return null
             return (
               <div key={msg.id} className="flex justify-start">
@@ -5463,13 +5822,6 @@ function ChatPanel({
               </div>
             )}
 
-            {/* Cost tracker row (slim) — only shown when there's activity */}
-            {(companion.costUsd > 0 || companion.sessionId) && (
-              <div className="flex items-center justify-end border-t border-white/5 px-3 py-1">
-                <CostTracker costUsd={companion.costUsd} sessionId={companion.sessionId} />
-              </div>
-            )}
-
             {/* Bottom toolbar — inside the card, all controls + submit */}
             <div className="relative flex items-center gap-1 px-2 py-2">
             <button
@@ -5545,28 +5897,23 @@ function ChatPanel({
             </button>
 
 
-            {/* Model selector */}
-            <select
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              className="rounded border border-[#2B2B2B] bg-white/5 px-1.5 py-0.5 text-[10px] text-zinc-300 outline-none hover:bg-white/10"
-            >
-              <option value="haiku">Haiku 4.5</option>
-              <option value="sonnet">Sonnet 4</option>
-              <option value="opus">Opus 4</option>
-            </select>
+            {/* Model selector — same dropdown style as the mode picker.
+                Passes --model <alias> to the Claude CLI; aliases resolve
+                to the freshest minor version automatically. */}
+            <ModelSelector
+              model={selectedModel as 'haiku' | 'sonnet' | 'opus'}
+              onChange={(m) => setSelectedModel(m)}
+            />
 
-            {/* Thinking selector */}
-            <select
-              value={thinkingLevel}
-              onChange={(e) => setThinkingLevel(e.target.value)}
-              className="rounded border border-[#2B2B2B] bg-white/5 px-1.5 py-0.5 text-[10px] text-zinc-300 outline-none hover:bg-white/10"
-            >
-              <option value="off">Thinking: Off</option>
-              <option value="low">Thinking: Low</option>
-              <option value="medium">Thinking: Medium</option>
-              <option value="high">Thinking: High</option>
-            </select>
+            {/* Thinking selector — only rendered for models that support
+                extended thinking (Sonnet + Opus). Haiku 4.5 has no
+                thinking capability so the control disappears entirely. */}
+            {selectedModel !== 'haiku' && (
+              <ThinkingSelector
+                thinking={thinkingLevel as 'off' | 'low' | 'medium' | 'high'}
+                onChange={(t) => setThinkingLevel(t)}
+              />
+            )}
 
             {/* Mode selector — compact dropdown right before the send button */}
             <ModeSelector mode={claudeMode} onChange={setClaudeMode} />

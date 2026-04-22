@@ -17,6 +17,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     select: {
       id: true,
       name: true,
+      deletedAt: true,
       repository: {
         select: {
           id: true,
@@ -28,7 +29,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     },
   })
 
-  if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+  if (!project || project.deletedAt) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
 
   const pendingTasks = await prisma.task.count({ where: { projectId: id, status: { in: ['pending', 'queue', 'progress'] } } })
   const uncommittedChanges = project.repository?.files?.length ?? 0
@@ -43,7 +44,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
   })
 }
 
-// DELETE — delete project (only removes from Bornastar, not GitHub)
+// DELETE — soft-delete the project. The row and every child (worktrees,
+// sessions, messages, files) stays in the DB for ML training / audit;
+// user-facing queries just filter it out via status + deletedAt. Hard
+// cleanup is an admin responsibility, never user-facing.
 export async function DELETE(_request: NextRequest, context: RouteContext) {
   const { id } = await context.params
   const access = await verifyProjectAccess(id)
@@ -56,8 +60,10 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
 
   if (!project) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
 
-  // Cascade delete handles everything (repo files, tasks, chat messages, etc.)
-  await prisma.project.delete({ where: { id } })
+  await prisma.project.update({
+    where: { id },
+    data: { status: 'deleted', deletedAt: new Date() },
+  })
 
   return new NextResponse(null, { status: 204 })
 }

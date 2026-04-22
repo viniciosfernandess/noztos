@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process'
 import { loadConfig } from './config.js'
 import { detectClaudeAuth, detectClaudeInstallation, getClaudeVersion } from './auth-detect.js'
 import { ClaudeBridge } from './claude-bridge.js'
+import { ProjectWatcher, type FsChangeBatch } from './fs-watcher.js'
 import { listProjects } from './project-manager.js'
 import type { CompanionCommand, CompanionMessage, ClaudeStreamEvent } from './types.js'
 
@@ -28,6 +29,9 @@ export class Daemon extends EventEmitter {
   // to the browser so a ChatPanel remounting mid-prompt can restore its
   // "Claude is working" indicator without waiting for the next event.
   private runningSessions: Set<string> = new Set()
+  // One filesystem watcher per registered project — replaces the
+  // Explorer / Changes / stats polling on the browser. Keyed by abs path.
+  private watchers: Map<string, ProjectWatcher> = new Map()
   private eventSource: EventSource | null = null
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -45,6 +49,7 @@ export class Daemon extends EventEmitter {
     await this.register()
     this.connectEvents()
     this.startHeartbeat()
+    this.syncWatchers()
   }
 
   stop(): void {
@@ -56,6 +61,10 @@ export class Daemon extends EventEmitter {
       bridge.kill()
     }
     this.bridges.clear()
+    for (const [, watcher] of this.watchers) {
+      watcher.stop()
+    }
+    this.watchers.clear()
     this.unregister().catch(() => {})
   }
 
@@ -268,7 +277,10 @@ export class Daemon extends EventEmitter {
       return
     }
 
-    bridge = new ClaudeBridge(cwd, cmd.sessionId ?? undefined, cmd.mode ?? 'auto')
+    bridge = new ClaudeBridge(cwd, cmd.sessionId ?? undefined, cmd.mode ?? 'auto', {
+      model: cmd.model,
+      thinking: cmd.thinking,
+    })
     this.bridges.set(bridgeKey, bridge)
 
     // Tag every outgoing event with the Bornastar chat session so the
@@ -387,11 +399,49 @@ export class Daemon extends EventEmitter {
       console.log(`[isolation] project registered path=${project.path} id=${project.id.slice(0, 8)}`)
       await this.send({ type: 'project_added', payload: project })
       await this.sendStatus()
+      // A freshly-registered project needs its own filesystem watcher
+      // so the browser stops having to poll. syncWatchers() is cheap
+      // (idempotent — won't re-create the watcher if it already exists).
+      this.syncWatchers()
     } catch (err) {
       await this.send({
         type: 'error',
         payload: { message: `Init failed: ${(err as Error).message}` },
       })
+    }
+  }
+
+  // ── Filesystem watchers (push instead of browser polling) ─────────────
+  //
+  // One watcher per registered project. On every debounced batch of
+  // changes we push an SSE event the browser listens to — Explorer,
+  // Changes panel and stats rows refetch only when something actually
+  // moved on disk, instead of hammering the server every 5 s.
+  private syncWatchers(): void {
+    const projects = loadConfig().projects
+    const activePaths = new Set(projects.map((p) => p.path))
+
+    // Spin up watchers for any project that doesn't have one yet.
+    for (const project of projects) {
+      if (this.watchers.has(project.path)) continue
+      const watcher = new ProjectWatcher(project.path)
+      watcher.on('change', (batch: FsChangeBatch) => {
+        console.log(`[isolation] fs_change project=${batch.projectPath} paths=${batch.paths.length}`)
+        this.send({ type: 'fs_change', payload: batch }).catch(() => {})
+      })
+      watcher.on('error', (err) => {
+        console.warn(`[isolation] fs watcher error (${project.path}):`, err)
+      })
+      watcher.start()
+      this.watchers.set(project.path, watcher)
+    }
+
+    // Tear down watchers for projects that were removed from config.
+    for (const [path, watcher] of this.watchers) {
+      if (!activePaths.has(path)) {
+        watcher.stop()
+        this.watchers.delete(path)
+      }
     }
   }
 

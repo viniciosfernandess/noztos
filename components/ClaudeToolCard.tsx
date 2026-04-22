@@ -365,6 +365,205 @@ export function ModeSelector({
   )
 }
 
+// ── Model Selector ──────────────────────────────────────────────────
+
+type ModelId = 'haiku' | 'sonnet' | 'opus'
+
+const MODEL_ICONS: Record<ModelId, (props: { className?: string }) => React.ReactElement> = {
+  haiku: ({ className }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M13 3L4 14h7l-1 7 9-11h-7l1-7z" />
+    </svg>
+  ),
+  sonnet: ({ className }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="8" />
+      <path d="M8 12h8M12 8v8" />
+    </svg>
+  ),
+  opus: ({ className }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2l2.39 7.36H22l-6.2 4.51L18.18 22 12 17.27 5.82 22l2.38-8.13L2 9.36h7.61L12 2z" />
+    </svg>
+  ),
+}
+
+const MODELS: { id: ModelId; label: string; desc: string }[] = [
+  { id: 'haiku', label: 'Haiku 4.5', desc: 'Fast, cheap, short answers' },
+  { id: 'sonnet', label: 'Sonnet 4.6', desc: 'Balanced default' },
+  { id: 'opus', label: 'Opus 4.7', desc: 'Deepest reasoning, costs more' },
+]
+
+export function ModelSelector({
+  model,
+  onChange,
+}: {
+  model: ModelId
+  onChange: (model: ModelId) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const current = MODELS.find((m) => m.id === model) ?? MODELS[1]
+  const CurrentIcon = MODEL_ICONS[current.id]
+
+  useEffect(() => {
+    if (!open) return
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [open])
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title={`Model: ${current.label} — ${current.desc}`}
+        className="flex items-center gap-1 rounded border border-[#2B2B2B] bg-white/5 px-1.5 py-0.5 text-[10px] text-zinc-300 outline-none transition-colors hover:bg-white/10"
+      >
+        <CurrentIcon className="h-3 w-3" />
+        {current.label}
+        <svg className={`h-2.5 w-2.5 transition-transform ${open ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute bottom-full right-0 mb-1 z-50 min-w-[200px] overflow-hidden rounded-lg border border-[#2B2B2B] bg-[#1B1B1B] shadow-xl shadow-black/40">
+          {MODELS.map((m) => {
+            const Icon = MODEL_ICONS[m.id]
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => { onChange(m.id); setOpen(false) }}
+                className={`flex w-full items-start gap-2 px-2.5 py-2 text-left text-[11px] transition-colors hover:bg-white/5 ${
+                  model === m.id ? 'bg-white/5 text-zinc-100' : 'text-zinc-400'
+                }`}
+              >
+                <Icon className="mt-[1px] h-3.5 w-3.5 text-zinc-400" />
+                <span className="flex-1">
+                  <span className="block font-medium text-zinc-200">{m.label}</span>
+                  <span className="block text-[10px] text-zinc-500">{m.desc}</span>
+                </span>
+                {model === m.id && (
+                  <svg className="mt-[2px] h-3 w-3 text-zinc-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                    <path d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Thinking Selector ───────────────────────────────────────────────
+
+type ThinkingId = 'off' | 'low' | 'medium' | 'high'
+
+const THINKING_ICONS: Record<ThinkingId, (props: { className?: string }) => React.ReactElement> = {
+  off: ({ className }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M4.93 4.93l14.14 14.14" />
+    </svg>
+  ),
+  low: ({ className }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 21h6M12 3a7 7 0 00-4 12.7V18h8v-2.3A7 7 0 0012 3z" />
+    </svg>
+  ),
+  medium: ({ className }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.64 5.64l2.12 2.12M16.24 16.24l2.12 2.12M5.64 18.36l2.12-2.12M16.24 7.76l2.12-2.12" />
+    </svg>
+  ),
+  high: ({ className }) => (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2C9 5 9 8 12 12s3 7 0 10M8 6c-2 2-2 4 0 6s2 4 0 6M16 6c2 2 2 4 0 6s-2 4 0 6" />
+    </svg>
+  ),
+}
+
+const THINKINGS: { id: ThinkingId; label: string; desc: string }[] = [
+  { id: 'off',    label: 'No thinking',   desc: 'Respond directly, no reasoning budget' },
+  { id: 'low',    label: 'Think',         desc: '~4k tokens of reasoning' },
+  { id: 'medium', label: 'Think hard',    desc: '~10k tokens of reasoning' },
+  { id: 'high',   label: 'Ultrathink',    desc: '~32k tokens (max budget)' },
+]
+
+export function ThinkingSelector({
+  thinking,
+  onChange,
+}: {
+  thinking: ThinkingId
+  onChange: (thinking: ThinkingId) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const current = THINKINGS.find((t) => t.id === thinking) ?? THINKINGS[0]
+  const CurrentIcon = THINKING_ICONS[current.id]
+
+  useEffect(() => {
+    if (!open) return
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [open])
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        title={`Thinking: ${current.label} — ${current.desc}`}
+        className="flex items-center gap-1 rounded border border-[#2B2B2B] bg-white/5 px-1.5 py-0.5 text-[10px] text-zinc-300 outline-none transition-colors hover:bg-white/10"
+      >
+        <CurrentIcon className="h-3 w-3" />
+        {current.label}
+        <svg className={`h-2.5 w-2.5 transition-transform ${open ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+          <path d="M6 9l6 6 6-6" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute bottom-full right-0 mb-1 z-50 min-w-[220px] overflow-hidden rounded-lg border border-[#2B2B2B] bg-[#1B1B1B] shadow-xl shadow-black/40">
+          {THINKINGS.map((t) => {
+            const Icon = THINKING_ICONS[t.id]
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => { onChange(t.id); setOpen(false) }}
+                className={`flex w-full items-start gap-2 px-2.5 py-2 text-left text-[11px] transition-colors hover:bg-white/5 ${
+                  thinking === t.id ? 'bg-white/5 text-zinc-100' : 'text-zinc-400'
+                }`}
+              >
+                <Icon className="mt-[1px] h-3.5 w-3.5 text-zinc-400" />
+                <span className="flex-1">
+                  <span className="block font-medium text-zinc-200">{t.label}</span>
+                  <span className="block text-[10px] text-zinc-500">{t.desc}</span>
+                </span>
+                {thinking === t.id && (
+                  <svg className="mt-[2px] h-3 w-3 text-zinc-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                    <path d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Cost Tracker ────────────────────────────────────────────────────
 
 export function CostTracker({

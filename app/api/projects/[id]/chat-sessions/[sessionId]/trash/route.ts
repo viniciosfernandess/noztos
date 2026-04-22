@@ -19,10 +19,31 @@ export async function POST(_request: NextRequest, context: RouteContext) {
 
   const session = await prisma.chatSession.findUnique({
     where: { id: sessionId },
-    select: { projectId: true },
+    select: { projectId: true, worktreeId: true },
   })
   if (!session || session.projectId !== id) {
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+  }
+
+  // Invariant: an active worktree must always have at least one active chat.
+  // When deleting the last chat would leave the worktree empty, the user is
+  // expected to trash the whole worktree instead — the UI already hides the
+  // individual "Delete chat" action when `sessions.length === 1`, and we
+  // enforce it here so a direct API call can't sneak past.
+  if (session.worktreeId) {
+    const activeSiblings = await prisma.chatSession.count({
+      where: {
+        worktreeId: session.worktreeId,
+        status: 'open',
+        id: { not: sessionId },
+      },
+    })
+    if (activeSiblings === 0) {
+      return NextResponse.json(
+        { error: 'Cannot trash the last chat of an active worktree — trash the worktree instead' },
+        { status: 409 },
+      )
+    }
   }
 
   await prisma.chatSession.update({

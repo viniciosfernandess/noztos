@@ -22,6 +22,7 @@ export default async function Home() {
         select: {
           name: true,
           projects: {
+            where: { deletedAt: null },
             select: { id: true, name: true, createdAt: true },
             orderBy: { createdAt: 'desc' },
           },

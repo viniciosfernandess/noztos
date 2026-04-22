@@ -23,18 +23,38 @@ const MODE_MAP: Record<BornastarMode, string> = {
   agent: 'bypassPermissions',
 }
 
+export type ThinkingLevel = 'off' | 'low' | 'medium' | 'high'
+// Official Anthropic extended-thinking keywords. The CLI has no
+// --thinking flag — the budget is triggered by wording in the prompt
+// itself, so we prepend the right phrase when the user selects a level.
+const THINKING_KEYWORD: Record<ThinkingLevel, string> = {
+  off: '',
+  low: 'think.',
+  medium: 'think hard.',
+  high: 'ultrathink.',
+}
+
+export interface BridgeOptions {
+  model?: string       // CLI alias ('haiku'|'sonnet'|'opus') or full id
+  thinking?: ThinkingLevel
+}
+
 export class ClaudeBridge extends EventEmitter {
   private cwd: string
   private process: ChildProcess | null = null
   private sessionId: string | null = null
   private buffer = ''
   private mode: BornastarMode = 'auto'
+  private model?: string
+  private thinking: ThinkingLevel = 'off'
 
-  constructor(cwd: string, sessionId?: string, mode?: BornastarMode) {
+  constructor(cwd: string, sessionId?: string, mode?: BornastarMode, options?: BridgeOptions) {
     super()
     this.cwd = cwd
     this.sessionId = sessionId ?? null
     this.mode = mode ?? 'auto'
+    this.model = options?.model
+    this.thinking = options?.thinking ?? 'off'
   }
 
   setMode(mode: BornastarMode): void {
@@ -47,19 +67,28 @@ export class ClaudeBridge extends EventEmitter {
     }
 
     const permissionMode = MODE_MAP[this.mode] ?? 'auto'
+    // Prepend the thinking-budget keyword when the user asked for
+    // extended thinking. Haiku ignores the keyword (no extended-thinking
+    // support) — harmless leading sentence rather than a hard error.
+    const keyword = THINKING_KEYWORD[this.thinking]
+    const finalPrompt = keyword ? `${keyword} ${text}` : text
+
     const args = [
-      '-p', text,
+      '-p', finalPrompt,
       '--output-format', 'stream-json',
       '--permission-mode', permissionMode,
       '--verbose',
     ]
+    if (this.model) {
+      args.push('--model', this.model)
+    }
 
     // Resume existing session if we have one
     if (this.sessionId) {
       args.push('--resume', this.sessionId)
     }
 
-    console.log(`[isolation] claude spawn cwd=${this.cwd} mode=${permissionMode} resume=${this.sessionId?.slice(0, 8) ?? 'new'}`)
+    console.log(`[isolation] claude spawn cwd=${this.cwd} mode=${permissionMode} model=${this.model ?? 'default'} thinking=${this.thinking} resume=${this.sessionId?.slice(0, 8) ?? 'new'}`)
     this.process = spawn('claude', args, {
       cwd: this.cwd,
       env: { ...process.env },

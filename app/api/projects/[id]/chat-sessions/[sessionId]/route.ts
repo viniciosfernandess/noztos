@@ -35,25 +35,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   return NextResponse.json(session)
 }
 
-// GET — get messages for a specific session
-export async function GET(_request: NextRequest, context: RouteContext) {
-  const { id, sessionId } = await context.params
-  const access = await verifyProjectAccess(id)
-  if ('error' in access) return NextResponse.json({ error: access.error }, { status: access.status })
-
-  const messages = await prisma.chatMessage.findMany({
-    where: { sessionId },
-    select: {
-      id: true,
-      content: true,
-      sender: true,
-      mode: true,
-      activeSkillId: true,
-      report: true,
-      createdAt: true,
-    },
-    orderBy: { createdAt: 'asc' },
-  })
-
-  return NextResponse.json({ messages })
-}
+// Legacy GET removed. Messages are now served by /messages with
+// pagination + rich Claude Code fields; the old endpoint pulled
+// deprecated columns (sender/mode/activeSkillId/report) that no caller
+// consumes anymore.

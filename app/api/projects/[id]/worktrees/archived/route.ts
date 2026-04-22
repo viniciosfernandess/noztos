@@ -16,7 +16,16 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
   const worktrees = await prisma.worktree.findMany({
     where: { projectId: id, status: 'archived' },
-    select: { id: true, name: true, branchName: true, updatedAt: true, createdAt: true },
+    select: {
+      id: true, name: true, branchName: true, updatedAt: true, createdAt: true,
+      // Chats that rode along into archive when the worktree was
+      // archived surface nested under this card in the UI.
+      sessions: {
+        where: { status: 'archived' },
+        select: { id: true, name: true, updatedAt: true, createdAt: true },
+        orderBy: { updatedAt: 'desc' },
+      },
+    },
     orderBy: { updatedAt: 'desc' },
   })
 

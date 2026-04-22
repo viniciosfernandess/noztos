@@ -1,18 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyProjectAccess } from '@/lib/auth'
-import { removeWorktreePhysical } from '@/lib/worktree'
 import { invalidateWorktreeCache } from '@/lib/tools'
 
 interface RouteContext {
   params: Promise<{ id: string; worktreeId: string }>
 }
 
-// POST — permanently delete a worktree (soft-delete in DB, hard-remove on disk).
+// POST — "delete forever" from the user's perspective: unlinks the worktree
+// (and its chats) from every UI surface. Nothing is physically destroyed:
 //
-// The Worktree row stays for analytics. The on-disk worktree directory is
-// removed and the reserved port range is released. Any chats that were
-// inside this worktree are also marked as deleted.
+//   - DB rows stay intact (dataset for ML training + audit trail)
+//   - Branch + .bornastar-worktrees/<id> directory on disk stay intact
+//     so if an admin ever restores we can bring back the full state
+//   - Ports release so the range can be reused by new worktrees
+//
+// Hard cleanup (git worktree remove + branch -D) is a separate admin
+// responsibility — not exposed via the user-facing UI.
 export async function POST(_request: NextRequest, context: RouteContext) {
   const { id, worktreeId } = await context.params
   const access = await verifyProjectAccess(id)
@@ -22,37 +26,42 @@ export async function POST(_request: NextRequest, context: RouteContext) {
 
   const wt = await prisma.worktree.findUnique({
     where: { id: worktreeId },
-    select: { projectId: true, branchName: true, worktreePath: true },
+    select: { projectId: true },
   })
   if (!wt || wt.projectId !== id) {
     return NextResponse.json({ error: 'Worktree not found' }, { status: 404 })
   }
 
-  // Tear down the on-disk worktree (fire and forget). We snapshot the
-  // branchName + worktreePath here because the row update below clears them.
-  removeWorktreePhysical(id, wt.branchName, wt.worktreePath)
-    .catch((err) => console.error('[delete-forever] worktree cleanup error:', err))
-
-  // Mark sessions inside this worktree as deleted, then mark the worktree
   const sessionIds = (await prisma.chatSession.findMany({
     where: { worktreeId },
     select: { id: true },
   })).map((s) => s.id)
 
-  await prisma.chatSession.updateMany({
-    where: { worktreeId },
-    data: { status: 'deleted' },
-  })
-
-  await prisma.worktree.update({
-    where: { id: worktreeId },
-    data: {
-      status: 'deleted',
-      worktreePath: '',
-      branchName: '',
-      portBase: null,
-    },
-  })
+  // Flip every chat + its messages to 'deleted' with the same timestamp
+  // so every query layer agrees "this worktree is gone". Stamping both
+  // `status` and `deletedAt` keeps text-based and null-based checks
+  // consistent across the codebase.
+  const now = new Date()
+  await prisma.$transaction([
+    prisma.chatMessage.updateMany({
+      where: { sessionId: { in: sessionIds }, deletedAt: null },
+      data: { deletedAt: now },
+    }),
+    prisma.chatSession.updateMany({
+      where: { worktreeId },
+      data: { status: 'deleted', deletedAt: now },
+    }),
+    prisma.worktree.update({
+      where: { id: worktreeId },
+      data: {
+        status: 'deleted',
+        deletedAt: now,
+        // Release the port slot so new worktrees can reuse it; keep
+        // branchName + worktreePath for admin restore.
+        portBase: null,
+      },
+    }),
+  ])
 
   // Drop the in-process resolver cache for every chat that lived in this worktree
   for (const sid of sessionIds) invalidateWorktreeCache(sid)

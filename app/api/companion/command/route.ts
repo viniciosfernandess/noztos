@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json()
   const {
     type, projectId, prompt, sessionId, repoUrl, targetPath, template,
-    bornastarSessionId, claudeSessionId, mode,
+    bornastarSessionId, claudeSessionId, mode, model, thinking,
   } = body as {
     type: string
     projectId?: string
@@ -38,6 +38,8 @@ export async function POST(request: NextRequest) {
     bornastarSessionId?: string
     claudeSessionId?: string
     mode?: 'plan' | 'edit' | 'auto' | 'agent'
+    model?: string
+    thinking?: 'off' | 'low' | 'medium' | 'high'
   }
 
   if (!type) {
@@ -76,6 +78,8 @@ export async function POST(request: NextRequest) {
     // fall back to legacy `sessionId` so older call sites keep working.
     sessionId: claudeSessionId ?? sessionId,
     mode,
+    model,
+    thinking,
     worktreePath,
     bornastarSessionId,
     repoUrl,

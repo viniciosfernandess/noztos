@@ -4,7 +4,6 @@
       "Bash(ls /Users/viniciosfernandes/Desktop/projects/bornastar/app/api/projects/[id]/route.ts)",
       "Bash(node -e \":*)",
       "Bash(source .env)",
-      "Bash(node -e \"try { require\\(''@e2b/code-interpreter''\\); console.log\\(''E2B OK''\\) } catch\\(e\\) { console.log\\(''E2B FAIL:'', e.message\\) }\")",
       "Bash(sed -n '47,89p' base.md)",
       "Bash(sed -n '90,151p' base.md)",
       "Bash(sed -n '152,194p' base.md)",

@@ -19,7 +19,10 @@ export async function POST(_request: NextRequest, context: RouteContext) {
 
   const session = await prisma.chatSession.findUnique({
     where: { id: sessionId },
-    select: { projectId: true, status: true },
+    select: {
+      projectId: true, status: true, worktreeId: true,
+      worktree: { select: { status: true } },
+    },
   })
   if (!session || session.projectId !== id) {
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
@@ -27,6 +30,18 @@ export async function POST(_request: NextRequest, context: RouteContext) {
 
   if (session.status !== 'archived' && session.status !== 'trashed') {
     return NextResponse.json({ error: 'Cannot restore — session is not archived or trashed' }, { status: 400 })
+  }
+
+  // Can't restore a chat whose parent worktree is still put away — that
+  // would leave an "open" chat orphaned inside a trashed/archived
+  // worktree. The UI in TrashModal/ArchivedModal already hides the chat
+  // restore button when the worktree is grouped; this guards direct API
+  // calls.
+  if (session.worktree && session.worktree.status !== 'open') {
+    return NextResponse.json(
+      { error: 'Cannot restore chat — its worktree is also archived or trashed. Restore the worktree instead.' },
+      { status: 409 },
+    )
   }
 
   await prisma.chatSession.update({

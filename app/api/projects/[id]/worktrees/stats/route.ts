@@ -17,7 +17,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
   }
 
   const worktrees = await prisma.worktree.findMany({
-    where: { projectId: id, status: 'open' },
+    where: { projectId: id, status: 'open', deletedAt: null },
     select: { id: true },
   })
 

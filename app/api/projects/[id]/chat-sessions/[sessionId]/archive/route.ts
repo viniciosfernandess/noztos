@@ -20,10 +20,29 @@ export async function POST(_request: NextRequest, context: RouteContext) {
 
   const session = await prisma.chatSession.findUnique({
     where: { id: sessionId },
-    select: { projectId: true },
+    select: { projectId: true, worktreeId: true },
   })
   if (!session || session.projectId !== id) {
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
+  }
+
+  // Same invariant as /trash — an active worktree must keep at least one
+  // active chat. If the user wants to put everything away, they archive
+  // the worktree itself (which takes every chat inside with it).
+  if (session.worktreeId) {
+    const activeSiblings = await prisma.chatSession.count({
+      where: {
+        worktreeId: session.worktreeId,
+        status: 'open',
+        id: { not: sessionId },
+      },
+    })
+    if (activeSiblings === 0) {
+      return NextResponse.json(
+        { error: 'Cannot archive the last chat of an active worktree — archive the worktree instead' },
+        { status: 409 },
+      )
+    }
   }
 
   await prisma.chatSession.update({

@@ -51,6 +51,13 @@ model Project {
   repositoryPath String?
   slackChannel   String?
   slackWebhook   String?
+  // Soft delete — user DELETE sets deletedAt (and status='deleted') so the
+  // project disappears from the user's UI but every child (worktrees,
+  // chats, messages) stays in the DB for ML training + audit. Hard
+  // cascade via Prisma onDelete: Cascade only fires if an admin runs raw
+  // SQL on the row, which isn't part of any user-facing flow.
+  status         String          @default("open") // open | deleted
+  deletedAt      DateTime?
   createdAt      DateTime        @default(now())
   lastActivityAt DateTime?
   queueStatus    String          @default("paused")
@@ -68,6 +75,7 @@ model Project {
   teams          Team[]
 
   @@index([userId])
+  @@index([userId, deletedAt])
   @@map("projects")
 }
 
@@ -174,6 +182,10 @@ model Worktree {
   prTitleDraft String?
   prBodyDraft  String?
   trashedAt    DateTime?
+  // Stamped alongside status='deleted' so every layer (status-based or
+  // timestamp-based) agrees on the unlinked state. Preserves the audit
+  // trail — the row never leaves the DB.
+  deletedAt    DateTime?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   sessions     ChatSession[]
@@ -181,6 +193,7 @@ model Worktree {
   project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId, status])
+  @@index([deletedAt])
   @@map("worktrees")
 }
 
@@ -262,6 +275,28 @@ model ChatSession {
   touchedPaths   String[]       @default([])
   // Lifecycle helper for the trash flow
   trashedAt      DateTime?
+  // Soft delete — user-facing DELETE sets this timestamp instead of
+  // dropping the row. Authoritative audit log of conversations is
+  // preserved (important for training + compliance). Hard delete only
+  // happens through explicit admin/retention tooling.
+  deletedAt      DateTime?
+
+  // ── Claude Code state ─────────────────────────────────────────────────
+  // Latest Claude Code --resume id. Persisted so a browser refresh (or
+  // switching devices) can pick the same Claude conversation back up
+  // instead of starting a fresh one and losing context.
+  claudeSessionId String?
+  // Rollup metrics — updated as messages land. Lets the sidebar list
+  // cost/usage per chat without aggregating messages on every render.
+  totalCostUsd   Float          @default(0)
+  totalTokens    Int            @default(0)
+  numTurns       Int            @default(0)
+  lastMessageAt  DateTime?
+  // Unread marker — stamps every time the user views this chat. A
+  // message (role assistant/tool) created after this timestamp is
+  // considered unread. Null = chat has never been opened yet.
+  lastReadAt     DateTime?
+
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
   messages       ChatMessage[]
@@ -271,26 +306,98 @@ model ChatSession {
 
   @@index([projectId, status])
   @@index([worktreeId])
+  @@index([userId, lastMessageAt])
   @@map("chat_sessions")
 }
 
+// A single persisted event from a Claude Code conversation. One row per
+// logical turn piece (user prompt, assistant text, tool call, tool result,
+// final result). All columns populated where the stream-json event
+// provides them, keeping the table rich enough to serve as our future
+// training dataset without back-filling gymnastics later.
 model ChatMessage {
-  id            String       @id @default(cuid())
-  projectId     String
-  userId        String
-  content       String
-  sender        String
-  activeSkillId String?
-  mode          String       @default("no_skill")
-  createdAt     DateTime     @default(now())
-  sessionId     String?
-  report        Json?
-  project       Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  session       ChatSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id              String       @id @default(cuid())
+  sessionId       String
+  projectId       String
+  userId          String
+  // Denormalized worktree the chat was attached to at the moment of this
+  // message — lets us answer "what was Claude looking at?" without joining
+  // session → worktree every time. Null ⇒ main.
+  worktreeId      String?
+
+  // Discriminator. What kind of event this row represents.
+  //   user      — prompt sent by the human
+  //   assistant — Claude's text reply
+  //   tool      — a single tool use (before + result, updated in place)
+  //   system    — errors and other out-of-band messages
+  role            String
+
+  // Primary text payload. For tools this is the human-readable label
+  // (e.g. "Reading ~/file.ts"); structured data lives in toolInput / toolResult.
+  content         String
+
+  // ── Tool call structure (when role = 'tool') ──────────────────────────
+  toolName        String?
+  toolInput       Json?
+  toolResult      Json?
+  toolUseId       String?
+  toolError       Boolean      @default(false)
+
+  // ── Conversation graph ────────────────────────────────────────────────
+  // The message that caused this one to exist. For tool results, this
+  // points at the assistant tool_use that triggered the run; for
+  // regenerations, at the prior assistant reply the user rejected.
+  parentMessageId String?
+  // When the user edits + resends a previous prompt, the new row points
+  // back so we can reconstruct the edit history.
+  editOfMessageId String?
+  // User hit Stop mid-stream, cutting the reply short. Signals "Claude
+  // didn't finish" for training filters.
+  wasInterrupted  Boolean      @default(false)
+  // User asked Claude to try again — the prior message (parentMessageId)
+  // was rejected. Strong preference signal.
+  wasRegenerated  Boolean      @default(false)
+  // Flipped by the server when a turn's claudeSessionId differs from the
+  // prior turn's — signals Claude auto-compacted the conversation. Lets
+  // us filter compaction boundaries out of training data (the pre-compact
+  // context was dropped, so continuity is partially broken).
+  wasCompacted    Boolean      @default(false)
+  // Soft delete — same rationale as ChatSession.deletedAt.
+  deletedAt       DateTime?
+
+  // ── Per-turn metrics (from the final 'result' event) ──────────────────
+  costUsd           Float?
+  durationMs        Int?
+  inputTokens       Int?
+  outputTokens      Int?
+  cacheReadTokens   Int?
+  cacheCreateTokens Int?
+
+  // ── Context snapshot at time of message ───────────────────────────────
+  // Stored so we can compare behavior across models / modes without
+  // reconstructing state from timestamps.
+  model           String?
+  permissionMode  String?
+  claudeSessionId String?
+
+  // ── Legacy columns from the old chat engine. Kept while the legacy
+  // Task/Team pipeline still renders them; dropped once we retire that
+  // system. New rows written by the Claude Code flow leave them null.
+  sender          String?
+  mode            String       @default("no_skill")
+
+  createdAt       DateTime     @default(now())
+
+  project         Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  session         ChatSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, createdAt])
   @@index([projectId, createdAt])
+  @@index([userId, createdAt])
+  @@index([worktreeId, createdAt])
+  @@index([toolUseId])
+  @@index([role, createdAt])
   @@map("chat_messages")
 }
 

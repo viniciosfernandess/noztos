@@ -31,7 +31,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
   // Only main chats — worktree chats use the worktree-level endpoint
   const sessions = await prisma.chatSession.findMany({
-    where: { projectId: id, status: 'open', worktreeId: null },
+    where: { projectId: id, status: 'open', deletedAt: null, worktreeId: null },
     select: { id: true, touchedPaths: true },
   })
 

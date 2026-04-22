@@ -14,7 +14,8 @@ export async function GET(_request: NextRequest, context: RouteContext) {
   if ('error' in access) return NextResponse.json({ error: access.error }, { status: access.status })
 
   const worktrees = await prisma.worktree.findMany({
-    where: { projectId: id, status: 'open' },
+    // Defense in depth: status='open' AND deletedAt null.
+    where: { projectId: id, status: 'open', deletedAt: null },
     select: {
       id: true,
       name: true,
@@ -23,7 +24,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       createdAt: true,
       updatedAt: true,
       sessions: {
-        where: { status: 'open' },
+        where: { status: 'open', deletedAt: null },
         select: { id: true, name: true, createdAt: true, updatedAt: true },
         orderBy: { createdAt: 'asc' },
       },

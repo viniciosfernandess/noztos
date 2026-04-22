@@ -95,20 +95,129 @@ interface UseCompanionStreamReturn {
   } | null
   sessionId: string | null
   costUsd: number
-  sendPrompt: (projectId: string, prompt: string, mode?: 'plan' | 'edit' | 'auto' | 'agent', bornastarSessionId?: string) => Promise<void>
+  sendPrompt: (
+    projectId: string,
+    prompt: string,
+    mode?: 'plan' | 'edit' | 'auto' | 'agent',
+    bornastarSessionId?: string,
+    opts?: { model?: string; thinking?: 'off' | 'low' | 'medium' | 'high' },
+  ) => Promise<void>
   interrupt: (projectId: string, bornastarSessionId?: string) => Promise<void>
   clearMessages: () => void
+  // Pagination / late hydrate — ChatPanel calls these to push DB pages into
+  // the hook. prependMessages for older-page scroll, hydrate for the
+  // initial async fetch (when parent had no cached state).
+  prependMessages: (msgs: ChatMessage[]) => void
+  hydrate: (msgs: ChatMessage[], claudeSessionId?: string | null) => void
 }
 
-export function useCompanionStream(bornastarSessionId?: string | null): UseCompanionStreamReturn {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+export function useCompanionStream(
+  bornastarSessionId?: string | null,
+  initialMessages?: ChatMessage[],
+  persist?: { projectId: string; initialClaudeSessionId?: string | null },
+): UseCompanionStreamReturn {
+  const [messages, setMessages] = useState<ChatMessage[]>(() => initialMessages ?? [])
   const [status, setStatus] = useState<CompanionStatus>('disconnected')
   const [isRunning, setIsRunning] = useState(false)
   const [companionInfo, setCompanionInfo] = useState<UseCompanionStreamReturn['companionInfo']>(null)
-  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [sessionId, setSessionId] = useState<string | null>(persist?.initialClaudeSessionId ?? null)
   const [costUsd, setCostUsd] = useState(0)
   const eventSourceRef = useRef<AbortController | null>(null)
   const messageIdCounter = useRef(0)
+
+  // ── Persistence with retry queue ─────────────────────────────────
+  // Every stream event persists to the DB so refresh / device switch
+  // restores the conversation. Writes are fire-and-forget in the happy
+  // path, but failures (network flap, rate limit, 5xx) are parked in a
+  // retry queue and replayed with exponential backoff. The queue is
+  // mirrored to localStorage so even a tab close doesn't lose events.
+  const persistTargetRef = useRef<{ projectId: string; sessionId: string } | null>(null)
+  useEffect(() => {
+    if (persist && bornastarSessionId) {
+      persistTargetRef.current = { projectId: persist.projectId, sessionId: bornastarSessionId }
+    } else {
+      persistTargetRef.current = null
+    }
+  }, [persist, bornastarSessionId])
+
+  const retryQueueRef = useRef<Record<string, unknown>[]>([])
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const retryAttemptRef = useRef(0)
+  const queueStorageKey = bornastarSessionId ? `bornastar:persist-queue:${bornastarSessionId}` : null
+
+  // Hydrate queue from localStorage on mount — a crashed tab might have
+  // left pending events we should still flush.
+  useEffect(() => {
+    if (!queueStorageKey) return
+    try {
+      const raw = localStorage.getItem(queueStorageKey)
+      if (!raw) return
+      const parsed = JSON.parse(raw) as Record<string, unknown>[]
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        retryQueueRef.current.push(...parsed)
+        scheduleRetry()
+      }
+    } catch { /* ignore corrupt queue */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queueStorageKey])
+
+  function saveQueue(): void {
+    if (!queueStorageKey) return
+    try {
+      if (retryQueueRef.current.length === 0) localStorage.removeItem(queueStorageKey)
+      else localStorage.setItem(queueStorageKey, JSON.stringify(retryQueueRef.current))
+    } catch { /* quota exceeded, drop silently */ }
+  }
+
+  function scheduleRetry(): void {
+    if (retryTimerRef.current) return
+    const attempt = retryAttemptRef.current
+    const delay = Math.min(30_000, 500 * Math.pow(2, attempt))  // 0.5s, 1s, 2s, 4s… cap 30s
+    retryTimerRef.current = setTimeout(async () => {
+      retryTimerRef.current = null
+      const target = persistTargetRef.current
+      if (!target) return
+      const batch = retryQueueRef.current.splice(0, 100)  // drain in chunks to bound request size
+      if (batch.length === 0) return
+      try {
+        const res = await fetch(`/api/projects/${target.projectId}/chat-sessions/${target.sessionId}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ events: batch }),
+        })
+        if (!res.ok) throw new Error(`persist ${res.status}`)
+        retryAttemptRef.current = 0
+        saveQueue()
+        if (retryQueueRef.current.length > 0) scheduleRetry()
+      } catch {
+        // Re-queue at the FRONT so ordering is preserved.
+        retryQueueRef.current.unshift(...batch)
+        retryAttemptRef.current = Math.min(retryAttemptRef.current + 1, 8)
+        saveQueue()
+        scheduleRetry()
+      }
+    }, delay)
+  }
+
+  const persistEvents = useCallback((events: Record<string, unknown>[]) => {
+    const target = persistTargetRef.current
+    if (!target || events.length === 0) return
+    // Stamp a client-side timestamp so the server can keep true order
+    // even if POSTs arrive out of network order.
+    const stamped = events.map((e) => ({ clientCreatedAt: Date.now(), ...e }))
+    fetch(`/api/projects/${target.projectId}/chat-sessions/${target.sessionId}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ events: stamped }),
+    }).then((res) => {
+      if (!res.ok) throw new Error(`persist ${res.status}`)
+    }).catch(() => {
+      retryQueueRef.current.push(...stamped)
+      saveQueue()
+      scheduleRetry()
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const nextId = () => `msg-${Date.now()}-${++messageIdCounter.current}`
 
@@ -148,14 +257,9 @@ export function useCompanionStream(bornastarSessionId?: string | null): UseCompa
         break
 
       case 'system':
-        if (actual.subtype === 'init') {
-          parsed.push({
-            id: nextId(),
-            role: 'system',
-            content: `Session started · Model: ${actual.model ?? 'claude'} · Mode: ${actual.permissionMode ?? 'default'}`,
-            timestamp: Date.now(),
-          })
-        }
+        // Intentionally quiet — the "Session started · Model: ..." banner
+        // adds noise between the user message and the reply. The current
+        // session/model is visible in the header + cost tracker already.
         break
 
       case 'assistant':
@@ -255,12 +359,25 @@ export function useCompanionStream(bornastarSessionId?: string | null): UseCompa
               // Update existing tool message with result
               setMessages((prev) => prev.map((m) => {
                 if (m.toolUseId === block.tool_use_id) {
-                  return {
+                  const updated: ChatMessage = {
                     ...m,
                     toolResult: resultText,
                     toolError: block.is_error ?? false,
                     bashOutput: m.toolName === 'Bash' ? resultText : m.bashOutput,
                   }
+                  // Write-through: update the row in place so a refresh
+                  // restores the tool result, not just the tool call.
+                  persistEvents([{
+                    id: updated.id,
+                    role: 'tool',
+                    content: updated.content,
+                    toolName: updated.toolName,
+                    toolInput: updated.toolInput,
+                    toolResult: resultText,
+                    toolUseId: updated.toolUseId,
+                    toolError: updated.toolError,
+                  }])
+                  return updated
                 }
                 return m
               }))
@@ -269,31 +386,47 @@ export function useCompanionStream(bornastarSessionId?: string | null): UseCompa
         }
         break
 
-      case 'result':
+      case 'result': {
         setIsRunning(false)
         if (actual.total_cost_usd) setCostUsd((prev) => prev + actual.total_cost_usd!)
-        parsed.push({
+        // Per-turn metrics land on a 'system' marker row. We hide it from
+        // the UI (noise), but persist it so the DB keeps the full audit
+        // trail (cost, tokens, duration, model, session id) for training.
+        const metricsMsg: ChatMessage = {
           id: nextId(),
           role: 'system',
           content: actual.is_error
             ? `Error: ${actual.error ?? actual.result ?? 'Unknown error'}`
-            : actual.result ?? 'Done',
+            : '',
           timestamp: Date.now(),
           costUsd: actual.total_cost_usd,
           durationMs: actual.duration_ms,
           numTurns: actual.num_turns,
-        })
+        }
+        persistEvents([{
+          id: metricsMsg.id,
+          role: 'system',
+          content: metricsMsg.content,
+          costUsd: metricsMsg.costUsd,
+          durationMs: metricsMsg.durationMs,
+          claudeSessionId: actual.session_id,
+        }])
+        if (actual.is_error) parsed.push(metricsMsg)
         break
+      }
 
-      case 'error':
+      case 'error': {
         setIsRunning(false)
-        parsed.push({
+        const errMsg: ChatMessage = {
           id: nextId(),
           role: 'system',
           content: `Error: ${actual.error ?? (actual.payload as { message?: string })?.message ?? 'Unknown'}`,
           timestamp: Date.now(),
-        })
+        }
+        persistEvents([{ id: errMsg.id, role: 'system', content: errMsg.content }])
+        parsed.push(errMsg)
         break
+      }
 
       case 'running_sessions': {
         // Daemon broadcasts which chats are currently running. A ChatPanel
@@ -344,6 +477,18 @@ export function useCompanionStream(bornastarSessionId?: string | null): UseCompa
                 const newMessages = parseEvent(event)
                 if (newMessages.length > 0) {
                   setMessages((prev) => [...prev, ...newMessages])
+                  // Persist the freshly-created messages (assistant text,
+                  // tool_use calls). Tool results and final result rows
+                  // were already persisted inline inside parseEvent.
+                  persistEvents(newMessages.map((m) => ({
+                    id: m.id,
+                    role: m.role,
+                    content: m.content,
+                    toolName: m.toolName,
+                    toolInput: m.toolInput,
+                    toolUseId: m.toolUseId,
+                    toolError: m.toolError,
+                  })))
                 }
               } catch {
                 // Non-JSON, skip
@@ -377,13 +522,29 @@ export function useCompanionStream(bornastarSessionId?: string | null): UseCompa
   // Send prompt to companion. `sessionId` on the state is the Claude Code
   // session ID (used for --resume); `bornastarSessionId` is the Bornastar
   // chat ID used to isolate bridges and resolve the worktree path.
-  const sendPrompt = useCallback(async (projectId: string, prompt: string, mode?: 'plan' | 'edit' | 'auto' | 'agent', bornastarSessionId?: string) => {
+  const sendPrompt = useCallback(async (
+    projectId: string,
+    prompt: string,
+    mode?: 'plan' | 'edit' | 'auto' | 'agent',
+    bornastarSessionId?: string,
+    opts?: { model?: string; thinking?: 'off' | 'low' | 'medium' | 'high' },
+  ) => {
     setIsRunning(true)
+    const userMsgId = nextId()
     setMessages((prev) => [...prev, {
-      id: nextId(),
+      id: userMsgId,
       role: 'user',
       content: prompt,
       timestamp: Date.now(),
+    }])
+    // Persist the user prompt immediately. The mode/permission snapshot
+    // + model choice go on this row so we can slice training data later.
+    persistEvents([{
+      id: userMsgId,
+      role: 'user',
+      content: prompt,
+      permissionMode: mode ?? 'auto',
+      ...(opts?.model && { model: opts.model }),
     }])
 
     await fetch('/api/companion/command', {
@@ -396,6 +557,8 @@ export function useCompanionStream(bornastarSessionId?: string | null): UseCompa
         claudeSessionId: sessionId,
         bornastarSessionId,
         mode: mode ?? 'auto',
+        model: opts?.model,
+        thinking: opts?.thinking ?? 'off',
       }),
     })
   }, [sessionId])
@@ -416,6 +579,40 @@ export function useCompanionStream(bornastarSessionId?: string | null): UseCompa
     setIsRunning(false)
   }, [])
 
+  // Prepend older pages fetched by the ChatPanel when the user scrolls
+  // up. Guarded against duplicates by id so a slow older-page fetch that
+  // lands after another doesn't double-insert.
+  const prependMessages = useCallback((msgs: ChatMessage[]) => {
+    if (msgs.length === 0) return
+    setMessages((prev) => {
+      const seen = new Set(prev.map((m) => m.id))
+      const fresh = msgs.filter((m) => !seen.has(m.id))
+      if (fresh.length === 0) return prev
+      return [...fresh, ...prev]
+    })
+  }, [])
+
+  // Late hydrate — the DB fetch can land AFTER the hook mounted (parent
+  // had an empty cache). Replace state once, only if we haven't received
+  // any streaming events yet, so we never clobber in-flight user/Claude
+  // turns. Also picks up the Claude --resume session id.
+  const hydratedRef = useRef(false)
+  const hydrate = useCallback((msgs: ChatMessage[], claudeSessionId?: string | null) => {
+    if (hydratedRef.current) return
+    hydratedRef.current = true
+    setMessages((prev) => {
+      if (prev.length > 0) {
+        // Stream already produced content — merge by id, preferring
+        // existing in-memory entries (they're the freshest).
+        const existing = new Set(prev.map((m) => m.id))
+        const older = msgs.filter((m) => !existing.has(m.id))
+        return [...older, ...prev]
+      }
+      return msgs
+    })
+    if (claudeSessionId) setSessionId(claudeSessionId)
+  }, [])
+
   return {
     messages,
     status,
@@ -426,5 +623,7 @@ export function useCompanionStream(bornastarSessionId?: string | null): UseCompa
     sendPrompt,
     interrupt,
     clearMessages,
+    prependMessages,
+    hydrate,
   }
 }

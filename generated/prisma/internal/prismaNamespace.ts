@@ -1981,6 +1981,8 @@ export const ProjectScalarFieldEnum = {
   repositoryPath: 'repositoryPath',
   slackChannel: 'slackChannel',
   slackWebhook: 'slackWebhook',
+  status: 'status',
+  deletedAt: 'deletedAt',
   createdAt: 'createdAt',
   lastActivityAt: 'lastActivityAt',
   queueStatus: 'queueStatus'
@@ -2072,6 +2074,7 @@ export const WorktreeScalarFieldEnum = {
   prTitleDraft: 'prTitleDraft',
   prBodyDraft: 'prBodyDraft',
   trashedAt: 'trashedAt',
+  deletedAt: 'deletedAt',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
@@ -2103,6 +2106,13 @@ export const ChatSessionScalarFieldEnum = {
   worktreeId: 'worktreeId',
   touchedPaths: 'touchedPaths',
   trashedAt: 'trashedAt',
+  deletedAt: 'deletedAt',
+  claudeSessionId: 'claudeSessionId',
+  totalCostUsd: 'totalCostUsd',
+  totalTokens: 'totalTokens',
+  numTurns: 'numTurns',
+  lastMessageAt: 'lastMessageAt',
+  lastReadAt: 'lastReadAt',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
@@ -2112,15 +2122,35 @@ export type ChatSessionScalarFieldEnum = (typeof ChatSessionScalarFieldEnum)[key
 
 export const ChatMessageScalarFieldEnum = {
   id: 'id',
+  sessionId: 'sessionId',
   projectId: 'projectId',
   userId: 'userId',
+  worktreeId: 'worktreeId',
+  role: 'role',
   content: 'content',
+  toolName: 'toolName',
+  toolInput: 'toolInput',
+  toolResult: 'toolResult',
+  toolUseId: 'toolUseId',
+  toolError: 'toolError',
+  parentMessageId: 'parentMessageId',
+  editOfMessageId: 'editOfMessageId',
+  wasInterrupted: 'wasInterrupted',
+  wasRegenerated: 'wasRegenerated',
+  wasCompacted: 'wasCompacted',
+  deletedAt: 'deletedAt',
+  costUsd: 'costUsd',
+  durationMs: 'durationMs',
+  inputTokens: 'inputTokens',
+  outputTokens: 'outputTokens',
+  cacheReadTokens: 'cacheReadTokens',
+  cacheCreateTokens: 'cacheCreateTokens',
+  model: 'model',
+  permissionMode: 'permissionMode',
+  claudeSessionId: 'claudeSessionId',
   sender: 'sender',
-  activeSkillId: 'activeSkillId',
   mode: 'mode',
-  createdAt: 'createdAt',
-  sessionId: 'sessionId',
-  report: 'report'
+  createdAt: 'createdAt'
 } as const
 
 export type ChatMessageScalarFieldEnum = (typeof ChatMessageScalarFieldEnum)[keyof typeof ChatMessageScalarFieldEnum]
@@ -2415,6 +2445,20 @@ export type ListEnumPermissionModeFieldRefInput<$PrismaModel> = FieldRefInputTyp
 
 
 /**
+ * Reference to a field of type 'Float'
+ */
+export type FloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Float'>
+    
+
+
+/**
+ * Reference to a field of type 'Float[]'
+ */
+export type ListFloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Float[]'>
+    
+
+
+/**
  * Reference to a field of type 'ExecutorType'
  */
 export type EnumExecutorTypeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'ExecutorType'>
@@ -2439,20 +2483,6 @@ export type EnumTaskStatusFieldRefInput<$PrismaModel> = FieldRefInputType<$Prism
  * Reference to a field of type 'TaskStatus[]'
  */
 export type ListEnumTaskStatusFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'TaskStatus[]'>
-    
-
-
-/**
- * Reference to a field of type 'Float'
- */
-export type FloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Float'>
-    
-
-
-/**
- * Reference to a field of type 'Float[]'
- */
-export type ListFloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Float[]'>
     
 
 /**

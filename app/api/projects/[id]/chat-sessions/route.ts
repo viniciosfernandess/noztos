@@ -14,7 +14,10 @@ export async function GET(_request: NextRequest, context: RouteContext) {
   if ('error' in access) return NextResponse.json({ error: access.error }, { status: access.status })
 
   const sessions = await prisma.chatSession.findMany({
-    where: { projectId: id, status: 'open' },
+    // Defense in depth: require both status='open' and deletedAt null so
+    // a row with an inconsistent status flip (e.g. future data migration)
+    // still stays out of the user's view.
+    where: { projectId: id, status: 'open', deletedAt: null },
     select: { id: true, name: true, worktreeId: true, createdAt: true, updatedAt: true },
     orderBy: { createdAt: 'asc' },
   })

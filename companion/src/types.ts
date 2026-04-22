@@ -69,6 +69,13 @@ export interface CompanionCommand {
   // has its own Claude Code conversation and multiple chats can run
   // concurrently across worktrees without the "Agent already running" clash.
   bornastarSessionId?: string
+  // Claude model selector — short alias ('haiku' / 'sonnet' / 'opus') or a
+  // fully-qualified id ('claude-sonnet-4-6'). Omitted = CLI default.
+  model?: string
+  // Extended-thinking budget — translates to a "think …" keyword injected
+  // at the start of the prompt. 'off' = no injection. Haiku ignores this
+  // (model has no extended-thinking support).
+  thinking?: 'off' | 'low' | 'medium' | 'high'
   // clone/create
   repoUrl?: string
   projectName?: string
@@ -78,6 +85,6 @@ export interface CompanionCommand {
 
 // Messages sent FROM companion TO the server
 export interface CompanionMessage {
-  type: 'auth_status' | 'project_list' | 'claude_event' | 'status' | 'error' | 'project_added' | 'running_sessions'
+  type: 'auth_status' | 'project_list' | 'claude_event' | 'status' | 'error' | 'project_added' | 'running_sessions' | 'fs_change'
   payload: unknown
 }

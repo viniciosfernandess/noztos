@@ -20,16 +20,39 @@ export async function POST(_request: NextRequest, context: RouteContext) {
 
   const session = await prisma.chatSession.findUnique({
     where: { id: sessionId },
-    select: { projectId: true },
+    select: {
+      projectId: true, worktreeId: true,
+      worktree: { select: { status: true } },
+    },
   })
   if (!session || session.projectId !== id) {
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   }
+  // Don't allow deleting an individual chat that lives under a trashed
+  // worktree — that chat is bundled in the worktree's trash group, and
+  // killing it here would split the atomic restore. The UI surfaces
+  // "Delete forever" only on the worktree in that case.
+  if (session.worktree && session.worktree.status !== 'open') {
+    return NextResponse.json(
+      { error: 'Cannot delete chat individually — worktree is archived/trashed. Delete the worktree instead.' },
+      { status: 409 },
+    )
+  }
 
-  await prisma.chatSession.update({
-    where: { id: sessionId },
-    data: { status: 'deleted' },
-  })
+  // Mark both `status` and `deletedAt` so every query layer sees the row
+  // as gone. Messages inside this session soft-delete too so the audit
+  // trail stays consistent (same timestamp = same "delete event").
+  const now = new Date()
+  await prisma.$transaction([
+    prisma.chatSession.update({
+      where: { id: sessionId },
+      data: { status: 'deleted', deletedAt: now },
+    }),
+    prisma.chatMessage.updateMany({
+      where: { sessionId, deletedAt: null },
+      data: { deletedAt: now },
+    }),
+  ])
 
   return NextResponse.json({ success: true })
 }
