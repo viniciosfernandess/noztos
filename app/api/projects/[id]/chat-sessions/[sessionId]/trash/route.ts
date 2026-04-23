@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyProjectAccess } from '@/lib/auth'
+import { dropSessionBuffer } from '@/lib/companion-relay'
 
 interface RouteContext {
   params: Promise<{ id: string; sessionId: string }>
@@ -50,6 +51,8 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     where: { id: sessionId },
     data: { status: 'trashed', trashedAt: new Date() },
   })
+
+  dropSessionBuffer(sessionId)
 
   return NextResponse.json({ success: true })
 }

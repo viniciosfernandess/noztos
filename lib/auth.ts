@@ -9,6 +9,48 @@ import { prisma } from '@/lib/db'
 // in logs/config and never confused with session cookies.
 const TOKEN_PREFIX = 'bst_'
 
+// ── In-memory auth cache ────────────────────────────────────────────
+//
+// Hot-path requests (every daemon heartbeat, every sync batch, every
+// messages POST) end up revalidating the same token against the remote
+// Supabase DB. That's a ~200ms round trip we can skip for the lifetime
+// of a token. Cache entries live for TTL_MS and are pinned to
+// globalThis so Next dev hot-reloads don't wipe them.
+
+interface AuthCacheEntry {
+  userId: string
+  tokenId?: string
+  tokenName?: string
+  expiresAt: number
+}
+
+interface ProjectAccessCacheEntry {
+  userId: string
+  projectId: string
+  expiresAt: number
+}
+
+const AUTH_TTL_MS = 5 * 60_000
+const PROJECT_TTL_MS = 5 * 60_000
+
+const globalForAuth = globalThis as unknown as {
+  __bornastarTokenCache?: Map<string, AuthCacheEntry>
+  __bornastarProjectCache?: Map<string, ProjectAccessCacheEntry>
+}
+const tokenCache: Map<string, AuthCacheEntry> =
+  globalForAuth.__bornastarTokenCache ?? new Map<string, AuthCacheEntry>()
+const projectCache: Map<string, ProjectAccessCacheEntry> =
+  globalForAuth.__bornastarProjectCache ?? new Map<string, ProjectAccessCacheEntry>()
+if (process.env.NODE_ENV !== 'production') {
+  globalForAuth.__bornastarTokenCache = tokenCache
+  globalForAuth.__bornastarProjectCache = projectCache
+}
+
+export function invalidateTokenCache(token?: string): void {
+  if (token) tokenCache.delete(token)
+  else tokenCache.clear()
+}
+
 /**
  * Generate a new companion token for a user.
  * Stored in DB, returned once to the user (they copy it to `bornastar login`).
@@ -83,18 +125,37 @@ export async function verifyAuth(request?: NextRequest): Promise<{ userId: strin
       : companionHeader
 
     if (bearerToken?.startsWith(TOKEN_PREFIX)) {
+      // Short-circuit via the in-memory cache — saves a cross-region
+      // DB round trip per stream chunk / sync batch.
+      const now = Date.now()
+      const cached = tokenCache.get(bearerToken)
+      if (cached && cached.expiresAt > now) {
+        return { userId: cached.userId, tokenId: cached.tokenId, tokenName: cached.tokenName }
+      }
+
       const record = await prisma.companionToken.findUnique({
         where: { token: bearerToken },
         select: { id: true, userId: true, name: true, expiresAt: true },
       })
-      if (!record) return null
-      if (record.expiresAt && record.expiresAt < new Date()) return null
+      if (!record) { tokenCache.delete(bearerToken); return null }
+      if (record.expiresAt && record.expiresAt < new Date()) {
+        tokenCache.delete(bearerToken); return null
+      }
 
+      // Fire-and-forget lastUsedAt update. Opportunistic — we don't
+      // refresh this per request if the cache is warm, so it falls
+      // behind by up to TTL minutes; acceptable for a usage stamp.
       prisma.companionToken.update({
         where: { id: record.id },
         data: { lastUsedAt: new Date() },
       }).catch(() => {})
 
+      tokenCache.set(bearerToken, {
+        userId: record.userId,
+        tokenId: record.id,
+        tokenName: record.name,
+        expiresAt: now + AUTH_TTL_MS,
+      })
       return { userId: record.userId, tokenId: record.id, tokenName: record.name }
     }
   }
@@ -120,14 +181,30 @@ export async function verifyProjectAccess(projectId: string) {
     return { error: 'Unauthorized', status: 401 as const }
   }
 
+  // Cache the (user, project) membership — same polling loops that
+  // hit verifyAuth repeatedly also hit this one, and the answer only
+  // changes when the project is deleted or ownership moves (rare).
+  const cacheKey = `${userId}:${projectId}`
+  const now = Date.now()
+  const cached = projectCache.get(cacheKey)
+  if (cached && cached.expiresAt > now) {
+    return { userId, project: { id: cached.projectId, userId } }
+  }
+
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     select: { id: true, userId: true },
   })
 
   if (!project || project.userId !== userId) {
+    projectCache.delete(cacheKey)
     return { error: 'Not found', status: 404 as const }
   }
 
+  projectCache.set(cacheKey, {
+    userId,
+    projectId,
+    expiresAt: now + PROJECT_TTL_MS,
+  })
   return { userId, project }
 }

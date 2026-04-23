@@ -1,31 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Prisma } from '@/generated/prisma/client'
 import { prisma } from '@/lib/db'
 import { verifyProjectAccess } from '@/lib/auth'
 import { rateLimit } from '@/lib/rate-limit'
+import { dropSessionBuffer } from '@/lib/companion-relay'
 
-// ── Claude Code conversation persistence ──────────────────────────────
+// ── Chat conversation read + lifecycle ───────────────────────────────
 //
-// Each stream-json event Claude Code emits during a chat turn (user
-// prompt, assistant text, tool_use, tool_result, final result) lands
-// here as a single ChatMessage row. GET replays them so the UI can
-// restore state after a refresh; POST appends new events as they arrive.
+// Writes moved out — the companion daemon persists stream events to a
+// local SQLite queue and flushes them to Supabase via
+// /api/companion/sync-messages. What's left here:
+//   GET    → paginated history replay (hydrate after refresh / device switch)
+//   DELETE → soft-delete every message under a session
 
 interface RouteContext {
   params: Promise<{ id: string; sessionId: string }>
 }
 
-// Writes can burst during streaming (dozens of events per turn). 600/min
-// ≈ 10/sec gives plenty of headroom for a legitimate session while
-// cutting off a runaway client. Reads are generous since tab focus /
-// initial mount issues GETs in rapid succession.
-const writeLimiter = rateLimit({ tokensPerInterval: 600, intervalMs: 60_000 }, 'chat-messages-write')
-const readLimiter  = rateLimit({ tokensPerInterval: 300, intervalMs: 60_000 }, 'chat-messages-read')
-
-// Tool inputs/outputs can contain file contents legitimately — allow 50MB
-// bodies so a Write/Edit of a big file still persists. Individual payloads
-// larger than this are rejected outright (malicious or ballooning bug).
-const MAX_BODY_BYTES = 50 * 1024 * 1024
+// Reads are generous since tab focus / initial mount issues GETs in
+// rapid succession. No write limiter — POST is gone.
+const readLimiter = rateLimit({ tokensPerInterval: 300, intervalMs: 60_000 }, 'chat-messages-read')
 
 // GET — replay the conversation. Paginated: newest first, cursor-based.
 //   ?limit=N            — how many to return (default 100, max 500)
@@ -99,175 +92,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
   })
 }
 
-// POST — append one or more events.
-export async function POST(request: NextRequest, context: RouteContext) {
-  const { id, sessionId } = await context.params
-  const auth = await verifyProjectAccess(id)
-  if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status })
-
-  if (!writeLimiter.take(auth.userId)) {
-    return NextResponse.json({ error: 'Rate limited' }, { status: 429 })
-  }
-
-  // Reject huge payloads early — avoids pulling 200MB of JSON into
-  // memory just to 500 on validation.
-  const contentLength = parseInt(request.headers.get('content-length') ?? '0', 10)
-  if (contentLength > MAX_BODY_BYTES) {
-    return NextResponse.json({ error: `Payload too large (max ${MAX_BODY_BYTES} bytes)` }, { status: 413 })
-  }
-
-  const session = await prisma.chatSession.findUnique({
-    where: { id: sessionId },
-    select: {
-      id: true, projectId: true, userId: true, status: true,
-      worktreeId: true, deletedAt: true, claudeSessionId: true,
-    },
-  })
-  // Only accept writes on an open chat. Trying to append to an archived
-  // / trashed / deleted session is always a stale client — reject so we
-  // don't corrupt the audit trail.
-  if (!session || session.projectId !== id || session.userId !== auth.userId
-    || session.deletedAt || session.status !== 'open') {
-    return NextResponse.json({ error: 'Session not found or closed' }, { status: 404 })
-  }
-
-  type Incoming = {
-    id?: string
-    clientCreatedAt?: number
-    role: 'user' | 'assistant' | 'tool' | 'system'
-    content: string
-    toolName?: string
-    toolInput?: unknown
-    toolResult?: unknown
-    toolUseId?: string
-    toolError?: boolean
-    parentMessageId?: string
-    editOfMessageId?: string
-    wasInterrupted?: boolean
-    wasRegenerated?: boolean
-    costUsd?: number
-    durationMs?: number
-    inputTokens?: number
-    outputTokens?: number
-    cacheReadTokens?: number
-    cacheCreateTokens?: number
-    model?: string
-    permissionMode?: string
-    claudeSessionId?: string
-  }
-
-  const body = await request.json() as { event?: Incoming; events?: Incoming[] }
-  const events: Incoming[] = body.events ?? (body.event ? [body.event] : [])
-  if (events.length === 0) {
-    return NextResponse.json({ error: 'No events provided' }, { status: 400 })
-  }
-
-  const savedIds: string[] = []
-  let rolledCost = 0
-  let rolledTokens = 0
-  let turnsDelta = 0
-  let latestClaudeSessionId: string | undefined
-  // Track first-time claude session change so we can flag compaction
-  // boundaries. If an event claims a NEW session id that doesn't match
-  // what the chat had before, the prior context was discarded — useful
-  // for training data filters.
-  const priorClaudeSession = session.claudeSessionId
-  let compactionDetected = false
-
-  for (const e of events) {
-    const createdAt = e.clientCreatedAt
-      ? new Date(e.clientCreatedAt)
-      : undefined
-
-    if (e.claudeSessionId && priorClaudeSession && e.claudeSessionId !== priorClaudeSession) {
-      compactionDetected = true
-    }
-
-    const updateData: Prisma.ChatMessageUncheckedUpdateInput = {
-      role: e.role,
-      content: e.content,
-      toolName: e.toolName ?? undefined,
-      toolInput: e.toolInput === undefined ? undefined : (e.toolInput as Prisma.InputJsonValue),
-      toolResult: e.toolResult === undefined ? undefined : (e.toolResult as Prisma.InputJsonValue),
-      toolUseId: e.toolUseId ?? undefined,
-      toolError: e.toolError === undefined ? undefined : e.toolError,
-      parentMessageId: e.parentMessageId ?? undefined,
-      editOfMessageId: e.editOfMessageId ?? undefined,
-      wasInterrupted: e.wasInterrupted === undefined ? undefined : e.wasInterrupted,
-      wasRegenerated: e.wasRegenerated === undefined ? undefined : e.wasRegenerated,
-      wasCompacted: compactionDetected ? true : undefined,
-      costUsd: e.costUsd ?? undefined,
-      durationMs: e.durationMs ?? undefined,
-      inputTokens: e.inputTokens ?? undefined,
-      outputTokens: e.outputTokens ?? undefined,
-      cacheReadTokens: e.cacheReadTokens ?? undefined,
-      cacheCreateTokens: e.cacheCreateTokens ?? undefined,
-      model: e.model ?? undefined,
-      permissionMode: e.permissionMode ?? undefined,
-      claudeSessionId: e.claudeSessionId ?? undefined,
-    }
-    const createData: Prisma.ChatMessageUncheckedCreateInput = {
-      sessionId,
-      projectId: id,
-      userId: auth.userId,
-      worktreeId: session.worktreeId,
-      role: e.role,
-      content: e.content,
-      ...(createdAt && { createdAt }),
-      toolName: e.toolName ?? undefined,
-      toolInput: e.toolInput === undefined ? undefined : (e.toolInput as Prisma.InputJsonValue),
-      toolResult: e.toolResult === undefined ? undefined : (e.toolResult as Prisma.InputJsonValue),
-      toolUseId: e.toolUseId ?? undefined,
-      toolError: e.toolError ?? undefined,
-      parentMessageId: e.parentMessageId ?? undefined,
-      editOfMessageId: e.editOfMessageId ?? undefined,
-      wasInterrupted: e.wasInterrupted ?? undefined,
-      wasRegenerated: e.wasRegenerated ?? undefined,
-      wasCompacted: compactionDetected,
-      costUsd: e.costUsd ?? undefined,
-      durationMs: e.durationMs ?? undefined,
-      inputTokens: e.inputTokens ?? undefined,
-      outputTokens: e.outputTokens ?? undefined,
-      cacheReadTokens: e.cacheReadTokens ?? undefined,
-      cacheCreateTokens: e.cacheCreateTokens ?? undefined,
-      model: e.model ?? undefined,
-      permissionMode: e.permissionMode ?? undefined,
-      claudeSessionId: e.claudeSessionId ?? undefined,
-    }
-
-    let saved
-    if (e.id) {
-      saved = await prisma.chatMessage.upsert({
-        where: { id: e.id },
-        create: { id: e.id, ...createData },
-        update: updateData,
-      })
-    } else {
-      saved = await prisma.chatMessage.create({ data: createData })
-    }
-    savedIds.push(saved.id)
-
-    if (typeof e.costUsd === 'number') rolledCost += e.costUsd
-    const turnTokens = (e.inputTokens ?? 0) + (e.outputTokens ?? 0)
-    if (turnTokens) rolledTokens += turnTokens
-    if (e.role === 'system' && typeof e.costUsd === 'number') turnsDelta += 1
-    if (e.claudeSessionId) latestClaudeSessionId = e.claudeSessionId
-  }
-
-  // Roll-up on the session for cheap sidebar rendering.
-  await prisma.chatSession.update({
-    where: { id: sessionId },
-    data: {
-      ...(rolledCost > 0 && { totalCostUsd: { increment: rolledCost } }),
-      ...(rolledTokens > 0 && { totalTokens: { increment: rolledTokens } }),
-      ...(turnsDelta > 0 && { numTurns: { increment: turnsDelta } }),
-      ...(latestClaudeSessionId && { claudeSessionId: latestClaudeSessionId }),
-      lastMessageAt: new Date(),
-    },
-  })
-
-  return NextResponse.json({ ok: true, ids: savedIds, compactionDetected })
-}
+// POST removed — the browser no longer persists chat events from here.
+// The companion daemon holds the durable write path: it buffers each
+// stream event in ~/.bornastar/queue.db (SQLite) and drains to
+// Supabase via /api/companion/sync-messages in the background. The old
+// rate limiter + size cap + per-event upsert logic that used to live
+// here is gone; see app/api/companion/sync-messages/route.ts.
 
 // DELETE — soft delete every message in the session. Keeps the audit
 // trail intact; only flips deletedAt so future GETs ignore them.
@@ -289,5 +119,8 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
     where: { sessionId, userId: auth.userId, deletedAt: null },
     data: { deletedAt: now },
   })
+  // Keep the RAM buffer in sync — otherwise a fresh chat hydration
+  // would replay the just-soft-deleted events from memory.
+  dropSessionBuffer(sessionId)
   return NextResponse.json({ ok: true })
 }

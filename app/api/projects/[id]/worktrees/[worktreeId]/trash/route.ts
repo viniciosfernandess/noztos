@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyProjectAccess } from '@/lib/auth'
+import { dropSessionBuffer } from '@/lib/companion-relay'
 
 interface RouteContext {
   params: Promise<{ id: string; worktreeId: string }>
@@ -31,6 +32,10 @@ export async function POST(_request: NextRequest, context: RouteContext) {
   // Group every chat inside into the worktree's trash bucket so they come
   // back together on restore. Previously-individually-trashed chats keep
   // their own trashedAt — the restore route pulls them back anyway.
+  const openSessions = await prisma.chatSession.findMany({
+    where: { worktreeId, status: 'open' },
+    select: { id: true },
+  })
   const trashedAt = new Date()
   await prisma.worktree.update({
     where: { id: worktreeId },
@@ -40,6 +45,8 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     where: { worktreeId, status: 'open' },
     data: { status: 'trashed', trashedAt },
   })
+
+  for (const s of openSessions) dropSessionBuffer(s.id)
 
   return NextResponse.json({ success: true })
 }

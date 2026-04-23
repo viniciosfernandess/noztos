@@ -18,10 +18,12 @@
     "commander": "^13.1.0",
     "chalk": "^5.4.1",
     "ora": "^8.2.0",
-    "chokidar": "^4.0.3"
+    "chokidar": "^4.0.3",
+    "better-sqlite3": "^11.7.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/better-sqlite3": "^7.6.12",
     "typescript": "^5.8.0"
   },
   "engines": {

@@ -116,110 +116,20 @@ interface UseCompanionStreamReturn {
 export function useCompanionStream(
   bornastarSessionId?: string | null,
   initialMessages?: ChatMessage[],
-  persist?: { projectId: string; initialClaudeSessionId?: string | null },
+  initialClaudeSessionId?: string | null,
 ): UseCompanionStreamReturn {
   const [messages, setMessages] = useState<ChatMessage[]>(() => initialMessages ?? [])
   const [status, setStatus] = useState<CompanionStatus>('disconnected')
   const [isRunning, setIsRunning] = useState(false)
   const [companionInfo, setCompanionInfo] = useState<UseCompanionStreamReturn['companionInfo']>(null)
-  const [sessionId, setSessionId] = useState<string | null>(persist?.initialClaudeSessionId ?? null)
+  const [sessionId, setSessionId] = useState<string | null>(initialClaudeSessionId ?? null)
   const [costUsd, setCostUsd] = useState(0)
   const eventSourceRef = useRef<AbortController | null>(null)
   const messageIdCounter = useRef(0)
 
-  // ── Persistence with retry queue ─────────────────────────────────
-  // Every stream event persists to the DB so refresh / device switch
-  // restores the conversation. Writes are fire-and-forget in the happy
-  // path, but failures (network flap, rate limit, 5xx) are parked in a
-  // retry queue and replayed with exponential backoff. The queue is
-  // mirrored to localStorage so even a tab close doesn't lose events.
-  const persistTargetRef = useRef<{ projectId: string; sessionId: string } | null>(null)
-  useEffect(() => {
-    if (persist && bornastarSessionId) {
-      persistTargetRef.current = { projectId: persist.projectId, sessionId: bornastarSessionId }
-    } else {
-      persistTargetRef.current = null
-    }
-  }, [persist, bornastarSessionId])
-
-  const retryQueueRef = useRef<Record<string, unknown>[]>([])
-  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const retryAttemptRef = useRef(0)
-  const queueStorageKey = bornastarSessionId ? `bornastar:persist-queue:${bornastarSessionId}` : null
-
-  // Hydrate queue from localStorage on mount — a crashed tab might have
-  // left pending events we should still flush.
-  useEffect(() => {
-    if (!queueStorageKey) return
-    try {
-      const raw = localStorage.getItem(queueStorageKey)
-      if (!raw) return
-      const parsed = JSON.parse(raw) as Record<string, unknown>[]
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        retryQueueRef.current.push(...parsed)
-        scheduleRetry()
-      }
-    } catch { /* ignore corrupt queue */ }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queueStorageKey])
-
-  function saveQueue(): void {
-    if (!queueStorageKey) return
-    try {
-      if (retryQueueRef.current.length === 0) localStorage.removeItem(queueStorageKey)
-      else localStorage.setItem(queueStorageKey, JSON.stringify(retryQueueRef.current))
-    } catch { /* quota exceeded, drop silently */ }
-  }
-
-  function scheduleRetry(): void {
-    if (retryTimerRef.current) return
-    const attempt = retryAttemptRef.current
-    const delay = Math.min(30_000, 500 * Math.pow(2, attempt))  // 0.5s, 1s, 2s, 4s… cap 30s
-    retryTimerRef.current = setTimeout(async () => {
-      retryTimerRef.current = null
-      const target = persistTargetRef.current
-      if (!target) return
-      const batch = retryQueueRef.current.splice(0, 100)  // drain in chunks to bound request size
-      if (batch.length === 0) return
-      try {
-        const res = await fetch(`/api/projects/${target.projectId}/chat-sessions/${target.sessionId}/messages`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ events: batch }),
-        })
-        if (!res.ok) throw new Error(`persist ${res.status}`)
-        retryAttemptRef.current = 0
-        saveQueue()
-        if (retryQueueRef.current.length > 0) scheduleRetry()
-      } catch {
-        // Re-queue at the FRONT so ordering is preserved.
-        retryQueueRef.current.unshift(...batch)
-        retryAttemptRef.current = Math.min(retryAttemptRef.current + 1, 8)
-        saveQueue()
-        scheduleRetry()
-      }
-    }, delay)
-  }
-
-  const persistEvents = useCallback((events: Record<string, unknown>[]) => {
-    const target = persistTargetRef.current
-    if (!target || events.length === 0) return
-    // Stamp a client-side timestamp so the server can keep true order
-    // even if POSTs arrive out of network order.
-    const stamped = events.map((e) => ({ clientCreatedAt: Date.now(), ...e }))
-    fetch(`/api/projects/${target.projectId}/chat-sessions/${target.sessionId}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ events: stamped }),
-    }).then((res) => {
-      if (!res.ok) throw new Error(`persist ${res.status}`)
-    }).catch(() => {
-      retryQueueRef.current.push(...stamped)
-      saveQueue()
-      scheduleRetry()
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // All durability lives in the companion daemon (local SQLite queue →
+  // server write-through → Supabase) and the server's per-session ring
+  // buffer. The hook stays purely presentational — parse stream, render.
 
   const nextId = () => `msg-${Date.now()}-${++messageIdCounter.current}`
 
@@ -359,7 +269,9 @@ export function useCompanionStream(
         break
 
       case 'user':
-        // Tool results — match back to tool_use by id
+        // Tool results — match back to tool_use by id. Persistence is
+        // handled by the daemon (queue) + server write-through; we only
+        // update the in-memory row here for rendering.
         if (actual.message?.content) {
           for (const block of actual.message.content) {
             if (block.type === 'tool_result') {
@@ -368,29 +280,14 @@ export function useCompanionStream(
                 : Array.isArray(block.content)
                   ? block.content.map((c) => c.text).join('\n')
                   : ''
-
-              // Update existing tool message with result
               setMessages((prev) => prev.map((m) => {
                 if (m.toolUseId === block.tool_use_id) {
-                  const updated: ChatMessage = {
+                  return {
                     ...m,
                     toolResult: resultText,
                     toolError: block.is_error ?? false,
                     bashOutput: m.toolName === 'Bash' ? resultText : m.bashOutput,
                   }
-                  // Write-through: update the row in place so a refresh
-                  // restores the tool result, not just the tool call.
-                  persistEvents([{
-                    id: updated.id,
-                    role: 'tool',
-                    content: updated.content,
-                    toolName: updated.toolName,
-                    toolInput: updated.toolInput,
-                    toolResult: resultText,
-                    toolUseId: updated.toolUseId,
-                    toolError: updated.toolError,
-                  }])
-                  return updated
                 }
                 return m
               }))
@@ -402,42 +299,32 @@ export function useCompanionStream(
       case 'result': {
         setIsRunning(false)
         if (actual.total_cost_usd) setCostUsd((prev) => prev + actual.total_cost_usd!)
-        // Per-turn metrics land on a 'system' marker row. We hide it from
-        // the UI (noise), but persist it so the DB keeps the full audit
-        // trail (cost, tokens, duration, model, session id) for training.
-        const metricsMsg: ChatMessage = {
-          id: nextId(),
-          role: 'system',
-          content: actual.is_error
-            ? `Error: ${actual.error ?? actual.result ?? 'Unknown error'}`
-            : '',
-          timestamp: Date.now(),
-          costUsd: actual.total_cost_usd,
-          durationMs: actual.duration_ms,
-          numTurns: actual.num_turns,
+        // Per-turn metrics land in a hidden 'system' row. The daemon
+        // already persists it with the final cost/tokens/session id; we
+        // surface it here only when the turn errored (so the UI shows
+        // the reason).
+        if (actual.is_error) {
+          parsed.push({
+            id: nextId(),
+            role: 'system',
+            content: `Error: ${actual.error ?? actual.result ?? 'Unknown error'}`,
+            timestamp: Date.now(),
+            costUsd: actual.total_cost_usd,
+            durationMs: actual.duration_ms,
+            numTurns: actual.num_turns,
+          })
         }
-        persistEvents([{
-          id: metricsMsg.id,
-          role: 'system',
-          content: metricsMsg.content,
-          costUsd: metricsMsg.costUsd,
-          durationMs: metricsMsg.durationMs,
-          claudeSessionId: actual.session_id,
-        }])
-        if (actual.is_error) parsed.push(metricsMsg)
         break
       }
 
       case 'error': {
         setIsRunning(false)
-        const errMsg: ChatMessage = {
+        parsed.push({
           id: nextId(),
           role: 'system',
           content: `Error: ${actual.error ?? (actual.payload as { message?: string })?.message ?? 'Unknown'}`,
           timestamp: Date.now(),
-        }
-        persistEvents([{ id: errMsg.id, role: 'system', content: errMsg.content }])
-        parsed.push(errMsg)
+        })
         break
       }
 
@@ -490,18 +377,6 @@ export function useCompanionStream(
                 const newMessages = parseEvent(event)
                 if (newMessages.length > 0) {
                   setMessages((prev) => [...prev, ...newMessages])
-                  // Persist the freshly-created messages (assistant text,
-                  // tool_use calls). Tool results and final result rows
-                  // were already persisted inline inside parseEvent.
-                  persistEvents(newMessages.map((m) => ({
-                    id: m.id,
-                    role: m.role,
-                    content: m.content,
-                    toolName: m.toolName,
-                    toolInput: m.toolInput,
-                    toolUseId: m.toolUseId,
-                    toolError: m.toolError,
-                  })))
                 }
               } catch {
                 // Non-JSON, skip
@@ -543,21 +418,15 @@ export function useCompanionStream(
     opts?: { model?: string; thinking?: 'off' | 'low' | 'medium' | 'high' },
   ) => {
     setIsRunning(true)
-    const userMsgId = nextId()
+    // Optimistic local render. The durable copy comes back through
+    // the daemon → relay → ring-buffer pipeline once the daemon
+    // enqueues the prompt and relays it as a persistRow frame; the
+    // browser de-dups by id.
     setMessages((prev) => [...prev, {
-      id: userMsgId,
+      id: nextId(),
       role: 'user',
       content: prompt,
       timestamp: Date.now(),
-    }])
-    // Persist the user prompt immediately. The mode/permission snapshot
-    // + model choice go on this row so we can slice training data later.
-    persistEvents([{
-      id: userMsgId,
-      role: 'user',
-      content: prompt,
-      permissionMode: mode ?? 'auto',
-      ...(opts?.model && { model: opts.model }),
     }])
 
     // Fire the command. If the companion daemon is flapping (dev-server

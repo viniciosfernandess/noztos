@@ -5,8 +5,37 @@ import { loadConfig } from './config.js'
 import { detectClaudeAuth, detectClaudeInstallation, getClaudeVersion } from './auth-detect.js'
 import { ClaudeBridge } from './claude-bridge.js'
 import { ProjectWatcher, type FsChangeBatch } from './fs-watcher.js'
+import { SyncQueue, type QueuedEvent } from './sync-queue.js'
+import { SyncWorker } from './sync-worker.js'
 import { listProjects } from './project-manager.js'
 import type { CompanionCommand, CompanionMessage, ClaudeStreamEvent } from './types.js'
+
+// A ChatMessage-shaped row ready to persist. Every row carries a
+// stable `id` AND a `createdAt` (unix ms, producer timestamp); the
+// same tuple flows through the local sync queue, the relay payload
+// (for server-side write-through), and the ring buffer replay — all
+// three paths upsert on id and honour the producer timestamp.
+interface PersistRow {
+  id: string
+  createdAt: number
+  role: 'user' | 'assistant' | 'thinking' | 'tool' | 'system'
+  content: string
+  toolName?: string
+  toolInput?: Record<string, unknown>
+  toolResult?: string
+  toolUseId?: string
+  toolError?: boolean
+  model?: string
+  permissionMode?: string
+  claudeSessionId?: string
+  // Per-turn metrics (only set on the system row that closes a turn)
+  costUsd?: number
+  durationMs?: number
+  inputTokens?: number
+  outputTokens?: number
+  cacheReadTokens?: number
+  cacheCreateTokens?: number
+}
 
 // The daemon is the long-running background process that:
 //   1. Registers with the Bornastar server (POST /api/companion/register)
@@ -32,6 +61,13 @@ export class Daemon extends EventEmitter {
   // One filesystem watcher per registered project — replaces the
   // Explorer / Changes / stats polling on the browser. Keyed by abs path.
   private watchers: Map<string, ProjectWatcher> = new Map()
+  // Persistent sync queue that mirrors every chat event to Supabase in
+  // the background. Browser only renders — durability lives here.
+  private syncQueue: SyncQueue = new SyncQueue()
+  private syncWorker: SyncWorker = new SyncWorker({
+    queue: this.syncQueue,
+    send: (events) => this.sendSyncBatch(events),
+  })
   private eventSource: EventSource | null = null
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
@@ -50,6 +86,7 @@ export class Daemon extends EventEmitter {
     this.connectEvents()
     this.startHeartbeat()
     this.syncWatchers()
+    this.syncWorker.start()
   }
 
   stop(): void {
@@ -65,6 +102,11 @@ export class Daemon extends EventEmitter {
       watcher.stop()
     }
     this.watchers.clear()
+    // Give the sync worker one last chance to flush whatever it was
+    // holding — fire-and-forget, stop() can't be async.
+    this.syncWorker.flushNow().catch(() => {})
+    this.syncWorker.stop()
+    this.syncQueue.close()
     this.unregister().catch(() => {})
   }
 
@@ -231,6 +273,174 @@ export class Daemon extends EventEmitter {
     await this.broadcastRunning()
   }
 
+  // ── Persistent queue plumbing ─────────────────────────────────────
+  //
+  // Every ChatMessage-shaped row (user prompt, assistant text, thinking
+  // block, tool_use, tool_result update, final result) gets persisted
+  // three ways, each reached from the same pre-built PersistRow with
+  // a stable id:
+  //
+  //   1. Local SQLite queue → /sync-messages (durable, retried, daemon-
+  //      owned path; survives a dead server).
+  //   2. Attached to the relay `claude_event` payload as `persistRows`
+  //      so the server can write-through to Supabase without re-parsing
+  //      and — crucially — uses the same id.
+  //   3. The ring buffer inside companion-relay.ts captures the whole
+  //      claude_event frame for instant chat hydration.
+  //
+  // Upserts by id are idempotent across all three, so duplicates are
+  // harmless and we never lose rows if one lane fails.
+
+  private generateEventId(): string {
+    return `evt-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  }
+
+  private enqueueRow(row: PersistRow, ctx: { sessionId: string; projectId: string }): void {
+    this.syncQueue.enqueue({
+      id: row.id,
+      sessionId: ctx.sessionId,
+      projectId: ctx.projectId,
+      userId: '',  // server resolves from the bearer token
+      payload: row as unknown as Record<string, unknown>,
+      createdAt: Date.now(),
+    })
+    this.syncWorker.wake()
+  }
+
+  // Translate a raw Claude CLI stream event into ChatMessage-shaped rows
+  // with stable ids. IDs are the contract between daemon (queue) and
+  // server (write-through): same row → same id → idempotent upsert.
+  private buildPersistRows(
+    event: ClaudeStreamEvent,
+    ctx: { mode?: string; model?: string },
+  ): PersistRow[] {
+    const out: PersistRow[] = []
+    // Single timestamp per event — all rows born here share it, which
+    // matches how the browser would render them (one moment in time).
+    const now = Date.now()
+
+    // Assistant: text + thinking + tool_use blocks.
+    if (event.type === 'assistant') {
+      const content = (event as unknown as { message?: { content?: Array<{ type: string; text?: string; thinking?: string; id?: string; name?: string; input?: Record<string, unknown> }> } }).message?.content
+      if (!Array.isArray(content)) return out
+      for (const block of content) {
+        if (block.type === 'text' && block.text) {
+          out.push({
+            id: this.generateEventId(),
+            createdAt: now,
+            role: 'assistant',
+            content: block.text,
+            model: ctx.model,
+            permissionMode: ctx.mode,
+          })
+        } else if (block.type === 'thinking' && block.thinking) {
+          out.push({
+            id: this.generateEventId(),
+            createdAt: now,
+            role: 'thinking',
+            content: block.thinking,
+            model: ctx.model,
+            permissionMode: ctx.mode,
+          })
+        } else if (block.type === 'tool_use' && block.id && block.name) {
+          out.push({
+            id: block.id,                     // reuse Claude's id so tool_result merges
+            createdAt: now,
+            role: 'tool',
+            content: `Using ${block.name}`,
+            toolName: block.name,
+            toolInput: block.input ?? {},
+            toolUseId: block.id,
+            toolError: false,
+            model: ctx.model,
+            permissionMode: ctx.mode,
+          })
+        }
+      }
+      return out
+    }
+
+    // Result: the per-turn summary with cost, tokens, duration. This
+    // is the row that feeds the session rollup increments (see
+    // chat-persist.ts) and keeps numTurns accurate. Persisted hidden
+    // (no content) so the chat UI stays clean.
+    if (event.type === 'result') {
+      const e = event as unknown as {
+        session_id?: string
+        total_cost_usd?: number
+        duration_ms?: number
+        num_turns?: number
+        usage?: {
+          input_tokens?: number
+          output_tokens?: number
+          cache_read_input_tokens?: number
+          cache_creation_input_tokens?: number
+        }
+        is_error?: boolean
+        error?: string
+        result?: string
+      }
+      out.push({
+        id: this.generateEventId(),
+        createdAt: now,
+        role: 'system',
+        content: e.is_error ? `Error: ${e.error ?? e.result ?? 'Unknown'}` : '',
+        costUsd: e.total_cost_usd,
+        durationMs: e.duration_ms,
+        inputTokens: e.usage?.input_tokens,
+        outputTokens: e.usage?.output_tokens,
+        cacheReadTokens: e.usage?.cache_read_input_tokens,
+        cacheCreateTokens: e.usage?.cache_creation_input_tokens,
+        claudeSessionId: e.session_id,
+        model: ctx.model,
+      })
+      return out
+    }
+
+    // User event from the CLI: only tool_result blocks (user prompts
+    // come from us, not from the CLI).
+    if (event.type === 'user') {
+      const content = (event as unknown as { message?: { content?: Array<{ type: string; tool_use_id?: string; is_error?: boolean; content?: string | Array<{ text?: string }> }> } }).message?.content
+      if (!Array.isArray(content)) return out
+      for (const block of content) {
+        if (block.type !== 'tool_result' || !block.tool_use_id) continue
+        const resultText = typeof block.content === 'string'
+          ? block.content
+          : Array.isArray(block.content)
+            ? block.content.map((c) => c.text ?? '').join('\n')
+            : ''
+        out.push({
+          id: block.tool_use_id,              // same id as the tool_use row → upsert merges
+          createdAt: now,
+          role: 'tool',
+          content: '',
+          toolResult: resultText,
+          toolError: !!block.is_error,
+          toolUseId: block.tool_use_id,
+        })
+      }
+      return out
+    }
+
+    return out
+  }
+
+  // POSTed by the SyncWorker. Sends a batch to the server and reports
+  // whether every row landed. Only fully-successful batches get ack'd.
+  private async sendSyncBatch(events: QueuedEvent[]): Promise<{ ok: boolean }> {
+    const res = await this.post('/api/companion/sync-messages', {
+      events: events.map((e) => ({
+        id: e.id,
+        sessionId: e.sessionId,
+        projectId: e.projectId,
+        createdAt: e.createdAt,
+        ...e.payload,
+      })),
+    }).catch(() => null)
+    if (!res) return { ok: false }
+    return { ok: res.ok }
+  }
+
   // Fire-and-forget broadcast of which chats are currently running. Called
   // whenever the set changes (prompt started, bridge finished, interrupted)
   // and on explicit client queries.
@@ -287,6 +497,29 @@ export class Daemon extends EventEmitter {
     // browser can filter and never show chat1's stream inside chat2.
     const bornastarSessionId = cmd.bornastarSessionId
 
+    // Enqueue the user prompt as the first row of this turn and also
+    // relay it so the ring buffer and server write-through see it —
+    // otherwise a mobile catching up mid-stream would miss the question
+    // the Mac asked. The id is stable across all three persistence lanes.
+    const persistCtx = bornastarSessionId && project.id
+      ? { sessionId: bornastarSessionId, projectId: project.id, mode: cmd.mode, model: cmd.model }
+      : null
+    if (persistCtx) {
+      const userRow: PersistRow = {
+        id: this.generateEventId(),
+        createdAt: Date.now(),
+        role: 'user',
+        content: cmd.prompt,
+        permissionMode: cmd.mode ?? 'auto',
+        ...(cmd.model && { model: cmd.model }),
+      }
+      this.enqueueRow(userRow, persistCtx)
+      this.send({
+        type: 'claude_event',
+        payload: { projectId: project.id, bornastarSessionId, persistRows: [userRow] },
+      }).catch(() => {})
+    }
+
     // Track this chat as running so a late-joining ChatPanel can restore
     // its "Claude is working" indicator by querying the current set.
     if (bornastarSessionId) {
@@ -308,13 +541,35 @@ export class Daemon extends EventEmitter {
     }
 
     bridge.on('event', (event: ClaudeStreamEvent) => {
+      // Build persistable rows once — same ids flow through the queue,
+      // the relay (for server write-through) and the ring buffer.
+      const rows = persistCtx ? this.buildPersistRows(event, persistCtx) : []
       this.send({
         type: 'claude_event',
-        payload: { projectId: project.id, bornastarSessionId, event },
+        payload: {
+          projectId: project.id,
+          bornastarSessionId,
+          event,
+          ...(rows.length > 0 && { persistRows: rows }),
+        },
       })
+      if (persistCtx) for (const row of rows) this.enqueueRow(row, persistCtx)
     })
 
     bridge.on('done', (summary: { code: number; sessionId: string | null }) => {
+      // Stamp the turn's `system/result` row with the Claude session id
+      // so the browser picks it up on its next --resume. Single stable
+      // id across queue + relay so the server write-through upserts the
+      // same row.
+      const systemRow: PersistRow | null = persistCtx && summary.sessionId
+        ? {
+            id: this.generateEventId(),
+            createdAt: Date.now(),
+            role: 'system',
+            content: '',
+            claudeSessionId: summary.sessionId,
+          }
+        : null
       this.send({
         type: 'claude_event',
         payload: {
@@ -325,8 +580,13 @@ export class Daemon extends EventEmitter {
             session_id: summary.sessionId,
             content: `Session ended (exit ${summary.code})`,
           },
+          ...(systemRow && { persistRows: [systemRow] }),
         },
       })
+      if (persistCtx && systemRow) this.enqueueRow(systemRow, persistCtx)
+      // Flush now — user just saw the response settle; push Supabase
+      // to catch up immediately.
+      this.syncWorker.flushNow().catch(() => {})
       markFinished()
     })
 

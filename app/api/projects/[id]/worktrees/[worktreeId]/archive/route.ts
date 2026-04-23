@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyProjectAccess } from '@/lib/auth'
+import { dropSessionBuffer } from '@/lib/companion-relay'
 
 interface RouteContext {
   params: Promise<{ id: string; worktreeId: string }>
@@ -33,6 +34,10 @@ export async function POST(_request: NextRequest, context: RouteContext) {
   // Archive the worktree and take every chat inside with it. Individually-
   // archived chats stay in 'archived' — restoring the worktree later will
   // restore them all together (see /restore route).
+  const openSessions = await prisma.chatSession.findMany({
+    where: { worktreeId, status: 'open' },
+    select: { id: true },
+  })
   await prisma.worktree.update({
     where: { id: worktreeId },
     data: { status: 'archived' },
@@ -41,6 +46,8 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     where: { worktreeId, status: 'open' },
     data: { status: 'archived' },
   })
+
+  for (const s of openSessions) dropSessionBuffer(s.id)
 
   return NextResponse.json({ success: true })
 }

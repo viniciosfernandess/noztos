@@ -5173,22 +5173,45 @@ function ChatPanel({
     durationMs: m.durationMs ?? undefined,
   }))
 
-  // Fetch the latest page. Defer hydration into the hook until after it
-  // mounts (companion ref available) so we replace / merge correctly
-  // instead of relying on the mount-time seed.
+  // Hydrate the chat in two tiers:
+  //   1. Fast path — GET /api/companion/session-state. If the server has
+  //      the session in its ring buffer (last 24h of activity in RAM),
+  //      that comes back instantly and we skip Supabase entirely.
+  //   2. Cold path — paginated /messages, which reads from Supabase.
+  //      Triggers when the buffer is empty (evicted / cold boot / never
+  //      streamed) or the session is archived/trashed.
   useEffect(() => {
     if (!sessionId) return
     let cancelled = false
-    fetch(`/api/projects/${projectId}/chat-sessions/${sessionId}/messages?limit=${PAGE_SIZE}`)
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => {
-        if (cancelled || !data) return
+    ;(async () => {
+      try {
+        const ss = await fetch(`/api/companion/session-state?projectId=${projectId}&sessionId=${sessionId}`)
+        if (!cancelled && ss.ok) {
+          const data = await ss.json()
+          if (data?.source === 'buffer' && Array.isArray(data.messages) && data.messages.length > 0) {
+            const msgs = mapDbMessages(data.messages)
+            setDbSeed({ messages: msgs, claudeSessionId: data.claudeSessionId ?? null })
+            // Ring buffer is RAM-only — no "older pages" live there; the
+            // full history only resurfaces from Supabase, which we fetch
+            // lazily when the user scrolls up.
+            setHasMoreOlder(true)
+            setOldestMessageId(msgs[0]?.id ?? null)
+            return
+          }
+        }
+      } catch {}
+
+      if (cancelled) return
+      try {
+        const res = await fetch(`/api/projects/${projectId}/chat-sessions/${sessionId}/messages?limit=${PAGE_SIZE}`)
+        if (cancelled || !res.ok) return
+        const data = await res.json()
         const msgs = mapDbMessages(data.messages ?? [])
         setDbSeed({ messages: msgs, claudeSessionId: data.claudeSessionId ?? null })
         setHasMoreOlder(!!data.hasMore)
         setOldestMessageId(msgs[0]?.id ?? null)
-      })
-      .catch(() => {})
+      } catch {}
+    })()
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, sessionId])
@@ -5199,12 +5222,12 @@ function ChatPanel({
 
   // ── Companion stream (Claude Code CLI) ──────────────────────────
   // Tag the hook with this chat's Bornastar session so it filters events
-  // belonging to other chats, and hand it the persistence config so
-  // every streamed event mirrors to the DB in real time.
+  // belonging to other chats. The hook is presentational only; durability
+  // lives in the daemon queue + server ring buffer + Supabase, not here.
   const companion = useCompanionStream(
     sessionId,
     seedMessages,
-    sessionId ? { projectId, initialClaudeSessionId: dbSeed?.claudeSessionId ?? null } : undefined,
+    dbSeed?.claudeSessionId ?? null,
   )
   const companionConnected = companion.status === 'connected'
 

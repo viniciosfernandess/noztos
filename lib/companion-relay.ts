@@ -12,13 +12,28 @@ import { EventEmitter } from 'node:events'
 //   Companion → POST /api/companion/response → relay stores event
 //   Browser  → GET  /api/companion/stream    → SSE emits event to browser
 //
-// Each user gets their own channel. Messages are fire-and-forget — if no
-// listener is connected, messages are queued (up to MAX_QUEUE_SIZE) and
-// drained when the listener reconnects.
+// On top of the raw relay, we also maintain a per-session ring buffer of
+// recent stream events. That buffer is what makes re-opening a chat feel
+// instant: GET /api/companion/session-state serves from RAM instead of
+// round-tripping Supabase. Persistence to Supabase still happens in
+// parallel (server write-through + daemon SQLite queue), but the hot
+// path never waits on it.
 //
-// Production: swap this for Redis pub/sub. Same interface, horizontal scale.
+// Production: swap the channels Map for Redis pub/sub (same interface)
+// and move the session buffer to a shared store. The interface here is
+// designed so both can move without rewriting callers.
 
 const MAX_QUEUE_SIZE = 500
+
+// ── Per-session ring buffer knobs ───────────────────────────────────
+// Cap per session keeps any single long conversation from dominating
+// memory. TTL keeps recently-used chats hot without holding stale ones
+// forever. Global byte cap is a hard ceiling for the whole process —
+// LRU evicts the least-recently-touched sessions first when breached.
+const BUFFER_MAX_EVENTS_PER_SESSION = 200
+const BUFFER_TTL_MS = 24 * 60 * 60_000 // 24h
+const BUFFER_GLOBAL_BYTE_CAP = 500 * 1024 * 1024 // 500 MB
+const BUFFER_SWEEP_INTERVAL_MS = 5 * 60_000 // sweep every 5 min
 
 interface CompanionConnection {
   connectedAt: number
@@ -27,6 +42,26 @@ interface CompanionConnection {
   machineName?: string
   authInfo?: { email?: string; plan?: string; version?: string }
   projects?: Array<{ id: string; path: string; name: string }>
+}
+
+// A single relayed event as it flows browser-ward. We keep it `unknown`
+// at the transport level but narrow it here when we need to peek at the
+// payload to decide whether to buffer it.
+interface ClaudeEventEnvelope {
+  type: string
+  payload?: {
+    projectId?: string
+    bornastarSessionId?: string
+    event?: unknown
+    [k: string]: unknown
+  }
+}
+
+interface SessionBuffer {
+  userId: string
+  events: unknown[]
+  lastAccess: number
+  bytes: number
 }
 
 // Per-user relay channel
@@ -48,10 +83,14 @@ class RelayChannel {
     this.commandEmitter.emit('command', cmd)
   }
 
-  pushEvent(event: unknown): void {
+  pushEvent(event: unknown, userId: string): void {
     if (this.eventQueue.length >= MAX_QUEUE_SIZE) this.eventQueue.shift()
     this.eventQueue.push(event)
     this.eventEmitter.emit('event', event)
+
+    // Mirror into the per-session ring buffer so later consumers (chat
+    // hydration, mobile catch-up) can replay without DB hits.
+    maybeBufferEvent(event, userId)
   }
 
   drainCommands(): unknown[] {
@@ -101,11 +140,148 @@ class RelayChannel {
 // module re-evaluation. Production (single cold start) is unaffected.
 const globalForRelay = globalThis as unknown as {
   __bornastarCompanionChannels?: Map<string, RelayChannel>
+  __bornastarSessionBuffers?: Map<string, SessionBuffer>
+  __bornastarBufferSweeper?: NodeJS.Timeout
+  __bornastarBufferBytes?: { value: number }
 }
 const channels: Map<string, RelayChannel> =
   globalForRelay.__bornastarCompanionChannels ?? new Map<string, RelayChannel>()
+const sessionBuffers: Map<string, SessionBuffer> =
+  globalForRelay.__bornastarSessionBuffers ?? new Map<string, SessionBuffer>()
+// Global byte counter, boxed so hot-reload can share the same ref.
+const bufferBytes: { value: number } =
+  globalForRelay.__bornastarBufferBytes ?? { value: 0 }
+
 if (process.env.NODE_ENV !== 'production') {
   globalForRelay.__bornastarCompanionChannels = channels
+  globalForRelay.__bornastarSessionBuffers = sessionBuffers
+  globalForRelay.__bornastarBufferBytes = bufferBytes
+}
+
+// Sweeper: prune expired sessions on a timer. LRU eviction happens
+// inline inside maybeBufferEvent when the byte cap is breached — no
+// need to wait for the sweeper to free headroom.
+if (!globalForRelay.__bornastarBufferSweeper) {
+  const t = setInterval(sweepExpired, BUFFER_SWEEP_INTERVAL_MS)
+  if (typeof t.unref === 'function') t.unref()
+  globalForRelay.__bornastarBufferSweeper = t
+}
+
+function estimateBytes(evt: unknown): number {
+  try {
+    // Rough but cheap. JSON byte-length is within a small factor of the
+    // V8 heap cost for our shapes, and we only use this to bound total
+    // memory — not for precise accounting.
+    return Buffer.byteLength(JSON.stringify(evt), 'utf8')
+  } catch {
+    return 1024 // fallback: assume 1KB for circular/unserialisable payloads
+  }
+}
+
+function maybeBufferEvent(event: unknown, userId: string): void {
+  const env = event as ClaudeEventEnvelope | null
+  if (!env || typeof env !== 'object') return
+  // Only persist the raw Claude stream into the buffer. Status
+  // heartbeats, fs_change notifications, running_sessions rollups, etc.
+  // are ephemeral presence signals — they have no place in a replayed
+  // chat history and would just waste bytes.
+  if (env.type !== 'claude_event') return
+  const sessionId = env.payload?.bornastarSessionId
+  if (!sessionId) return
+
+  let buf = sessionBuffers.get(sessionId)
+  if (!buf) {
+    buf = { userId, events: [], lastAccess: Date.now(), bytes: 0 }
+    sessionBuffers.set(sessionId, buf)
+  }
+
+  const size = estimateBytes(event)
+  buf.events.push(event)
+  buf.bytes += size
+  bufferBytes.value += size
+  buf.lastAccess = Date.now()
+
+  // Per-session FIFO cap. When we drop from the head we also refund
+  // bytes so the global counter stays accurate.
+  while (buf.events.length > BUFFER_MAX_EVENTS_PER_SESSION) {
+    const dropped = buf.events.shift()
+    const droppedSize = estimateBytes(dropped)
+    buf.bytes -= droppedSize
+    bufferBytes.value -= droppedSize
+  }
+
+  // Global byte cap: evict least-recently-accessed sessions until we're
+  // back under the ceiling. Never evict the session we just wrote into.
+  if (bufferBytes.value > BUFFER_GLOBAL_BYTE_CAP) {
+    evictLRU(sessionId)
+  }
+}
+
+function evictLRU(protectedSessionId: string): void {
+  // Build an ordered list once; Map iteration order is insertion order
+  // in JS, which doesn't match LRU, so sort explicitly.
+  const entries = Array.from(sessionBuffers.entries())
+    .filter(([sid]) => sid !== protectedSessionId)
+    .sort(([, a], [, b]) => a.lastAccess - b.lastAccess)
+
+  let evicted = 0
+  for (const [sid, b] of entries) {
+    if (bufferBytes.value <= BUFFER_GLOBAL_BYTE_CAP) break
+    bufferBytes.value -= b.bytes
+    sessionBuffers.delete(sid)
+    evicted++
+  }
+  if (evicted > 0) {
+    console.warn(`[relay-buffer] LRU evicted ${evicted} sessions under byte cap (now ${bufferBytes.value}B / ${BUFFER_GLOBAL_BYTE_CAP}B)`)
+  }
+}
+
+function sweepExpired(): void {
+  const now = Date.now()
+  let expired = 0
+  for (const [sid, b] of sessionBuffers) {
+    if (now - b.lastAccess > BUFFER_TTL_MS) {
+      bufferBytes.value -= b.bytes
+      sessionBuffers.delete(sid)
+      expired++
+    }
+  }
+  if (expired > 0) {
+    console.log(`[relay-buffer] TTL sweep removed ${expired} sessions (${sessionBuffers.size} remain, ${bufferBytes.value}B)`)
+  }
+}
+
+export function getSessionBuffer(sessionId: string, userId: string): unknown[] | null {
+  const buf = sessionBuffers.get(sessionId)
+  if (!buf) return null
+  // Ownership check — a session id leaked across users should never
+  // surface another user's events. Defensive; upstream already checks.
+  if (buf.userId !== userId) return null
+  buf.lastAccess = Date.now()
+  return buf.events.slice()
+}
+
+export function dropSessionBuffer(sessionId: string): void {
+  const buf = sessionBuffers.get(sessionId)
+  if (!buf) return
+  bufferBytes.value -= buf.bytes
+  sessionBuffers.delete(sessionId)
+}
+
+export function getBufferStats(): {
+  sessions: number
+  totalBytes: number
+  byteCap: number
+  events: number
+} {
+  let events = 0
+  for (const b of sessionBuffers.values()) events += b.events.length
+  return {
+    sessions: sessionBuffers.size,
+    totalBytes: bufferBytes.value,
+    byteCap: BUFFER_GLOBAL_BYTE_CAP,
+    events,
+  }
 }
 
 export function getChannel(userId: string): RelayChannel {
