@@ -2129,7 +2129,6 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
 
               <div className="flex flex-1 overflow-hidden">
                 <ChatPanel
-                  key={activeSessionId ?? 'empty'}
                   projectId={projectId}
                   sessionId={activeSessionId}
                   sessionName={
@@ -5046,6 +5045,7 @@ function ChatPanel({
   const [oldestMessageId, setOldestMessageId] = useState<string | null>(null)
   const [loadingOlder, setLoadingOlder] = useState(false)
 
+
   type DbMessage = {
     id: string; role: ChatMessage['role']; content: string; createdAt: string
     toolName?: string | null; toolInput?: unknown; toolResult?: unknown
@@ -5268,6 +5268,38 @@ function ChatPanel({
   const [slashFilter, setSlashFilter] = useState('')
   const [slashMatch, setSlashMatch] = useState<HiredEmployee | TeamInfo | null>(null)
   const [openedViaButton, setOpenedViaButton] = useState(false)
+
+  // Reset all per-chat local UI state when the user switches chats.
+  // ChatPanel stays mounted (no `key={sessionId}`) so React wouldn't
+  // reset these on its own — without this the input text you were
+  // typing in chat A would leak into chat B. Data that lives in the
+  // store (messages, isRunning, claude session id) does NOT need
+  // resetting — the store hooks re-subscribe automatically when
+  // `sessionId` changes.
+  useEffect(() => {
+    setInput('')
+    setAttachments((prev) => {
+      for (const a of prev) if (a.preview) URL.revokeObjectURL(a.preview)
+      return []
+    })
+    setContextPaths([])
+    setHasMoreOlder(false)
+    setOldestMessageId(null)
+    setLoadingOlder(false)
+    setShowSelector(false)
+    setSelectorTab('employees')
+    setIsDragging(false)
+    setSlashFilter('')
+    setSlashMatch(null)
+    setOpenedViaButton(false)
+    setShowToolbarMenu(false)
+    setShowContextPicker(false)
+    setShowClearConfirm(false)
+    setShowReminderModal(false)
+    // Chat-open scroll should snap instantly — clearing the ref makes
+    // the next scroll effect use behavior:'auto' for the new chat.
+    hasScrolledOnceRef.current = false
+  }, [sessionId])
 
   // Detect / at the START of input
   useEffect(() => {
