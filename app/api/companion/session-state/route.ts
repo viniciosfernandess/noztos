@@ -80,11 +80,19 @@ export async function GET(request: NextRequest) {
   }
 
   const messages = Array.from(byId.values()).map(toMessage)
-  console.log(`[session-state] hit sessionId=${sessionId.slice(0, 8)} messages=${messages.length}`)
+  // If the buffer is already at its per-session cap (200 frames), older
+  // rows have been FIFO'd out → tell the client there's more history in
+  // Supabase. If we're under the cap we have every row this chat ever
+  // produced — no point teasing the "Scroll up for earlier messages"
+  // marker to an empty chat.
+  const BUFFER_CAP = 200
+  const hasMore = frames.length >= BUFFER_CAP
+  console.log(`[session-state] hit sessionId=${sessionId.slice(0, 8)} messages=${messages.length} frames=${frames.length} hasMore=${hasMore}`)
 
   return NextResponse.json({
     source: 'buffer',
     messages,
+    hasMore,
     claudeSessionId: session.claudeSessionId,
     totalCostUsd: session.totalCostUsd,
     totalTokens: session.totalTokens,

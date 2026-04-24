@@ -76,6 +76,11 @@ export interface CompanionCommand {
   // at the start of the prompt. 'off' = no injection. Haiku ignores this
   // (model has no extended-thinking support).
   thinking?: 'off' | 'low' | 'medium' | 'high'
+  // Stable id the browser already used for its optimistic render of the
+  // user's prompt. When present we use it as the userRow persistRow id
+  // so the same id flows browser → daemon queue → ring buffer → DB —
+  // hydrate after remount recognises the row as already on screen.
+  userMsgId?: string
   // clone/create
   repoUrl?: string
   projectName?: string

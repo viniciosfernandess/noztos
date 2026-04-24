@@ -43,13 +43,26 @@ interface SessionContext {
   userId: string
   worktreeId: string | null
   priorClaudeSession: string | null
+  // When the chat has been soft-deleted (user hit delete-forever, or
+  // trash TTL expired), we keep accepting in-flight events from the
+  // daemon queue so the audit/training dataset stays complete. The
+  // rows created here are stamped with this timestamp so they land
+  // hidden-from-UI, mirroring the other messages of the deleted chat.
+  sessionDeletedAt: Date | null
 }
 
-// Look up the session + validate ownership in a single round trip.
-// Returns null if the session is missing, foreign, or soft-deleted.
+// Look up the session + validate ownership. Returns null only when
+// the session does not exist or belongs to someone else.
+//
+// projectId is NOT an input — we derive it from the DB row. The daemon
+// tags relay frames with its own hex project id (from
+// ~/.bornastar/config.json) which has no relationship to the DB cuid.
+//
+// A soft-deleted session is accepted: any event the daemon was still
+// carrying at delete time is persisted with the session's deletedAt
+// so it stays visible for training but hidden from the UI.
 export async function loadSessionContext(
   sessionId: string,
-  projectId: string,
   userId: string,
 ): Promise<SessionContext | null> {
   const session = await prisma.chatSession.findUnique({
@@ -60,15 +73,40 @@ export async function loadSessionContext(
     },
   })
   if (!session) return null
-  if (session.userId !== userId || session.projectId !== projectId) return null
-  if (session.deletedAt) return null
+  if (session.userId !== userId) return null
   return {
     sessionId,
-    projectId,
+    projectId: session.projectId,
     userId,
     worktreeId: session.worktreeId ?? null,
     priorClaudeSession: session.claudeSessionId ?? null,
+    sessionDeletedAt: session.deletedAt,
   }
+}
+
+// Run `op` retrying on Postgres serialization / deadlock errors. Under
+// heavy concurrent write-through for the same chat we occasionally see
+// 40P01 (deadlock detected) — the advisory lock trims most cycles but
+// cannot cover every row-level lock race between concurrent upserts
+// and rollup updates. Retries are cheap; the operation is idempotent.
+async function withDeadlockRetry<T>(op: () => Promise<T>, maxAttempts = 3): Promise<T> {
+  let lastErr: unknown
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await op()
+    } catch (err) {
+      lastErr = err
+      const maybeCode = (err as { code?: string }).code
+      const metaCode = (err as { meta?: { code?: string } }).meta?.code
+      const msg = (err as Error)?.message ?? ''
+      const isDeadlock = maybeCode === '40P01' || metaCode === '40P01' || msg.includes('deadlock detected')
+      if (!isDeadlock || attempt === maxAttempts) throw err
+      const backoffMs = 50 + Math.floor(Math.random() * 100 * attempt)
+      console.warn(`[chat-persist] deadlock retry ${attempt}/${maxAttempts} in ${backoffMs}ms`)
+      await new Promise((r) => setTimeout(r, backoffMs))
+    }
+  }
+  throw lastErr
 }
 
 // Upsert a batch of rows for a single session and update the session
@@ -91,8 +129,11 @@ export async function persistRows(
   // schema change, bounded to the session so cross-session traffic is
   // unaffected. `hashtextextended` gives us a 64-bit key space so
   // collisions between unrelated session ids are effectively zero.
-  return await prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${ctx.sessionId}, 0))`
+  return await withDeadlockRetry(() => prisma.$transaction(async (tx) => {
+    // $executeRaw (not $queryRaw) because pg_advisory_xact_lock returns
+    // void — $queryRaw fails to deserialize the void column, tanking the
+    // whole transaction and every downstream upsert along with it.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${ctx.sessionId}, 0))`
 
     const existing = await tx.chatMessage.findMany({
       where: { id: { in: rows.map((r) => r.id) } },
@@ -124,6 +165,10 @@ export async function persistRows(
         role: e.role,
         content: e.content ?? '',
         ...(e.createdAt && { createdAt: new Date(e.createdAt) }),
+        // Inherit the session's deletedAt so late-arriving events from
+        // a chat the user already deleted land hidden (not in the UI,
+        // still in the training dataset).
+        ...(ctx.sessionDeletedAt && { deletedAt: ctx.sessionDeletedAt }),
         ...buildCreate(e, compactionSeen),
       }
 
@@ -156,7 +201,15 @@ export async function persistRows(
     })
 
     return { persisted: rows.length }
-  })
+  }, {
+    // Default is 5s, too tight for a 50-row batch over cross-region
+    // Supabase + the advisory lock + the up-front findMany. 30s gives
+    // enough slack without hiding genuine deadlocks.
+    timeout: 30_000,
+    // Wait up to 10s for the transaction to start (matters under
+    // backlog when multiple retries compete for connection pool slots).
+    maxWait: 10_000,
+  }))
 }
 
 function buildUpdate(e: PersistRow, compactionSeen: boolean): Prisma.ChatMessageUncheckedUpdateInput {

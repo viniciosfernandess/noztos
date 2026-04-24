@@ -74,6 +74,9 @@ export class SyncWorker {
   private async drain(): Promise<void> {
     if (this.running) { this.pendingWake = true; return }
     this.running = true
+    const started = Date.now()
+    let batchesOk = 0
+    let batchesFail = 0
     try {
       // Drain in a loop so we don't leave ready rows sitting when a
       // single batch was bigger than BATCH_SIZE. Bail after a handful
@@ -81,16 +84,22 @@ export class SyncWorker {
       for (let i = 0; i < 20; i++) {
         const batch = this.opts.queue.peek(BATCH_SIZE)
         if (batch.length === 0) break
+        console.log(`[sync-worker] sending batch=${batch.length} (pending=${this.opts.queue.pendingCount()})`)
         let result: { ok: boolean }
         try {
           result = await this.opts.send(batch)
-        } catch {
+        } catch (err) {
+          console.warn('[sync-worker] send threw:', (err as Error).message)
           result = { ok: false }
         }
         if (result.ok) {
           this.opts.queue.ack(batch.map((e) => e.id))
+          batchesOk++
+          console.log(`[sync-worker] ack batch=${batch.length}`)
         } else {
           this.opts.queue.nack(batch.map((e) => e.id))
+          batchesFail++
+          console.warn(`[sync-worker] nack batch=${batch.length}, backing off`)
           // Stop draining on failure — further batches will hit the
           // same problem. The next `wake()` (by enqueue or backoff
           // re-trigger) will retry.
@@ -99,6 +108,10 @@ export class SyncWorker {
       }
     } finally {
       this.running = false
+      const elapsed = Date.now() - started
+      if (batchesOk + batchesFail > 0) {
+        console.log(`[sync-worker] drain done ok=${batchesOk} fail=${batchesFail} elapsed=${elapsed}ms pendingLeft=${this.opts.queue.pendingCount()}`)
+      }
       if (this.pendingWake) {
         this.pendingWake = false
         this.wake()

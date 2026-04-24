@@ -180,14 +180,23 @@ function estimateBytes(evt: unknown): number {
 
 function maybeBufferEvent(event: unknown, userId: string): void {
   const env = event as ClaudeEventEnvelope | null
-  if (!env || typeof env !== 'object') return
+  if (!env || typeof env !== 'object') {
+    console.log('[relay-buffer] skip: event is not object')
+    return
+  }
   // Only persist the raw Claude stream into the buffer. Status
   // heartbeats, fs_change notifications, running_sessions rollups, etc.
   // are ephemeral presence signals — they have no place in a replayed
   // chat history and would just waste bytes.
-  if (env.type !== 'claude_event') return
+  if (env.type !== 'claude_event') {
+    console.log(`[relay-buffer] skip: type=${env.type} (not claude_event)`)
+    return
+  }
   const sessionId = env.payload?.bornastarSessionId
-  if (!sessionId) return
+  if (!sessionId) {
+    console.log('[relay-buffer] skip: claude_event missing bornastarSessionId')
+    return
+  }
 
   let buf = sessionBuffers.get(sessionId)
   if (!buf) {
@@ -200,6 +209,10 @@ function maybeBufferEvent(event: unknown, userId: string): void {
   buf.bytes += size
   bufferBytes.value += size
   buf.lastAccess = Date.now()
+
+  const rows = env.payload?.persistRows as unknown
+  const hasRows = Array.isArray(rows) && rows.length > 0
+  console.log(`[relay-buffer] push sessionId=${sessionId.slice(0, 8)} events=${buf.events.length} bytes=${buf.bytes} hasPersistRows=${hasRows}`)
 
   // Per-session FIFO cap. When we drop from the head we also refund
   // bytes so the global counter stays accurate.

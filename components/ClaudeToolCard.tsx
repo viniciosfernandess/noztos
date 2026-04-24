@@ -242,10 +242,13 @@ function CompactToolRow({ message }: { message: ChatMessage }) {
   )
 }
 
-// A run of consecutive tool messages. Active = still streaming (shows
-// a fixed-height scroller that follows the newest row). Collapsed =
-// turn finished; a one-line summary with the elapsed time + step count,
-// click to expand the whole log.
+// A run of consecutive tool messages.
+//   active = still streaming → stays expanded (mandatory), scroll
+//            glued to the newest row so new steps appear at the
+//            bottom in real time.
+//   !active = turn finished → collapses automatically to keep the
+//            chat flow tidy. User can click the header to re-expand
+//            if they want to review the steps.
 export function WorkBlock({
   messages,
   active,
@@ -258,17 +261,23 @@ export function WorkBlock({
   const [expanded, setExpanded] = useState(active)
   const scrollRef = useRef<HTMLDivElement>(null)
 
+  // Follow `active`: open when streaming starts, close when it ends.
+  // User's manual click only persists until the next active flip —
+  // which for a finished turn never happens, so their choice sticks
+  // for the rest of the session.
   useEffect(() => {
     setExpanded(active)
   }, [active])
 
-  // Auto-scroll to newest row while the block is streaming.
+  // Keep the scroller glued to the bottom on every new row. Runs on
+  // first mount too, so opening a chat mid-stream lands at the newest
+  // step without the user having to scroll.
   useEffect(() => {
-    if (!active) return
+    if (!expanded) return
     const el = scrollRef.current
     if (!el) return
     el.scrollTop = el.scrollHeight
-  }, [active, messages.length])
+  }, [expanded, messages.length])
 
   if (messages.length === 0) return null
 

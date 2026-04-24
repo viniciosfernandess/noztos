@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 
 // ── Stream-JSON event types from Claude Code CLI ──────────────────────
 
@@ -52,7 +52,17 @@ export interface ClaudeEvent {
   projects?: Array<{ id: string; path: string; name: string }>
   // claude_event wrapper (from relay) — also reused for running_sessions
   // (sessionIds) and error envelopes (message).
-  payload?: { projectId?: string; bornastarSessionId?: string; event?: ClaudeEvent; message?: string; sessionIds?: string[] }
+  // `persistRows` are the ChatMessage-shaped rows the daemon stamped
+  // before relay — we read their ids here so the live-stream render
+  // uses the same id as the server/DB will see.
+  payload?: {
+    projectId?: string
+    bornastarSessionId?: string
+    event?: ClaudeEvent
+    message?: string
+    sessionIds?: string[]
+    persistRows?: Array<{ id: string; role: string; content?: string; createdAt?: number }>
+  }
 }
 
 // Parsed message for rendering — flattened from stream events
@@ -106,11 +116,19 @@ interface UseCompanionStreamReturn {
   ) => Promise<void>
   interrupt: (projectId: string, bornastarSessionId?: string) => Promise<void>
   clearMessages: () => void
-  // Pagination / late hydrate — ChatPanel calls these to push DB pages into
-  // the hook. prependMessages for older-page scroll, hydrate for the
-  // initial async fetch (when parent had no cached state).
+  // Pagination — older pages from the DB. Each msg goes through the
+  // reducer so duplicates are impossible regardless of call order.
   prependMessages: (msgs: ChatMessage[]) => void
+  // Late hydrate — push the server's view into the store. Idempotent:
+  // safe to call multiple times (e.g. on tab-resume after mobile
+  // background suspend). Reducer dedups by id + fuzzy reconciles any
+  // optimistic `msg-*` rows the browser minted before the server
+  // echoed them with stable `evt-*` ids.
   hydrate: (msgs: ChatMessage[], claudeSessionId?: string | null) => void
+  // Drop and re-open the SSE connection. Mobile Safari kills fetch
+  // streams when the tab goes to background; ChatPanel calls this
+  // on `visibilitychange → visible` to pick up the missed events.
+  reconnect: () => void
 }
 
 export function useCompanionStream(
@@ -118,31 +136,127 @@ export function useCompanionStream(
   initialMessages?: ChatMessage[],
   initialClaudeSessionId?: string | null,
 ): UseCompanionStreamReturn {
-  const [messages, setMessages] = useState<ChatMessage[]>(() => initialMessages ?? [])
+  // ── Messages store ───────────────────────────────────────────────
+  // A single Map<id, ChatMessage> is the source of truth. Three inputs
+  // funnel into it: the user's optimistic send, the SSE stream, and
+  // the hydrate call (from /session-state or /messages). Dedup by id is
+  // free; order comes from a derived sorted array.
+  const [messagesMap, setMessagesMap] = useState<Map<string, ChatMessage>>(() => {
+    const m = new Map<string, ChatMessage>()
+    if (initialMessages) for (const msg of initialMessages) m.set(msg.id, msg)
+    return m
+  })
   const [status, setStatus] = useState<CompanionStatus>('disconnected')
   const [isRunning, setIsRunning] = useState(false)
   const [companionInfo, setCompanionInfo] = useState<UseCompanionStreamReturn['companionInfo']>(null)
   const [sessionId, setSessionId] = useState<string | null>(initialClaudeSessionId ?? null)
   const [costUsd, setCostUsd] = useState(0)
-  const messageIdCounter = useRef(0)
+  // Bumped by `reconnect()` to retrigger the SSE useEffect.
+  const [connectionEpoch, setConnectionEpoch] = useState(0)
 
-  // All durability lives in the companion daemon (local SQLite queue →
-  // server write-through → Supabase) and the server's per-session ring
-  // buffer. The hook stays purely presentational — parse stream, render.
+  // ── Reducer primitives ───────────────────────────────────────────
 
-  const nextId = () => `msg-${Date.now()}-${++messageIdCounter.current}`
+  // Add or replace a message. If `fuzzyMatch` is true and the id is
+  // new, we also look for an existing row with the same role + content
+  // + close-in-time timestamp — that's almost certainly an optimistic
+  // local render of the same logical message and we want to adopt the
+  // server's stable id while keeping the richer local fields (e.g.
+  // toolResult that may not have been buffered yet).
+  const upsertMessage = useCallback((incoming: ChatMessage, opts?: { fuzzyMatch?: boolean }) => {
+    setMessagesMap((prev) => {
+      if (prev.has(incoming.id)) {
+        const next = new Map(prev)
+        const existing = next.get(incoming.id)!
+        next.set(incoming.id, { ...existing, ...incoming })
+        return next
+      }
+      if (opts?.fuzzyMatch) {
+        for (const [existingId, existing] of prev) {
+          if (
+            existing.role === incoming.role
+            && existing.content === incoming.content
+            && Math.abs(existing.timestamp - incoming.timestamp) < 30_000
+          ) {
+            const next = new Map(prev)
+            next.delete(existingId)
+            // Preserve the local entry's data, swap in the server id.
+            next.set(incoming.id, { ...existing, id: incoming.id })
+            return next
+          }
+        }
+      }
+      const next = new Map(prev)
+      next.set(incoming.id, incoming)
+      return next
+    })
+  }, [])
 
-  // Parse a Claude stream event into ChatMessage(s)
-  const parseEvent = useCallback((event: ClaudeEvent): ChatMessage[] => {
-    const parsed: ChatMessage[] = []
+  // Patch an existing message. Used when Claude follows up a tool_use
+  // with its tool_result — same id, we merge in the result fields.
+  // No-op if the target message hasn't been rendered yet.
+  type PatchFn = (existing: ChatMessage) => Partial<ChatMessage>
+  const patchMessage = useCallback((id: string, patch: Partial<ChatMessage> | PatchFn) => {
+    setMessagesMap((prev) => {
+      const existing = prev.get(id)
+      if (!existing) return prev
+      const updates = typeof patch === 'function' ? patch(existing) : patch
+      const next = new Map(prev)
+      next.set(id, { ...existing, ...updates })
+      return next
+    })
+  }, [])
 
-    // Per-chat isolation: claude_event / error payloads from the daemon carry
-    // the originating Bornastar chat session id. Skip anything that doesn't
-    // belong to this hook's chat so chat1 never sees chat2's stream, even
-    // when both bridges are running concurrently on the same user channel.
+  // Derived sorted array — what components actually render. Sorting
+  // here means every source (optimistic, SSE, hydrate) can insert in
+  // any order and the UI stays chronological.
+  const messages = useMemo(
+    () => Array.from(messagesMap.values()).sort((a, b) => a.timestamp - b.timestamp),
+    [messagesMap],
+  )
+
+  // ── Id helpers ───────────────────────────────────────────────────
+
+  // Stable id that matches the daemon's format. Used for any row that
+  // needs to round-trip through queue → buffer → Supabase. Keeping the
+  // optimistic id and the server-persisted id identical means
+  // /session-state hydrate is a no-op on re-mount.
+  const stableEventId = () => `evt-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  // Local-only id for rows the server never sees (pure UI state like
+  // "network failed" system lines). Always increments so timestamps
+  // stay monotonic within one session.
+  const localIdCounter = useRef(0)
+  const localId = () => `msg-${Date.now()}-${++localIdCounter.current}`
+
+  // ── Parse & dispatch ─────────────────────────────────────────────
+
+  const parseEvent = useCallback((event: ClaudeEvent): void => {
+    // Per-chat isolation: claude_event / error payloads from the daemon
+    // carry the originating Bornastar chat session id. Skip anything
+    // that doesn't belong to this hook's chat — chat1 never sees chat2's
+    // stream, even when both bridges are running on the same user channel.
     if (bornastarSessionId && (event.type === 'claude_event' || event.type === 'error')) {
       const evtSession = event.payload?.bornastarSessionId
-      if (evtSession && evtSession !== bornastarSessionId) return []
+      if (evtSession && evtSession !== bornastarSessionId) return
+    }
+
+    // Persist-only frame: the daemon relays the user prompt (and some
+    // other bookkeeping rows) as claude_event with `persistRows` but no
+    // inner `event`. We don't render these via the switch below — we
+    // just upsert so the browser adopts the daemon's stable id AND
+    // timestamp for the optimistic user row. That collapses the tiny
+    // browser-vs-daemon clock gap that otherwise could sort a new
+    // user prompt AFTER its own thinking row.
+    if (event.type === 'claude_event' && !event.payload?.event && Array.isArray(event.payload?.persistRows)) {
+      for (const r of event.payload.persistRows) {
+        if (!r?.id) continue
+        upsertMessage({
+          id: r.id,
+          role: r.role as ChatMessage['role'],
+          content: r.content ?? '',
+          timestamp: typeof r.createdAt === 'number' ? r.createdAt : Date.now(),
+        }, { fuzzyMatch: true })
+      }
+      return
     }
 
     // Unwrap relay wrapper
@@ -175,29 +289,48 @@ export function useCompanionStream(
 
       case 'assistant':
         if (actual.message?.content) {
+          // Daemon emits persistRows in the same order as these content
+          // blocks. Walk them in lock-step so every rendered message
+          // carries the server's stable id AND the server's timestamp
+          // — hydrate after remount becomes a no-op, no duplicates, no
+          // visual reorder.
+          const rows = event.payload?.persistRows ?? []
+          let rowCursor = 0
+          const takeRow = (role: 'assistant' | 'thinking'): { id: string; ts: number } => {
+            for (let i = rowCursor; i < rows.length; i++) {
+              if (rows[i].role === role) {
+                rowCursor = i + 1
+                const r = rows[i]
+                return {
+                  id: r.id,
+                  ts: typeof r.createdAt === 'number' ? r.createdAt : Date.now(),
+                }
+              }
+            }
+            return { id: localId(), ts: Date.now() }
+          }
           for (const block of actual.message.content) {
             if (block.type === 'thinking' && block.thinking) {
-              // Extended-thinking content — Claude's private reasoning
-              // before it starts acting. Rendered as a row inside the
-              // work block so the user can follow the chain of thought.
-              parsed.push({
-                id: nextId(),
+              const { id, ts } = takeRow('thinking')
+              upsertMessage({
+                id,
                 role: 'thinking',
                 content: block.thinking,
-                timestamp: Date.now(),
+                timestamp: ts,
               })
             }
             if (block.type === 'text' && block.text) {
-              parsed.push({
-                id: nextId(),
+              const { id, ts } = takeRow('assistant')
+              upsertMessage({
+                id,
                 role: 'assistant',
                 content: block.text,
-                timestamp: Date.now(),
+                timestamp: ts,
               })
             }
             if (block.type === 'tool_use' && block.name) {
               const msg: ChatMessage = {
-                id: block.id ?? nextId(),
+                id: block.id ?? localId(),
                 role: 'tool',
                 content: '',
                 timestamp: Date.now(),
@@ -205,8 +338,6 @@ export function useCompanionStream(
                 toolInput: block.input,
                 toolUseId: block.id,
               }
-
-              // Extract common fields for rich rendering
               const input = block.input ?? {}
               switch (block.name) {
                 case 'Read':
@@ -261,36 +392,30 @@ export function useCompanionStream(
                 default:
                   msg.content = `${block.name}`
               }
-              parsed.push(msg)
+              upsertMessage(msg)
             }
           }
         }
         break
 
       case 'user':
-        // Tool results — match back to tool_use by id. Persistence is
-        // handled by the daemon (queue) + server write-through; we only
-        // update the in-memory row here for rendering.
+        // Tool results — patched into the existing tool_use row by id
+        // (daemon uses Claude's tool_use_id as the persistRow id). If
+        // the tool_use row isn't in memory yet, patchMessage no-ops and
+        // the row will get the result via hydrate later.
         if (actual.message?.content) {
           for (const block of actual.message.content) {
-            if (block.type === 'tool_result') {
-              const resultText = typeof block.content === 'string'
-                ? block.content
-                : Array.isArray(block.content)
-                  ? block.content.map((c) => c.text).join('\n')
-                  : ''
-              setMessages((prev) => prev.map((m) => {
-                if (m.toolUseId === block.tool_use_id) {
-                  return {
-                    ...m,
-                    toolResult: resultText,
-                    toolError: block.is_error ?? false,
-                    bashOutput: m.toolName === 'Bash' ? resultText : m.bashOutput,
-                  }
-                }
-                return m
-              }))
-            }
+            if (block.type !== 'tool_result' || !block.tool_use_id) continue
+            const resultText = typeof block.content === 'string'
+              ? block.content
+              : Array.isArray(block.content)
+                ? block.content.map((c) => c.text).join('\n')
+                : ''
+            patchMessage(block.tool_use_id, (existing) => ({
+              toolResult: resultText,
+              toolError: block.is_error ?? false,
+              bashOutput: existing.toolName === 'Bash' ? resultText : existing.bashOutput,
+            }))
           }
         }
         break
@@ -298,13 +423,11 @@ export function useCompanionStream(
       case 'result': {
         setIsRunning(false)
         if (actual.total_cost_usd) setCostUsd((prev) => prev + actual.total_cost_usd!)
-        // Per-turn metrics land in a hidden 'system' row. The daemon
-        // already persists it with the final cost/tokens/session id; we
-        // surface it here only when the turn errored (so the UI shows
-        // the reason).
+        // The daemon persists the per-turn metrics row itself; we only
+        // surface a visible system message when the turn errored.
         if (actual.is_error) {
-          parsed.push({
-            id: nextId(),
+          upsertMessage({
+            id: localId(),
             role: 'system',
             content: `Error: ${actual.error ?? actual.result ?? 'Unknown error'}`,
             timestamp: Date.now(),
@@ -318,8 +441,8 @@ export function useCompanionStream(
 
       case 'error': {
         setIsRunning(false)
-        parsed.push({
-          id: nextId(),
+        upsertMessage({
+          id: localId(),
           role: 'system',
           content: `Error: ${actual.error ?? (actual.payload as { message?: string })?.message ?? 'Unknown'}`,
           timestamp: Date.now(),
@@ -329,73 +452,60 @@ export function useCompanionStream(
 
       case 'running_sessions': {
         // Daemon broadcasts which chats are currently running. A ChatPanel
-        // remounting mid-prompt uses this to restore its spinner.
+        // remounting mid-prompt uses this to restore its spinner without
+        // waiting for the next Claude event.
         const ids = actual.payload?.sessionIds ?? []
-        if (bornastarSessionId) {
-          setIsRunning(ids.includes(bornastarSessionId))
-        }
+        if (bornastarSessionId) setIsRunning(ids.includes(bornastarSessionId))
         break
       }
     }
+  }, [bornastarSessionId, upsertMessage, patchMessage])
 
-    return parsed
-  }, [bornastarSessionId])
-
-  // Connect to SSE stream
+  // ── SSE connection ───────────────────────────────────────────────
+  //
+  // Re-runs whenever `connectionEpoch` bumps. `reconnect()` is how the
+  // caller forces a reopen — used by ChatPanel when the browser tab
+  // wakes up from the background (mobile Safari kills streams).
   useEffect(() => {
     const controller = new AbortController()
 
     async function connect() {
       setStatus('connecting')
       try {
-        const res = await fetch('/api/companion/stream', {
-          signal: controller.signal,
-        })
-        if (!res.ok || !res.body) {
-          setStatus('error')
-          return
-        }
-
+        const res = await fetch('/api/companion/stream', { signal: controller.signal })
+        if (!res.ok || !res.body) { setStatus('error'); return }
         const reader = res.body.getReader()
         const decoder = new TextDecoder()
         let buffer = ''
-
         while (true) {
           const { done, value } = await reader.read()
           if (done) break
-
           buffer += decoder.decode(value, { stream: true })
           const lines = buffer.split('\n')
           buffer = lines.pop() ?? ''
-
           for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const event = JSON.parse(line.slice(6)) as ClaudeEvent
-                const newMessages = parseEvent(event)
-                if (newMessages.length > 0) {
-                  setMessages((prev) => [...prev, ...newMessages])
-                }
-              } catch {
-                // Non-JSON, skip
-              }
-            }
+            if (!line.startsWith('data: ')) continue
+            try {
+              parseEvent(JSON.parse(line.slice(6)) as ClaudeEvent)
+            } catch { /* non-JSON line */ }
           }
         }
       } catch (err) {
-        if ((err as Error).name !== 'AbortError') {
-          setStatus('error')
-        }
+        if ((err as Error).name !== 'AbortError') setStatus('error')
       }
     }
 
     connect()
     return () => controller.abort()
-  }, [parseEvent])
+  }, [parseEvent, connectionEpoch])
 
-  // On mount (or when the chat id changes) ask the daemon which chats are
-  // currently running so a ChatPanel re-mounted mid-prompt re-syncs its
-  // "Claude is working" spinner without waiting for the next Claude event.
+  const reconnect = useCallback(() => {
+    setConnectionEpoch((n) => n + 1)
+  }, [])
+
+  // On mount (or when the chat id changes) ask the daemon which chats
+  // are currently running so a ChatPanel re-mounted mid-prompt re-syncs
+  // its spinner without waiting for the next Claude event.
   useEffect(() => {
     if (!bornastarSessionId) return
     fetch('/api/companion/command', {
@@ -405,9 +515,8 @@ export function useCompanionStream(
     }).catch(() => {})
   }, [bornastarSessionId])
 
-  // Send prompt to companion. `sessionId` on the state is the Claude Code
-  // session ID (used for --resume); `bornastarSessionId` is the Bornastar
-  // chat ID used to isolate bridges and resolve the worktree path.
+  // ── User actions ─────────────────────────────────────────────────
+
   const sendPrompt = useCallback(async (
     projectId: string,
     prompt: string,
@@ -416,22 +525,16 @@ export function useCompanionStream(
     opts?: { model?: string; thinking?: 'off' | 'low' | 'medium' | 'high' },
   ) => {
     setIsRunning(true)
-    // Optimistic local render. The durable copy comes back through
-    // the daemon → relay → ring-buffer pipeline once the daemon
-    // enqueues the prompt and relays it as a persistRow frame; the
-    // browser de-dups by id.
-    setMessages((prev) => [...prev, {
-      id: nextId(),
+    // Mint the row id on the client so optimistic + daemon + DB all
+    // share one id and /session-state hydrate is a no-op on remount.
+    const userMsgId = stableEventId()
+    upsertMessage({
+      id: userMsgId,
       role: 'user',
       content: prompt,
       timestamp: Date.now(),
-    }])
+    })
 
-    // Fire the command. If the companion daemon is flapping (dev-server
-    // hot reload killed its SSE, reconnect not finished) the server
-    // returns 503 immediately — reset the running flag so the spinner
-    // doesn't hang forever and surface a readable error in the chat
-    // instead of a silent stuck state.
     try {
       const res = await fetch('/api/companion/command', {
         method: 'POST',
@@ -440,6 +543,7 @@ export function useCompanionStream(
           type: 'prompt',
           projectId,
           prompt,
+          userMsgId,
           claudeSessionId: sessionId,
           bornastarSessionId,
           mode: mode ?? 'auto',
@@ -455,25 +559,24 @@ export function useCompanionStream(
           if (data?.message) msg = data.message
           else if (data?.error) msg = data.error
         } catch { /* body wasn't JSON */ }
-        setMessages((prev) => [...prev, {
-          id: nextId(),
+        upsertMessage({
+          id: localId(),
           role: 'system',
           content: `Error: ${msg}`,
           timestamp: Date.now(),
-        }])
+        })
       }
     } catch {
       setIsRunning(false)
-      setMessages((prev) => [...prev, {
-        id: nextId(),
+      upsertMessage({
+        id: localId(),
         role: 'system',
         content: 'Error: Network failed reaching the companion. Try again.',
         timestamp: Date.now(),
-      }])
+      })
     }
-  }, [sessionId])
+  }, [sessionId, upsertMessage])
 
-  // Interrupt running agent for a specific chat (matches the bridge key).
   const interrupt = useCallback(async (projectId: string, bornastarSessionId?: string) => {
     await fetch('/api/companion/command', {
       method: 'POST',
@@ -483,45 +586,21 @@ export function useCompanionStream(
   }, [])
 
   const clearMessages = useCallback(() => {
-    setMessages([])
+    setMessagesMap(new Map())
     setCostUsd(0)
     setSessionId(null)
     setIsRunning(false)
   }, [])
 
-  // Prepend older pages fetched by the ChatPanel when the user scrolls
-  // up. Guarded against duplicates by id so a slow older-page fetch that
-  // lands after another doesn't double-insert.
   const prependMessages = useCallback((msgs: ChatMessage[]) => {
     if (msgs.length === 0) return
-    setMessages((prev) => {
-      const seen = new Set(prev.map((m) => m.id))
-      const fresh = msgs.filter((m) => !seen.has(m.id))
-      if (fresh.length === 0) return prev
-      return [...fresh, ...prev]
-    })
-  }, [])
+    for (const m of msgs) upsertMessage(m)
+  }, [upsertMessage])
 
-  // Late hydrate — the DB fetch can land AFTER the hook mounted (parent
-  // had an empty cache). Replace state once, only if we haven't received
-  // any streaming events yet, so we never clobber in-flight user/Claude
-  // turns. Also picks up the Claude --resume session id.
-  const hydratedRef = useRef(false)
   const hydrate = useCallback((msgs: ChatMessage[], claudeSessionId?: string | null) => {
-    if (hydratedRef.current) return
-    hydratedRef.current = true
-    setMessages((prev) => {
-      if (prev.length > 0) {
-        // Stream already produced content — merge by id, preferring
-        // existing in-memory entries (they're the freshest).
-        const existing = new Set(prev.map((m) => m.id))
-        const older = msgs.filter((m) => !existing.has(m.id))
-        return [...older, ...prev]
-      }
-      return msgs
-    })
+    for (const m of msgs) upsertMessage(m, { fuzzyMatch: true })
     if (claudeSessionId) setSessionId(claudeSessionId)
-  }, [])
+  }, [upsertMessage])
 
   return {
     messages,
@@ -535,5 +614,6 @@ export function useCompanionStream(
     clearMessages,
     prependMessages,
     hydrate,
+    reconnect,
   }
 }

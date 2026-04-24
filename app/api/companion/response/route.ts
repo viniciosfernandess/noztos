@@ -36,6 +36,9 @@ export async function POST(request: NextRequest) {
     frames.push(body)
   }
 
+  const bodyShape = body.events ? 'events[]' : body.event ? 'event' : body.type ? 'inline' : 'unknown'
+  console.log(`[response] received shape=${bodyShape} frames=${frames.length}`)
+
   for (const frame of frames) {
     channel.pushEvent(frame, auth.userId)
   }
@@ -49,9 +52,11 @@ export async function POST(request: NextRequest) {
   // a Promise; either way the daemon gets its 200 immediately and the
   // stream SSE relay (synchronous above) never waits on Supabase.
   after(async () => {
+    console.log(`[response] after() running, frames=${frames.length}`)
     for (const frame of frames) {
       await writeThrough(frame, auth.userId)
     }
+    console.log(`[response] after() done`)
   })
 
   return NextResponse.json({ ok: true })
@@ -61,26 +66,37 @@ interface RelayFrame {
   type?: string
   payload?: {
     bornastarSessionId?: string
-    projectId?: string
     persistRows?: PersistRow[]
   }
 }
 
 async function writeThrough(frame: unknown, userId: string): Promise<void> {
   const f = frame as RelayFrame | null
-  if (!f || f.type !== 'claude_event') return
+  if (!f || f.type !== 'claude_event') {
+    console.log(`[write-through] skip: type=${f?.type ?? 'null'}`)
+    return
+  }
   const rows = f.payload?.persistRows
-  if (!rows || rows.length === 0) return
+  if (!rows || rows.length === 0) {
+    console.log('[write-through] skip: no persistRows in payload')
+    return
+  }
   const sessionId = f.payload?.bornastarSessionId
-  const projectId = f.payload?.projectId
-  if (!sessionId || !projectId) return
+  if (!sessionId) {
+    console.log('[write-through] skip: missing bornastarSessionId')
+    return
+  }
 
   try {
-    const ctx = await loadSessionContext(sessionId, projectId, userId)
-    if (!ctx) return
+    const ctx = await loadSessionContext(sessionId, userId)
+    if (!ctx) {
+      console.warn(`[write-through] skip: loadSessionContext returned null for sessionId=${sessionId.slice(0, 8)}`)
+      return
+    }
     await persistRows(rows, ctx)
+    console.log(`[write-through] ok sessionId=${sessionId.slice(0, 8)} rows=${rows.length}`)
   } catch (err) {
     // Non-fatal — the daemon queue will cover us. Log for observability.
-    console.warn('[write-through] failed:', (err as Error).message)
+    console.warn(`[write-through] failed sessionId=${sessionId.slice(0, 8)}:`, (err as Error).message)
   }
 }

@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json()
   const {
     type, projectId, prompt, sessionId, repoUrl, targetPath, template,
-    bornastarSessionId, claudeSessionId, mode, model, thinking,
+    bornastarSessionId, claudeSessionId, mode, model, thinking, userMsgId,
   } = body as {
     type: string
     projectId?: string
@@ -40,6 +40,10 @@ export async function POST(request: NextRequest) {
     mode?: 'plan' | 'edit' | 'auto' | 'agent'
     model?: string
     thinking?: 'off' | 'low' | 'medium' | 'high'
+    // Stable id the browser minted for the user's own message. The
+    // daemon will use it as the persistRow id so the optimistic render,
+    // the ring buffer, and the DB all share one id.
+    userMsgId?: string
   }
 
   if (!type) {
@@ -82,6 +86,7 @@ export async function POST(request: NextRequest) {
     thinking,
     worktreePath,
     bornastarSessionId,
+    userMsgId,
     repoUrl,
     targetPath,
     template,

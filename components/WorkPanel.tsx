@@ -1244,16 +1244,19 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
     lineRange: string
   }>>([])
 
-  // Stable callback passed to ChatPanel — prevents infinite re-renders by
-  // keeping the reference identity across parent renders.
+  // ChatPanel calls this when its own `isRunning` flips. We use it ONLY
+  // for instant `true` feedback on click (no waiting for the daemon
+  // broadcast round-trip). Removal is owned by the WorkPanel-level SSE
+  // listener below — it watches `running_sessions` broadcasts from the
+  // daemon and sets the busy set authoritatively, which also fixes the
+  // previous bug where a chat you navigated away from stayed spinning
+  // forever because the ChatPanel unmount couldn't observe the result.
   const handleBusyChange = useCallback((sid: string, busy: boolean) => {
+    if (!busy) return
     setBusySessions((prev) => {
-      const alreadyHas = prev.has(sid)
-      if (busy && alreadyHas) return prev
-      if (!busy && !alreadyHas) return prev
+      if (prev.has(sid)) return prev
       const next = new Set(prev)
-      if (busy) next.add(sid)
-      else next.delete(sid)
+      next.add(sid)
       return next
     })
   }, [])
@@ -1570,6 +1573,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                   event?: { type?: string; message?: { content?: { type?: string }[] } }
                   projectPath?: string
                   paths?: string[]
+                  sessionIds?: string[]
                 }
               }
 
@@ -1583,6 +1587,17 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                 window.dispatchEvent(new CustomEvent('bornastar-fs-change', {
                   detail: { projectPath: event.payload?.projectPath, paths },
                 }))
+                continue
+              }
+
+              // Daemon broadcasts which chats are currently running any
+              // time the set changes (prompt starts, bridge finishes,
+              // interrupt). We sync `busySessions` from this so the
+              // sidebar spinner/indicator is correct for EVERY chat —
+              // even the ones the user isn't currently viewing (their
+              // ChatPanel is unmounted and can't update busy on its own).
+              if (event.type === 'running_sessions') {
+                setBusySessions(new Set(event.payload?.sessionIds ?? []))
                 continue
               }
 
@@ -5182,41 +5197,45 @@ function ChatPanel({
   //   2. Cold path — paginated /messages, which reads from Supabase.
   //      Triggers when the buffer is empty (evicted / cold boot / never
   //      streamed) or the session is archived/trashed.
-  useEffect(() => {
+  //
+  // Extracted into a callback so visibility restore (tab wakes from
+  // background on mobile) can re-run it to catch up on events missed
+  // while the SSE was suspended.
+  const hydrateFromServer = useCallback(async () => {
     if (!sessionId) return
-    let cancelled = false
-    ;(async () => {
-      try {
-        const ss = await fetch(`/api/companion/session-state?projectId=${projectId}&sessionId=${sessionId}`)
-        if (!cancelled && ss.ok) {
-          const data = await ss.json()
-          if (data?.source === 'buffer' && Array.isArray(data.messages) && data.messages.length > 0) {
-            const msgs = mapDbMessages(data.messages)
-            setDbSeed({ messages: msgs, claudeSessionId: data.claudeSessionId ?? null })
-            // Ring buffer is RAM-only — no "older pages" live there; the
-            // full history only resurfaces from Supabase, which we fetch
-            // lazily when the user scrolls up.
-            setHasMoreOlder(true)
-            setOldestMessageId(msgs[0]?.id ?? null)
-            return
-          }
+    try {
+      const ss = await fetch(`/api/companion/session-state?projectId=${projectId}&sessionId=${sessionId}`)
+      if (ss.ok) {
+        const data = await ss.json()
+        if (data?.source === 'buffer' && Array.isArray(data.messages) && data.messages.length > 0) {
+          const msgs = mapDbMessages(data.messages)
+          setDbSeed({ messages: msgs, claudeSessionId: data.claudeSessionId ?? null })
+          // Server signals `hasMore` only when the ring buffer was full
+          // (200 frames) — i.e. there IS older history in Supabase worth
+          // fetching. For fresh / small chats the buffer has every row
+          // so we leave the "Scroll up for earlier" marker hidden.
+          setHasMoreOlder(!!data.hasMore)
+          setOldestMessageId(msgs[0]?.id ?? null)
+          return
         }
-      } catch {}
+      }
+    } catch {}
 
-      if (cancelled) return
-      try {
-        const res = await fetch(`/api/projects/${projectId}/chat-sessions/${sessionId}/messages?limit=${PAGE_SIZE}`)
-        if (cancelled || !res.ok) return
-        const data = await res.json()
-        const msgs = mapDbMessages(data.messages ?? [])
-        setDbSeed({ messages: msgs, claudeSessionId: data.claudeSessionId ?? null })
-        setHasMoreOlder(!!data.hasMore)
-        setOldestMessageId(msgs[0]?.id ?? null)
-      } catch {}
-    })()
-    return () => { cancelled = true }
+    try {
+      const res = await fetch(`/api/projects/${projectId}/chat-sessions/${sessionId}/messages?limit=${PAGE_SIZE}`)
+      if (!res.ok) return
+      const data = await res.json()
+      const msgs = mapDbMessages(data.messages ?? [])
+      setDbSeed({ messages: msgs, claudeSessionId: data.claudeSessionId ?? null })
+      setHasMoreOlder(!!data.hasMore)
+      setOldestMessageId(msgs[0]?.id ?? null)
+    } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, sessionId])
+
+  useEffect(() => {
+    hydrateFromServer()
+  }, [hydrateFromServer])
 
   // Pick the richest seed available: the DB has the authoritative copy,
   // but while it loads we use whatever the parent cached for this chat.
@@ -5251,6 +5270,22 @@ function ChatPanel({
     companion.hydrate(dbSeed.messages, dbSeed.claudeSessionId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dbSeed])
+
+  // Mobile-browser background recovery. Safari/Chrome on iOS suspend
+  // the SSE fetch stream when the tab goes to background; when the
+  // user brings the tab back, force the hook to reopen the stream and
+  // re-hydrate from /session-state so any events that landed while
+  // suspended flow in from the server's ring buffer.
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState !== 'visible') return
+      companion.reconnect()
+      hydrateFromServer()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrateFromServer])
 
   // Load the next older page on scroll-to-top. Uses the hook's
   // prependMessages so the already-rendered array grows upward without
@@ -5371,10 +5406,19 @@ function ChatPanel({
   // Auto-scroll to the newest message. Reduce the companion stream to a
   // single primitive signature (count + last content length) so the dep
   // array stays a fixed shape and doesn't churn on unrelated state changes.
+  //
+  // On the very first scroll for this chat (i.e. ChatPanel just mounted
+  // — switched-to or page-load), snap instantly with behavior:'auto' so
+  // the user lands at the bottom without watching a top-to-bottom
+  // animation. Subsequent scrolls during live streaming use 'smooth' so
+  // tokens feel like they're being typed onto the page.
   const lastCompanion = companion.messages[companion.messages.length - 1]
   const scrollSignature = `${companion.messages.length}:${lastCompanion?.content?.length ?? 0}:${companion.isRunning ? 1 : 0}`
+  const hasScrolledOnceRef = useRef(false)
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const behavior: ScrollBehavior = hasScrolledOnceRef.current ? 'smooth' : 'auto'
+    bottomRef.current?.scrollIntoView({ behavior })
+    hasScrolledOnceRef.current = true
   }, [scrollSignature])
 
   // Listen for pin-context events from the file tree

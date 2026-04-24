@@ -29,10 +29,13 @@ export async function POST(request: NextRequest) {
   if (events.length === 0) return NextResponse.json({ ok: true, saved: 0 })
 
   // Group by sessionId so the session-level rollup update runs once
-  // per session, not once per row.
+  // per session, not once per row. The daemon tags each event with its
+  // own hex projectId which is unrelated to the DB cuid — we ignore it
+  // here and let loadSessionContext derive the real projectId from the
+  // ChatSession row.
   const bySession = new Map<string, IncomingEvent[]>()
   for (const e of events) {
-    if (!e.sessionId || !e.projectId) continue
+    if (!e.sessionId) continue
     const bucket = bySession.get(e.sessionId)
     if (bucket) bucket.push(e)
     else bySession.set(e.sessionId, [e])
@@ -40,7 +43,7 @@ export async function POST(request: NextRequest) {
 
   try {
     for (const [sessionId, group] of bySession) {
-      const ctx = await loadSessionContext(sessionId, group[0].projectId, auth.userId)
+      const ctx = await loadSessionContext(sessionId, auth.userId)
       if (!ctx) continue
       const rows: PersistRow[] = group.map(toPersistRow)
       await persistRows(rows, ctx)
@@ -56,7 +59,7 @@ export async function POST(request: NextRequest) {
 // the batch body. Normalise to PersistRow shape before handing off.
 interface IncomingEvent extends PersistRow {
   sessionId: string
-  projectId: string
+  projectId?: string
 }
 
 function toPersistRow(e: IncomingEvent): PersistRow {

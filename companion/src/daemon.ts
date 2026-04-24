@@ -506,13 +506,18 @@ export class Daemon extends EventEmitter {
       : null
     if (persistCtx) {
       const userRow: PersistRow = {
-        id: this.generateEventId(),
+        // Prefer the id the browser minted for its optimistic render.
+        // Keeping one id across browser / queue / ring buffer / DB means
+        // hydrate after a remount recognises this row as already shown.
+        id: cmd.userMsgId ?? this.generateEventId(),
         createdAt: Date.now(),
         role: 'user',
         content: cmd.prompt,
         permissionMode: cmd.mode ?? 'auto',
         ...(cmd.model && { model: cmd.model }),
       }
+      const idSource = cmd.userMsgId ? 'browser' : 'generated'
+      console.log(`[bridge] user-row sessionId=${bornastarSessionId?.slice(0, 8) ?? '-'} userRowId=${userRow.id.slice(0, 16)} (from=${idSource})`)
       this.enqueueRow(userRow, persistCtx)
       this.send({
         type: 'claude_event',
@@ -544,6 +549,7 @@ export class Daemon extends EventEmitter {
       // Build persistable rows once — same ids flow through the queue,
       // the relay (for server write-through) and the ring buffer.
       const rows = persistCtx ? this.buildPersistRows(event, persistCtx) : []
+      console.log(`[bridge] event type=${event.type} session=${bornastarSessionId?.slice(0, 8) ?? '(none)'} persistCtx=${!!persistCtx} rows=${rows.length}`)
       this.send({
         type: 'claude_event',
         payload: {
