@@ -12,7 +12,13 @@ import { ConflictResolver } from './ConflictResolver'
 import { ResolveConflictsSplitButton } from './ResolveConflictsSplitButton'
 import { MOCK_CONFLICTS, MOCK_GIT_STATUS } from '@/lib/mocks/checks-demo'
 import { useGitStatus, deriveBadge, deriveUnsupportedLabel } from '@/lib/hooks/useGitStatus'
-import { useCompanionStream, type ChatMessage } from '@/lib/hooks/useCompanionStream'
+import { type ChatMessage } from '@/lib/hooks/useCompanionStream'
+import { companionStore } from '@/lib/companion-store'
+import {
+  useChatMessages, useChatIsRunning,
+  useBusySessions, useUnreadSessions, useCompanionStatus, useCompanionInfo,
+} from '@/lib/hooks/useCompanionStore'
+import { CompanionProvider, setActiveSessionIdForUnread } from './CompanionProvider'
 import { ClaudeToolCard, SessionResultCard, ModeSelector, ModelSelector, ThinkingSelector, CompanionStatusBadge, WorkBlock } from './ClaudeToolCard'
 import { ReportBadge } from './ChatReport'
 import type { ChatReport } from '@/lib/report-types'
@@ -1227,9 +1233,13 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
   // Scratchpad — per-project free-form notes, referenced via @notes in chat
   const [showScratchpad, setShowScratchpad] = useState(false)
   const [scratchpadContent, setScratchpadContent] = useState('')
-  // Sessions that are currently processing (agent is working) — shown as
-  // spinner icons in the sidebar + worktree tab bar
-  const [busySessions, setBusySessions] = useState<Set<string>>(new Set())
+  // Busy (currently processing) + unread are owned by the
+  // `companionStore`. CompanionProvider feeds them from the single SSE
+  // stream; hooks here just observe. That's how switching chats stays
+  // instant — a chat you navigated away from keeps getting events into
+  // its slice and the sidebar reflects the authoritative daemon state
+  // regardless of which ChatPanel is mounted.
+  const busySessions = useBusySessions()
 
   // Hunk attachments from the Changes panel → injected into the next chat
   // message. Stored as an array so the user can accumulate multiple hunks
@@ -1243,23 +1253,6 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
     formattedContent: string
     lineRange: string
   }>>([])
-
-  // ChatPanel calls this when its own `isRunning` flips. We use it ONLY
-  // for instant `true` feedback on click (no waiting for the daemon
-  // broadcast round-trip). Removal is owned by the WorkPanel-level SSE
-  // listener below — it watches `running_sessions` broadcasts from the
-  // daemon and sets the busy set authoritatively, which also fixes the
-  // previous bug where a chat you navigated away from stayed spinning
-  // forever because the ChatPanel unmount couldn't observe the result.
-  const handleBusyChange = useCallback((sid: string, busy: boolean) => {
-    if (!busy) return
-    setBusySessions((prev) => {
-      if (prev.has(sid)) return prev
-      const next = new Set(prev)
-      next.add(sid)
-      return next
-    })
-  }, [])
 
   // Load scratchpad from localStorage on mount (per-project)
   useEffect(() => {
@@ -1282,11 +1275,10 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
   // chatMessages state removed — the legacy Bornastar engine that wrote
   // into it is gone. Chat content lives in companion.messages inside the
   // ChatPanel. Kept as a comment marker so nobody re-adds the old poll.
-  // Claude Code messages per Bornastar chat session. Lives here (parent of
-  // ChatPanel) so that switching between chats doesn't throw away each
-  // one's conversation — ChatPanel re-mounts on sessionId change to keep
-  // state isolated, and seeds itself from this store.
-  const [companionMessagesBySession, setCompanionMessagesBySession] = useState<Record<string, ChatMessage[]>>({})
+  // Chat messages moved from parent-owned state into the module-level
+  // `companionStore`. See lib/companion-store.ts and lib/hooks/
+  // useCompanionStore.ts — ChatPanel reads its slice directly from
+  // there, which is what makes switching chats instant.
   const [teamRunState, setTeamRunState] = useState<unknown>(null)
   const [teamRunActive, setTeamRunActive] = useState(false)
 
@@ -1315,7 +1307,9 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
   const [renamingTabId, setRenamingTabId] = useState<string | null>(null)
   const [renamingTabValue, setRenamingTabValue] = useState('')
   const [projectMeta, setProjectMeta] = useState<{ name: string; repoName?: string } | null>(null)
-  const [unreadSessionIds, setUnreadSessionIds] = useState<Set<string>>(new Set())
+  // Unread chats are owned by `companionStore` and updated inside
+  // CompanionProvider's SSE listener. Reading here just subscribes.
+  const unreadSessionIds = useUnreadSessions()
   // Manual "mark worktree as unread" flag — independent from individual chat
   // unread state. The worktree icon is yellow if it's in this set OR if any
   // nested chat is unread. Both clear when the user enters the worktree.
@@ -1383,24 +1377,12 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
   const activeEmployee = hiredEmployees.find((e) => e.id === activeSkillId)
   const activeTeam = teams.find((t) => t.id === activeTeamId)
 
-  // Stable callback that takes the owning sessionId as an argument.
-  //
-  // Don't read the session id from a parent ref here: React runs effects
-  // child-before-parent, so when activeSessionId changes A → B the newly
-  // mounted ChatPanel B fires its "mirror current messages" effect BEFORE
-  // the parent effect that updates a ref has a chance to run. If the
-  // callback reads a parent ref, it sees the stale A at that moment and
-  // stores B's empty initial state under A — wiping A's cached messages.
-  // ChatPanel knows its own sessionId (it's a prop); pass it explicitly.
-  const handleCompanionMessagesChange = useCallback((sid: string, msgs: ChatMessage[]) => {
-    if (!sid) return
-    setCompanionMessagesBySession((prev) => {
-      // Skip the set if identical reference — React still re-runs effects
-      // but at least no re-render storm on redundant updates.
-      if (prev[sid] === msgs) return prev
-      return { ...prev, [sid]: msgs }
-    })
-  }, [])
+  // Mirror the active chat id into the provider's unread-filter so
+  // incoming events for OTHER chats get marked unread, but not the one
+  // on screen. Plain module-level mutable state — zero re-render cost.
+  useEffect(() => {
+    setActiveSessionIdForUnread(activeSessionId)
+  }, [activeSessionId])
 
   // Load (or reload) main chats AND worktrees together. Used after any
   // mutation in the sidebar (create, archive, trash, restore).
@@ -1534,99 +1516,17 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
     fetch(`/api/projects/${projectId}/chat-sessions/unread`)
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
-        if (!data?.unreadIds) return
-        setUnreadSessionIds(new Set<string>(data.unreadIds))
+        if (!Array.isArray(data?.unreadIds)) return
+        for (const sid of data.unreadIds as string[]) companionStore.markUnread(sid)
       })
       .catch(() => {})
   }, [projectId])
 
-  // Subscribe to the same companion SSE stream the ChatPanel uses, but
-  // at the WorkPanel level and unfiltered. Whenever Claude emits an
-  // assistant / tool event, look at its bornastarSessionId — if it's a
-  // chat OTHER than the one the user is currently viewing, flag it as
-  // unread. The SSE bus already multiplexes every chat's events through
-  // one connection per user, so this costs no extra DB queries.
-  const activeSessionIdForUnreadRef = useRef<string | null>(activeSessionId)
-  useEffect(() => { activeSessionIdForUnreadRef.current = activeSessionId }, [activeSessionId])
-  useEffect(() => {
-    const controller = new AbortController()
-    async function listen() {
-      try {
-        const res = await fetch('/api/companion/stream', { signal: controller.signal })
-        if (!res.ok || !res.body) return
-        const reader = res.body.getReader()
-        const decoder = new TextDecoder()
-        let buffer = ''
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split('\n')
-          buffer = lines.pop() ?? ''
-          for (const line of lines) {
-            if (!line.startsWith('data: ')) continue
-            try {
-              const event = JSON.parse(line.slice(6)) as {
-                type?: string
-                payload?: {
-                  bornastarSessionId?: string
-                  event?: { type?: string; message?: { content?: { type?: string }[] } }
-                  projectPath?: string
-                  paths?: string[]
-                  sessionIds?: string[]
-                }
-              }
-
-              // File-system changes pushed by the companion watcher.
-              // Fires whenever a file in the project tree is created,
-              // edited or deleted. We dispatch a DOM event so the
-              // Explorer, Changes panel and stats rows can refetch on
-              // demand instead of polling on an interval.
-              if (event.type === 'fs_change') {
-                const paths = event.payload?.paths ?? []
-                window.dispatchEvent(new CustomEvent('bornastar-fs-change', {
-                  detail: { projectPath: event.payload?.projectPath, paths },
-                }))
-                continue
-              }
-
-              // Daemon broadcasts which chats are currently running any
-              // time the set changes (prompt starts, bridge finishes,
-              // interrupt). We sync `busySessions` from this so the
-              // sidebar spinner/indicator is correct for EVERY chat —
-              // even the ones the user isn't currently viewing (their
-              // ChatPanel is unmounted and can't update busy on its own).
-              if (event.type === 'running_sessions') {
-                setBusySessions(new Set(event.payload?.sessionIds ?? []))
-                continue
-              }
-
-              if (event.type !== 'claude_event') continue
-              const inner = event.payload?.event
-              const sid = event.payload?.bornastarSessionId
-              if (!sid || sid === activeSessionIdForUnreadRef.current) continue
-              // Only assistant text/tool_use blocks count — system
-              // metrics ('result') and user echoes shouldn't mark unread.
-              const isContentEvent =
-                inner?.type === 'assistant'
-                || (inner?.type === 'user' && inner.message?.content?.some((c) => c.type === 'tool_result'))
-              if (!isContentEvent) continue
-              setUnreadSessionIds((prev) => {
-                if (prev.has(sid)) return prev
-                const next = new Set(prev)
-                next.add(sid)
-                return next
-              })
-            } catch { /* non-JSON line, skip */ }
-          }
-        }
-      } catch (err) {
-        if ((err as Error).name !== 'AbortError') { /* ignore stream errors */ }
-      }
-    }
-    listen()
-    return () => controller.abort()
-  }, [projectId])
+  // The SSE listener that used to live here is now inside
+  // CompanionProvider (single stream for the whole WorkPanel). It
+  // routes events into `companionStore` — busy set, unread set,
+  // per-chat message slices, status. We just observe the outputs via
+  // hooks. Nothing to wire here.
 
   // Check for active team run
   useEffect(() => {
@@ -1922,6 +1822,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
   const hasOpenChat = activeSessionId !== null
 
   return (
+    <CompanionProvider>
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Main area (sidebar + chat + file tree + minimap) */}
       <div className="flex flex-1 overflow-hidden">
@@ -1941,12 +1842,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
           onSelectMainChat={(id) => {
             setActiveSessionId(id)
             setActiveWorktreeId(null)
-            setUnreadSessionIds((prev) => {
-              if (!prev.has(id)) return prev
-              const next = new Set(prev)
-              next.delete(id)
-              return next
-            })
+            companionStore.clearUnread(id)
           }}
           onSelectWorktree={(worktreeId) => {
             const wt = worktrees.find((w) => w.id === worktreeId)
@@ -1965,12 +1861,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
             const targetSession = wt.sessions.find((s) => unreadSessionIds.has(s.id)) ?? wt.sessions[0]
             if (targetSession) {
               setActiveSessionId(targetSession.id)
-              setUnreadSessionIds((prev) => {
-                if (!prev.has(targetSession.id)) return prev
-                const next = new Set(prev)
-                next.delete(targetSession.id)
-                return next
-              })
+              companionStore.clearUnread(targetSession.id)
             }
           }}
           onNewMainChat={handleNewMainChat}
@@ -1979,12 +1870,8 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
           onRenameSession={handleRenameSession}
           onRenameWorktree={handleRenameWorktree}
           onToggleUnread={(id, unread) => {
-            setUnreadSessionIds((prev) => {
-              const next = new Set(prev)
-              if (unread) next.add(id)
-              else next.delete(id)
-              return next
-            })
+            if (unread) companionStore.markUnread(id)
+            else companionStore.clearUnread(id)
           }}
           onToggleWorktreeUnread={(worktreeId, unread) => {
             setUnreadWorktreeIds((prev) => {
@@ -2155,12 +2042,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                               <div
                                 onClick={() => {
                                   setActiveSessionId(s.id)
-                                  setUnreadSessionIds((prev) => {
-                                    if (!prev.has(s.id)) return prev
-                                    const next = new Set(prev)
-                                    next.delete(s.id)
-                                    return next
-                                  })
+                                  companionStore.clearUnread(s.id)
                                 }}
                                 onDoubleClick={() => {
                                   setRenamingTabId(s.id)
@@ -2250,8 +2132,6 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                   key={activeSessionId ?? 'empty'}
                   projectId={projectId}
                   sessionId={activeSessionId}
-                  initialCompanionMessages={activeSessionId ? (companionMessagesBySession[activeSessionId] ?? []) : []}
-                  onCompanionMessagesChange={handleCompanionMessagesChange}
                   sessionName={
                     activeWorktreeId
                       ? worktrees.find((w) => w.id === activeWorktreeId)?.sessions.find((s) => s.id === activeSessionId)?.name ?? 'Chat'
@@ -2283,7 +2163,6 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                     setActiveWorktreeId(null)
                   }}
                   onOpenScratchpad={() => setShowScratchpad(true)}
-                  onBusyChange={handleBusyChange}
                   hunkAttachments={pendingHunkAttachments}
                   onClearHunkAttachment={(index) => setPendingHunkAttachments((prev) => prev.filter((_, i) => i !== index))}
                   onClearAllHunkAttachments={() => setPendingHunkAttachments([])}
@@ -2992,12 +2871,8 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
               <button
                 onClick={() => {
                   setWorktreeTabMenuId(null)
-                  setUnreadSessionIds((prev) => {
-                    const next = new Set(prev)
-                    if (next.has(session.id)) next.delete(session.id)
-                    else next.add(session.id)
-                    return next
-                  })
+                  if (unreadSessionIds.has(session.id)) companionStore.clearUnread(session.id)
+                  else companionStore.markUnread(session.id)
                 }}
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-zinc-300 hover:bg-white/5"
               >
@@ -3116,6 +2991,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
       )}
 
     </div>
+    </CompanionProvider>
   )
 }
 
@@ -5099,8 +4975,6 @@ function ChatPanel({
   sessionId,
   sessionName,
   isWorktreeChat,
-  initialCompanionMessages,
-  onCompanionMessagesChange,
   activeMode,
   activeSkillId,
   activeTeamId,
@@ -5114,7 +4988,6 @@ function ChatPanel({
   onSessionRenamed,
   onMinimize,
   onOpenScratchpad,
-  onBusyChange,
   hunkAttachments,
   onClearHunkAttachment,
   onClearAllHunkAttachments,
@@ -5125,7 +4998,6 @@ function ChatPanel({
   isWorktreeChat: boolean
   onMinimize: () => void
   onOpenScratchpad: () => void
-  onBusyChange: (sessionId: string, busy: boolean) => void
   hunkAttachments: Array<{
     filePath: string
     fileStatus: 'M' | 'A' | 'D'
@@ -5136,8 +5008,6 @@ function ChatPanel({
   }>
   onClearHunkAttachment: (index: number) => void
   onClearAllHunkAttachments: () => void
-  initialCompanionMessages: ChatMessage[]
-  onCompanionMessagesChange: (sessionId: string, msgs: ChatMessage[]) => void
   activeMode: ChatMode
   activeSkillId: string | null
   activeTeamId: string | null
@@ -5157,13 +5027,21 @@ function ChatPanel({
   const [isDragging, setIsDragging] = useState(false)
   const [contextPaths, setContextPaths] = useState<string[]>([])
 
-  // ── Persistence seed (with pagination) ────────────────────────────
-  // On mount, hydrate the most recent page from the DB. Older messages
-  // load on demand when the user scrolls to the top — a full chat with
-  // thousands of turns stays snappy because we never hold everything at
-  // once in memory or fling it over the wire.
+  // ── Companion state ─────────────────────────────────────────────
+  // Messages, busy flag, claude --resume id, cost — all live in the
+  // module-level `companionStore`. We just subscribe. Switching chats
+  // is instant because the slice stays populated even when this
+  // ChatPanel unmounts (the single SSE in CompanionProvider keeps
+  // feeding every chat's slice).
+  const messages = useChatMessages(sessionId)
+  const isRunning = useChatIsRunning(sessionId)
+  const companionStatus = useCompanionStatus()
+  const companionInfo = useCompanionInfo()
+  const companionConnected = companionStatus === 'connected'
+
+  // Pagination state is still per-panel (UI concern): how many older
+  // pages we've loaded, whether the scroll-up banner should show.
   const PAGE_SIZE = 100
-  const [dbSeed, setDbSeed] = useState<{ messages: ChatMessage[]; claudeSessionId: string | null } | null>(null)
   const [hasMoreOlder, setHasMoreOlder] = useState(false)
   const [oldestMessageId, setOldestMessageId] = useState<string | null>(null)
   const [loadingOlder, setLoadingOlder] = useState(false)
@@ -5190,17 +5068,15 @@ function ChatPanel({
     durationMs: m.durationMs ?? undefined,
   }))
 
-  // Hydrate the chat in two tiers:
+  // Hydrate the chat in two tiers, feeding the companion store:
   //   1. Fast path — GET /api/companion/session-state. If the server has
   //      the session in its ring buffer (last 24h of activity in RAM),
   //      that comes back instantly and we skip Supabase entirely.
   //   2. Cold path — paginated /messages, which reads from Supabase.
   //      Triggers when the buffer is empty (evicted / cold boot / never
   //      streamed) or the session is archived/trashed.
-  //
-  // Extracted into a callback so visibility restore (tab wakes from
-  // background on mobile) can re-run it to catch up on events missed
-  // while the SSE was suspended.
+  // Idempotent (fuzzyMatch) so re-running on visibility restore never
+  // duplicates or reorders.
   const hydrateFromServer = useCallback(async () => {
     if (!sessionId) return
     try {
@@ -5209,11 +5085,7 @@ function ChatPanel({
         const data = await ss.json()
         if (data?.source === 'buffer' && Array.isArray(data.messages) && data.messages.length > 0) {
           const msgs = mapDbMessages(data.messages)
-          setDbSeed({ messages: msgs, claudeSessionId: data.claudeSessionId ?? null })
-          // Server signals `hasMore` only when the ring buffer was full
-          // (200 frames) — i.e. there IS older history in Supabase worth
-          // fetching. For fresh / small chats the buffer has every row
-          // so we leave the "Scroll up for earlier" marker hidden.
+          companionStore.hydrateSlice(sessionId, msgs, data.claudeSessionId ?? null)
           setHasMoreOlder(!!data.hasMore)
           setOldestMessageId(msgs[0]?.id ?? null)
           return
@@ -5226,65 +5098,28 @@ function ChatPanel({
       if (!res.ok) return
       const data = await res.json()
       const msgs = mapDbMessages(data.messages ?? [])
-      setDbSeed({ messages: msgs, claudeSessionId: data.claudeSessionId ?? null })
+      companionStore.hydrateSlice(sessionId, msgs, data.claudeSessionId ?? null)
       setHasMoreOlder(!!data.hasMore)
       setOldestMessageId(msgs[0]?.id ?? null)
     } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, sessionId])
 
   useEffect(() => {
     hydrateFromServer()
   }, [hydrateFromServer])
 
-  // Pick the richest seed available: the DB has the authoritative copy,
-  // but while it loads we use whatever the parent cached for this chat.
-  const seedMessages = dbSeed?.messages ?? initialCompanionMessages
-
-  // ── Companion stream (Claude Code CLI) ──────────────────────────
-  // Tag the hook with this chat's Bornastar session so it filters events
-  // belonging to other chats. The hook is presentational only; durability
-  // lives in the daemon queue + server ring buffer + Supabase, not here.
-  const companion = useCompanionStream(
-    sessionId,
-    seedMessages,
-    dbSeed?.claudeSessionId ?? null,
-  )
-  const companionConnected = companion.status === 'connected'
-
-  // Mirror every change back up to the parent store so siblings (or this
-  // chat re-mounted later) can pick the conversation back up instantly.
-  // Passing `sessionId` explicitly (rather than via a parent ref) closes
-  // a race where the newly-mounted ChatPanel for a different session would
-  // fire this effect first and overwrite the previous session's cache.
-  useEffect(() => {
-    onCompanionMessagesChange(sessionId, companion.messages)
-  }, [sessionId, companion.messages, onCompanionMessagesChange])
-
-  // Hydrate the hook with the first DB page as soon as it lands. The
-  // hook guards against clobbering in-flight streaming state, so this
-  // is safe to fire even if the user already started typing / Claude
-  // already started replying.
-  useEffect(() => {
-    if (!dbSeed) return
-    companion.hydrate(dbSeed.messages, dbSeed.claudeSessionId)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dbSeed])
-
   // Mobile-browser background recovery. Safari/Chrome on iOS suspend
   // the SSE fetch stream when the tab goes to background; when the
-  // user brings the tab back, force the hook to reopen the stream and
-  // re-hydrate from /session-state so any events that landed while
-  // suspended flow in from the server's ring buffer.
+  // user brings the tab back, the provider reconnects the shared SSE
+  // and we re-run hydrate for THIS chat to catch up events the stream
+  // missed. Reducer dedups by id so re-running is safe.
   useEffect(() => {
     const onVisibility = () => {
       if (document.visibilityState !== 'visible') return
-      companion.reconnect()
       hydrateFromServer()
     }
     document.addEventListener('visibilitychange', onVisibility)
     return () => document.removeEventListener('visibilitychange', onVisibility)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrateFromServer])
 
   // Load the next older page on scroll-to-top. Uses the hook's
@@ -5299,19 +5134,18 @@ function ChatPanel({
       const data = await res.json()
       const older = mapDbMessages(data.messages ?? [])
       if (older.length > 0) {
-        companion.prependMessages(older)
+        for (const m of older) companionStore.upsertMessage(sessionId, m)
         setOldestMessageId(older[0].id)
       }
       setHasMoreOlder(!!data.hasMore)
     } catch { /* ignore */ }
     setLoadingOlder(false)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, sessionId, hasMoreOlder, loadingOlder, oldestMessageId])
   const [claudeMode, setClaudeMode] = useState<'plan' | 'edit' | 'auto' | 'agent'>('auto')
 
   // The companion daemon has its own project registry with hex IDs keyed by
-  // local path. We need to resolve the Bornastar DB projectId → companion hex ID
-  // by matching sandboxId (local path) against companion.companionInfo.projects.
+  // local path. We resolve the Bornastar DB projectId → companion hex ID
+  // by matching sandboxId (local path) against companionInfo.projects.
   const [sandboxId, setSandboxId] = useState<string | null>(null)
   useEffect(() => {
     fetch(`/api/projects/${projectId}/terminal`)
@@ -5320,8 +5154,8 @@ function ChatPanel({
       .catch(() => {})
   }, [projectId])
 
-  const companionProjectId = sandboxId && companion.companionInfo?.projects
-    ? (companion.companionInfo.projects.find((p) => p.path === sandboxId)?.id ?? null)
+  const companionProjectId = sandboxId && companionInfo?.projects
+    ? (companionInfo.projects.find((p) => p.path === sandboxId)?.id ?? null)
     : null
 
   // External prompts — e.g. "Resolve with agent" on the Conflicts top
@@ -5388,7 +5222,7 @@ function ChatPanel({
         window.dispatchEvent(new CustomEvent('session-replaced', { detail: { oldId: sessionId, newId: newSession.id, name: newSession.name } }))
       }
     }
-    companion.clearMessages()
+    companionStore.clearSlice(sessionId)
     setContextPaths([])
     setAttachments([])
     setInput('')
@@ -5412,8 +5246,8 @@ function ChatPanel({
   // the user lands at the bottom without watching a top-to-bottom
   // animation. Subsequent scrolls during live streaming use 'smooth' so
   // tokens feel like they're being typed onto the page.
-  const lastCompanion = companion.messages[companion.messages.length - 1]
-  const scrollSignature = `${companion.messages.length}:${lastCompanion?.content?.length ?? 0}:${companion.isRunning ? 1 : 0}`
+  const lastCompanion = messages[messages.length - 1]
+  const scrollSignature = `${messages.length}:${lastCompanion?.content?.length ?? 0}:${isRunning ? 1 : 0}`
   const hasScrolledOnceRef = useRef(false)
   useEffect(() => {
     const behavior: ScrollBehavior = hasScrolledOnceRef.current ? 'smooth' : 'auto'
@@ -5488,15 +5322,10 @@ function ChatPanel({
     }
   }, [input])
 
-  // Notify parent when Claude is running so sidebar shows spinner.
-  useEffect(() => {
-    onBusyChange(sessionId, companion.isRunning)
-  }, [companion.isRunning, sessionId, onBusyChange])
-
   async function sendMessage(e: React.FormEvent) {
     e.preventDefault()
     const userText = input.trim()
-    if ((!userText && attachments.length === 0 && hunkAttachments.length === 0) || companion.isRunning) return
+    if ((!userText && attachments.length === 0 && hunkAttachments.length === 0) || isRunning) return
 
     // If the companion isn't reachable or the project isn't registered on
     // the daemon, bail BEFORE clearing the input so the user doesn't lose
@@ -5511,7 +5340,7 @@ function ChatPanel({
       : userText
 
     // Auto-rename the chat using the first user message
-    const isFirstMessage = companion.messages.filter(m => m.role === 'user').length === 0
+    const isFirstMessage = messages.filter(m => m.role === 'user').length === 0
     if (isFirstMessage && userText) {
       const title = userText.split(/\s+/).slice(0, 5).join(' ').slice(0, 40)
       onSessionRenamed(title)
@@ -5523,17 +5352,13 @@ function ChatPanel({
     window.dispatchEvent(new CustomEvent('bornastar-continue-merged'))
     window.dispatchEvent(new CustomEvent('bornastar-start-over-closed'))
 
-    // All chat goes through Claude Code via the companion daemon. Pass the
-    // Bornastar session ID so the server can resolve the worktree path and
-    // so each chat's bridge is keyed independently on the daemon.
-    if (companionConnected && companionProjectId) {
-      await companion.sendPrompt(companionProjectId, content, claudeMode, sessionId, {
-        model: selectedModel,
-        // Haiku has no extended-thinking support — force 'off' regardless
-        // of the stored selector state (UI already disables the picker).
-        thinking: selectedModel === 'haiku' ? 'off' : (thinkingLevel as 'off' | 'low' | 'medium' | 'high'),
-      })
-    }
+    await companionStore.sendPrompt(sessionId, companionProjectId, content, {
+      mode: claudeMode,
+      model: selectedModel,
+      // Haiku has no extended-thinking support — force 'off' regardless
+      // of the stored selector state (UI already disables the picker).
+      thinking: selectedModel === 'haiku' ? 'off' : (thinkingLevel as 'off' | 'low' | 'medium' | 'high'),
+    })
   }
 
   const hasAnyone = hiredEmployees.length > 0 || teams.length > 0
@@ -5625,13 +5450,13 @@ function ChatPanel({
         )}
 
         {/* ── Claude Code via companion ─────────────────────────────── */}
-        {companion.messages.length === 0 && (
+        {messages.length === 0 && (
           <div className="flex h-full flex-col items-center justify-center gap-3">
-            <CompanionStatusBadge status={companion.status} info={companion.companionInfo} />
+            <CompanionStatusBadge status={companionStatus} info={companionInfo} />
             <p className="text-sm text-zinc-400">
-              {companion.status === 'connecting' ? 'Connecting to companion…' :
-               companion.status === 'connected' ? 'Send a message to start coding with Claude Code' :
-               companion.status === 'error' ? 'Companion error — check terminal' :
+              {companionStatus === 'connecting' ? 'Connecting to companion…' :
+               companionStatus === 'connected' ? 'Send a message to start coding with Claude Code' :
+               companionStatus === 'error' ? 'Companion error — check terminal' :
                'Start the companion: bornastar start'}
             </p>
           </div>
@@ -5650,17 +5475,17 @@ function ChatPanel({
             m.role === 'user' || (m.role === 'system' && m.costUsd !== undefined)
           const isWorking = (m: ChatMessage) =>
             m.role === 'tool' || m.role === 'thinking' || m.role === 'assistant'
-          for (let i = 0; i < companion.messages.length; i++) {
-            const m = companion.messages[i]
+          for (let i = 0; i < messages.length; i++) {
+            const m = messages[i]
             if (isBoundary(m)) { items.push({ kind: 'single', msg: m }); continue }
             if (!isWorking(m)) { items.push({ kind: 'single', msg: m }); continue }
             const group: ChatMessage[] = [m]
             while (
-              i + 1 < companion.messages.length
-              && !isBoundary(companion.messages[i + 1])
-              && isWorking(companion.messages[i + 1])
+              i + 1 < messages.length
+              && !isBoundary(messages[i + 1])
+              && isWorking(messages[i + 1])
             ) {
-              i++; group.push(companion.messages[i])
+              i++; group.push(messages[i])
             }
             // The final assistant text in the run is Claude's response
             // to the user — it belongs in the chat flow, not inside the
@@ -5679,7 +5504,7 @@ function ChatPanel({
           })()
           return items.map((item, idx) => {
             if (item.kind === 'work') {
-              const isActive = companion.isRunning && idx === lastWorkIndex
+              const isActive = isRunning && idx === lastWorkIndex
               return <WorkBlock key={item.key} messages={item.msgs} active={isActive} />
             }
             const msg = item.msg
@@ -5709,7 +5534,7 @@ function ChatPanel({
             )
           })
         })()}
-        {companion.isRunning && (
+        {isRunning && (
           <ThinkingIndicator mode="direct" />
         )}
 
@@ -5910,7 +5735,7 @@ function ChatPanel({
                   }
                 }}
                 placeholder={activeMode === 'team' ? `Message ${activeTeam?.name ?? 'team'}...` : activeMode === 'skill' ? `Message ${activeEmployee?.name ?? 'employee'}...` : 'Message Claude...'}
-                disabled={companion.isRunning}
+                disabled={isRunning}
                 rows={1}
                 className="w-full resize-none bg-transparent text-sm text-zinc-200 placeholder-zinc-500 outline-none disabled:opacity-50"
                 style={{ maxHeight: `${36 * 4}px` }}
@@ -6033,10 +5858,10 @@ function ChatPanel({
             <ModeSelector mode={claudeMode} onChange={setClaudeMode} />
 
             {/* Submit / stop button */}
-            {companion.isRunning ? (
+            {isRunning ? (
               <button
                 type="button"
-                onClick={() => companionProjectId && companion.interrupt(companionProjectId, sessionId)}
+                onClick={() => companionProjectId && companionStore.interrupt(sessionId, companionProjectId)}
                 title="Stop"
                 className="ml-1 flex h-7 w-7 items-center justify-center rounded-lg bg-white text-zinc-900 transition-colors hover:bg-zinc-200"
               >
