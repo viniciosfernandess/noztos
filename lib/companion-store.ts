@@ -605,13 +605,37 @@ class CompanionStore {
     if (event.type === 'claude_event' && !event.payload?.event && Array.isArray(event.payload?.persistRows)) {
       const sid = event.payload.bornastarSessionId
       if (!sid) return
+      // Persist-only frames now arrive in two situations:
+      //   1. The daemon's user-prompt relay (only user rows — no tool data).
+      //   2. The sync-messages replay path: when the daemon's local queue
+      //      drains after a network gap, missed events come through here
+      //      INCLUDING tool rows. So we copy every renderable field we
+      //      know about, not just role + content. Fields the row doesn't
+      //      carry stay undefined and the renderer falls through normally.
       for (const r of event.payload.persistRows) {
         if (!r?.id) continue
+        const row = r as Record<string, unknown>
+        const claudeSid = typeof row.claudeSessionId === 'string' ? row.claudeSessionId : undefined
+        if (claudeSid) this.setClaudeSessionId(sid, claudeSid)
+        // Only fields that actually exist on PersistRow (see lib/chat-persist.ts).
+        // filePath / oldString / command / etc. are derived browser-side from
+        // toolInput at render time — not part of the wire shape — so we don't
+        // pretend to read them here. Renderer falls back gracefully when
+        // those derivations are absent (a replayed Bash tool row shows
+        // "Using Bash" instead of the polished command preview, which is
+        // an acceptable trade for the rare sync-replay path).
         this.upsertMessage(sid, {
           id: r.id,
           role: r.role as ChatMessage['role'],
           content: r.content ?? '',
           timestamp: typeof r.createdAt === 'number' ? r.createdAt : Date.now(),
+          toolName: typeof row.toolName === 'string' ? row.toolName : undefined,
+          toolInput: row.toolInput as Record<string, unknown> | undefined,
+          toolResult: typeof row.toolResult === 'string' ? row.toolResult : undefined,
+          toolUseId: typeof row.toolUseId === 'string' ? row.toolUseId : undefined,
+          toolError: typeof row.toolError === 'boolean' ? row.toolError : undefined,
+          costUsd: typeof row.costUsd === 'number' ? row.costUsd : undefined,
+          durationMs: typeof row.durationMs === 'number' ? row.durationMs : undefined,
         }, { fuzzyMatch: true })
       }
       return

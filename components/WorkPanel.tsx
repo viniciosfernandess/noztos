@@ -5039,6 +5039,17 @@ function ChatPanel({
   const companionStatus = useCompanionStatus()
   const companionInfo = useCompanionInfo()
   const companionConnected = companionStatus === 'connected'
+  // The companion can be online while Claude itself isn't authenticated
+  // (user never ran `claude login`, or token expired). When that happens
+  // the daemon would accept the prompt, run `claude` and the CLI would
+  // immediately error with auth-failed. So we treat "Claude not signed
+  // in" the same way as "Mac offline" at the input level: block sending.
+  // `plan` (e.g. 'max') is filled by the daemon's authInfo only when
+  // claude is authed; absent → not authed.
+  const claudeAuthed = companionConnected && Boolean(companionInfo?.plan)
+  // Single derived gate: every place that asks "can the user send?" reads
+  // this. Future LLMs (OpenAI, etc.) get folded in here.
+  const canSendToLLM = companionConnected && claudeAuthed
 
   // Pagination state is still per-panel (UI concern): how many older
   // pages we've loaded, whether the scroll-up banner should show.
@@ -5381,8 +5392,8 @@ function ChatPanel({
     // If the companion isn't reachable or the project isn't registered on
     // the daemon, bail BEFORE clearing the input so the user doesn't lose
     // their message. Surface a clear error instead of a silent disappear.
-    if (!companionConnected || !companionProjectId) {
-      console.warn('[chat] cannot send — companion not ready', { companionConnected, companionProjectId })
+    if (!canSendToLLM || !companionProjectId) {
+      console.warn('[chat] cannot send', { companionConnected, claudeAuthed, companionProjectId })
       return
     }
 
@@ -5679,17 +5690,20 @@ function ChatPanel({
 
         {/* Input area — single floating card (VSCode Claude style) */}
         <form onSubmit={sendMessage} className="shrink-0 px-3 pb-3 pt-1">
-          {/* Offline banner — only shown when the companion (Mac daemon)
-              can't be reached. Keeps the input visually present but
-              communicates clearly why Send is locked, so the user isn't
-              left wondering why nothing happens on Enter. */}
-          {!companionConnected && (
+          {/* Offline banner — distinguishes the two upstream gates:
+                (1) the Mac companion daemon
+                (2) Claude itself (signed in inside the companion)
+              Same dim style + zinc dot so the visual language is shared
+              with the sidebar status badges. */}
+          {!canSendToLLM && (
             <div className="mb-2 flex items-center gap-2 rounded-lg border border-zinc-700/60 bg-zinc-900/40 px-3 py-1.5 text-[11px] text-zinc-400">
               <span className="h-1.5 w-1.5 rounded-full bg-zinc-600" />
               <span>
                 {companionStatus === 'connecting'
                   ? 'Connecting to your Mac companion…'
-                  : 'Mac companion offline — start it with `bornastar start` to continue.'}
+                  : !companionConnected
+                    ? 'Mac companion offline — start it with `bornastar start` to continue.'
+                    : 'Claude not signed in — run `claude login` on your Mac.'}
               </span>
             </div>
           )}
@@ -5818,7 +5832,7 @@ function ChatPanel({
                   // is offline, Enter must NOT fire a send (the request
                   // would queue with nowhere to run). sendMessage has
                   // its own defensive check too.
-                  if (e.key === 'Enter' && !e.shiftKey && !isRunning && companionConnected) {
+                  if (e.key === 'Enter' && !e.shiftKey && !isRunning && canSendToLLM) {
                     e.preventDefault()
                     sendMessage(e)
                   }
@@ -5960,8 +5974,13 @@ function ChatPanel({
             ) : (
               <button
                 type="submit"
-                disabled={(!input.trim() && attachments.length === 0) || !companionConnected || !companionProjectId}
-                title={!companionConnected ? 'Start companion: bornastar start' : !companionProjectId ? 'Project not registered in companion' : 'Send'}
+                disabled={(!input.trim() && attachments.length === 0) || !canSendToLLM || !companionProjectId}
+                title={
+                  !companionConnected ? 'Start companion: bornastar start'
+                    : !claudeAuthed ? 'Claude not signed in — run: claude login'
+                    : !companionProjectId ? 'Project not registered in companion'
+                    : 'Send'
+                }
                 className="ml-1 flex h-7 w-7 items-center justify-center rounded-lg bg-white text-zinc-900 transition-colors hover:bg-zinc-200 disabled:opacity-30"
               >
                 <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">

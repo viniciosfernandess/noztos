@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyAuth } from '@/lib/auth'
 import { loadSessionContext, persistRows, type PersistRow } from '@/lib/chat-persist'
+import { getChannel } from '@/lib/companion-relay'
 
 // POST — Companion daemon flushes a batch of ChatMessage-shaped rows
 // from its local SQLite queue into Supabase. Each row carries its
@@ -42,11 +43,30 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const channel = getChannel(auth.userId)
     for (const [sessionId, group] of bySession) {
       const ctx = await loadSessionContext(sessionId, auth.userId)
       if (!ctx) continue
       const rows: PersistRow[] = group.map(toPersistRow)
       await persistRows(rows, ctx)
+
+      // Symmetry with the live /response path: the daemon's drain is
+      // catching us up on rows generated during a network gap. Without
+      // this push the rows live ONLY in Supabase — ring buffer and SSE
+      // never see them, so any browser tab that's still showing a
+      // spinner from before the gap stays stuck. Wrapping each row as
+      // a persist-only claude_event lets the relay treat them like any
+      // other late frame: ring captures, SSE fans out, store dedups by
+      // id. The daemon's original timestamps preserve chronological
+      // order in the visible chat.
+      channel.pushEvent({
+        type: 'claude_event',
+        payload: {
+          bornastarSessionId: sessionId,
+          persistRows: rows,
+        },
+      }, auth.userId)
+      console.log(`[sync-messages] replayed ${rows.length} row(s) into ring + SSE for sessionId=${sessionId.slice(0, 8)}`)
     }
     return NextResponse.json({ ok: true, saved: events.length })
   } catch (err) {

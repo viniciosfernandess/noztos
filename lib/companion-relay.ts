@@ -290,14 +290,18 @@ function sweepExpired(): void {
   }
 }
 
-// Detect channels whose companion went silent. For each one, we do:
-//   (a) flip the server-side connection state to disconnected
-//   (b) broadcast `companion_status { connected: false }` so every
-//       browser tab immediately knows the Mac is offline (badge → zinc)
-//   (c) broadcast `running_sessions { sessionIds: [] }` so every chat
-//       UI unlocks the send button (nothing is running once the daemon
-//       is gone) AND stops showing stale "busy" spinners
-// The daemon's next heartbeat reverses this via setCompanionConnected.
+// Detect channels whose companion went silent. We flip the server-side
+// connection state to disconnected and broadcast `companion_status` so
+// the offline banner + send-gate kick in everywhere.
+//
+// We deliberately DO NOT clear running_sessions here. The daemon may
+// still be running Claude locally and the network just dropped briefly:
+// when it comes back, sync-messages will fast-forward the missing
+// events (including the eventual `result` that stops the spinner).
+// Until then the UI keeps showing the spinner — that's the honest
+// signal the user expects ("a wheel spinning forever means something
+// is wrong"). Graceful disconnect (via the DELETE /register route)
+// still clears running because the user explicitly stopped.
 function sweepStaleCompanions(): void {
   const now = Date.now()
   let flipped = 0
@@ -306,10 +310,9 @@ function sweepStaleCompanions(): void {
     if (!c) continue // already disconnected, nothing to do
     if (now - c.lastHeartbeat < HEARTBEAT_STALE_MS) continue
     const staleFor = now - c.lastHeartbeat
-    console.warn(`[conn-sweep] userId=${userId.slice(0, 8)} companion offline (staleFor=${staleFor}ms) — broadcasting disconnected + empty running`)
+    console.warn(`[conn-sweep] userId=${userId.slice(0, 8)} companion offline (staleFor=${staleFor}ms) — broadcasting disconnected (running kept)`)
     channel.setCompanionDisconnected()
     channel.pushEvent({ type: 'companion_status', connected: false }, userId)
-    channel.pushEvent({ type: 'running_sessions', payload: { sessionIds: [] } }, userId)
     flipped++
   }
   if (flipped > 0) {
