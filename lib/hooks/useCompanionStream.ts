@@ -55,6 +55,7 @@ export interface ClaudeEvent {
   // companion_status
   connected?: boolean
   authInfo?: { email?: string; plan?: string; version?: string }
+  machineName?: string
   projects?: Array<{ id: string; path: string; name: string }>
   // claude_event wrapper (from relay) — also reused for running_sessions
   // (sessionIds) and error envelopes (message).

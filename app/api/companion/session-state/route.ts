@@ -22,6 +22,7 @@ import type { PersistRow } from '@/lib/chat-persist'
 //   { source: 'empty' }                       — no buffer, client fetches /messages
 //   { source: 'stale', session: { status } }  — archived / trashed; fetch /messages
 export async function GET(request: NextRequest) {
+  const tStart = Date.now()
   const url = request.nextUrl
   const projectId = url.searchParams.get('projectId')
   const sessionId = url.searchParams.get('sessionId')
@@ -34,6 +35,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: auth.error }, { status: auth.status })
   }
 
+  const tDb = Date.now()
   const session = await prisma.chatSession.findUnique({
     where: { id: sessionId },
     select: {
@@ -42,12 +44,13 @@ export async function GET(request: NextRequest) {
       totalCostUsd: true, totalTokens: true, numTurns: true,
     },
   })
+  const dbLookupMs = Date.now() - tDb
   if (!session || session.projectId !== projectId || session.userId !== auth.userId) {
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   }
 
   if (session.deletedAt || session.status !== 'open') {
-    console.log(`[session-state] stale sessionId=${sessionId.slice(0, 8)} status=${session.status}`)
+    console.log(`[session-state] stale sessionId=${sessionId.slice(0, 8)} status=${session.status} total=${Date.now() - tStart}ms`)
     return NextResponse.json({
       source: 'stale',
       session: { status: session.status, claudeSessionId: session.claudeSessionId },
@@ -56,7 +59,7 @@ export async function GET(request: NextRequest) {
 
   const frames = getSessionBuffer(sessionId, auth.userId)
   if (!frames || frames.length === 0) {
-    console.log(`[session-state] miss sessionId=${sessionId.slice(0, 8)} → fallback to /messages`)
+    console.log(`[session-state] miss sessionId=${sessionId.slice(0, 8)} dbLookup=${dbLookupMs}ms total=${Date.now() - tStart}ms → client falls back to /messages (Ponta C)`)
     return NextResponse.json({ source: 'empty' })
   }
 
@@ -75,7 +78,7 @@ export async function GET(request: NextRequest) {
     }
   }
   if (byId.size === 0) {
-    console.log(`[session-state] miss sessionId=${sessionId.slice(0, 8)} (frames had no persistRows)`)
+    console.log(`[session-state] miss sessionId=${sessionId.slice(0, 8)} (frames had no persistRows) total=${Date.now() - tStart}ms`)
     return NextResponse.json({ source: 'empty' })
   }
 
@@ -87,7 +90,10 @@ export async function GET(request: NextRequest) {
   // marker to an empty chat.
   const BUFFER_CAP = 200
   const hasMore = frames.length >= BUFFER_CAP
-  console.log(`[session-state] hit sessionId=${sessionId.slice(0, 8)} messages=${messages.length} frames=${frames.length} hasMore=${hasMore}`)
+  console.log(
+    `[session-state] served from Ponta B (ring) sessionId=${sessionId.slice(0, 8)} messages=${messages.length} `
+    + `frames=${frames.length} hasMore=${hasMore} dbLookup=${dbLookupMs}ms total=${Date.now() - tStart}ms`,
+  )
 
   return NextResponse.json({
     source: 'buffer',

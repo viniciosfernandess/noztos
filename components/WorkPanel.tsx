@@ -5019,7 +5019,9 @@ function ChatPanel({
   onClearSelection: () => void
   onSessionRenamed: (name: string) => void
 }) {
-  const [input, setInput] = useState('')
+  // Seed from the store's draft — if the user was typing here before
+  // switching to another chat, pick the text back up.
+  const [input, setInput] = useState(() => companionStore.getDraft(sessionId))
   const [showSelector, setShowSelector] = useState(false)
   const [selectorTab, setSelectorTab] = useState<'employees' | 'teams'>('employees')
   const [attachments, setAttachments] = useState<{ file: File; preview: string; type: 'image' | 'pdf' | 'text' }[]>([])
@@ -5079,17 +5081,20 @@ function ChatPanel({
   // duplicates or reorders.
   const hydrateFromServer = useCallback(async () => {
     if (!sessionId) return
+    const sidShort = sessionId.slice(0, 8)
     try {
       const ss = await fetch(`/api/companion/session-state?projectId=${projectId}&sessionId=${sessionId}`)
       if (ss.ok) {
         const data = await ss.json()
         if (data?.source === 'buffer' && Array.isArray(data.messages) && data.messages.length > 0) {
           const msgs = mapDbMessages(data.messages)
+          console.log(`[chat-panel] hydrate sid=${sidShort} source=buffer msgs=${msgs.length} hasMore=${!!data.hasMore}`)
           companionStore.hydrateSlice(sessionId, msgs, data.claudeSessionId ?? null)
           setHasMoreOlder(!!data.hasMore)
           setOldestMessageId(msgs[0]?.id ?? null)
           return
         }
+        console.log(`[chat-panel] hydrate sid=${sidShort} source=${data?.source ?? '-'} → falling through to /messages`)
       }
     } catch {}
 
@@ -5098,6 +5103,7 @@ function ChatPanel({
       if (!res.ok) return
       const data = await res.json()
       const msgs = mapDbMessages(data.messages ?? [])
+      console.log(`[chat-panel] hydrate sid=${sidShort} source=messages msgs=${msgs.length} hasMore=${!!data.hasMore}`)
       companionStore.hydrateSlice(sessionId, msgs, data.claudeSessionId ?? null)
       setHasMoreOlder(!!data.hasMore)
       setOldestMessageId(msgs[0]?.id ?? null)
@@ -5105,8 +5111,9 @@ function ChatPanel({
   }, [projectId, sessionId])
 
   useEffect(() => {
+    console.log(`[chat-panel] sessionId=${sessionId.slice(0, 8)} — mounting/switching`)
     hydrateFromServer()
-  }, [hydrateFromServer])
+  }, [sessionId, hydrateFromServer])
 
   // Mobile-browser background recovery. Safari/Chrome on iOS suspend
   // the SSE fetch stream when the tab goes to background; when the
@@ -5127,6 +5134,14 @@ function ChatPanel({
   // tripping over dbSeed (which is the hydrate source, not the render source).
   const loadOlderMessages = useCallback(async () => {
     if (!sessionId || !hasMoreOlder || loadingOlder || !oldestMessageId) return
+    // Water-filling budget check: this chat's slice can't grow past
+    // what other chats leave free inside the shared MAX_TOTAL_MESSAGES
+    // pool. If it's already at its share, stop offering older pages.
+    if (!companionStore.canLoadMore(sessionId)) {
+      console.log(`[chat] scroll-up halted sid=${sessionId.slice(0, 8)} reason=budget`)
+      setHasMoreOlder(false)
+      return
+    }
     setLoadingOlder(true)
     try {
       const res = await fetch(`/api/projects/${projectId}/chat-sessions/${sessionId}/messages?limit=${PAGE_SIZE}&before=${oldestMessageId}`)
@@ -5277,7 +5292,11 @@ function ChatPanel({
   // resetting — the store hooks re-subscribe automatically when
   // `sessionId` changes.
   useEffect(() => {
-    setInput('')
+    // Load the draft for the new chat (or '' if it has none).
+    // Writing the value we just switched TO can't clobber the previous
+    // chat's draft because the textarea's onChange updates the store
+    // directly with the sessionId at render time.
+    setInput(companionStore.getDraft(sessionId))
     setAttachments((prev) => {
       for (const a of prev) if (a.preview) URL.revokeObjectURL(a.preview)
       return []
@@ -5379,6 +5398,7 @@ function ChatPanel({
     }
 
     setInput('')
+    companionStore.clearDraft(sessionId)
     setAttachments([])
     if (hunkAttachments.length > 0) onClearAllHunkAttachments()
     window.dispatchEvent(new CustomEvent('bornastar-continue-merged'))
@@ -5474,10 +5494,12 @@ function ChatPanel({
           if (e.currentTarget.scrollTop < 100) loadOlderMessages()
         }}
       >
-        {/* Infinite-scroll sentinel — visible when older messages exist. */}
-        {hasMoreOlder && (
-          <div className="flex justify-center py-2 text-[11px] text-zinc-500">
-            {loadingOlder ? 'Loading earlier messages…' : 'Scroll up for earlier messages'}
+        {/* Infinite-scroll spinner — only while a fetch is in flight. No
+            text: just a clean ring spinner. Disappears automatically
+            when there's no more to load (hasMoreOlder becomes false). */}
+        {hasMoreOlder && loadingOlder && (
+          <div className="flex justify-center py-3">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-600 border-t-transparent" />
           </div>
         )}
 
@@ -5519,24 +5541,31 @@ function ChatPanel({
             ) {
               i++; group.push(messages[i])
             }
-            // The final assistant text in the run is Claude's response
-            // to the user — it belongs in the chat flow, not inside the
-            // collapsible work block. Pop it out.
+            // Only pop the last assistant as "final response" when the
+            // turn has actually ended — either we hit a boundary (result
+            // row from a finished turn) or the chat isn't streaming.
+            // While streaming, any intermediate "Vou explorar..." text
+            // belongs inside the work block, not rendered as a big
+            // final answer that gets contradicted a moment later.
+            const stoppedAtBoundary = i + 1 < messages.length && isBoundary(messages[i + 1])
+            const turnComplete = stoppedAtBoundary || !isRunning
             const last = group[group.length - 1]
             let finalText: ChatMessage | null = null
-            if (last && last.role === 'assistant') {
+            if (turnComplete && last && last.role === 'assistant') {
               finalText = group.pop()!
             }
             if (group.length > 0) items.push({ kind: 'work', msgs: group, key: group[0].id })
             if (finalText) items.push({ kind: 'single', msg: finalText })
           }
-          const lastWorkIndex = (() => {
-            for (let i = items.length - 1; i >= 0; i--) if (items[i].kind === 'work') return i
-            return -1
-          })()
+          // A work block is "active" only when it's LITERALLY the last
+          // item in the chat (nothing after it, not even a user msg from
+          // a fresh turn). Otherwise a new prompt sent while the previous
+          // turn's block was closed would re-open that previous block
+          // because it'd momentarily be "the last work block again".
+          const tailIsLiveWork = items.length > 0 && items[items.length - 1].kind === 'work'
           return items.map((item, idx) => {
             if (item.kind === 'work') {
-              const isActive = isRunning && idx === lastWorkIndex
+              const isActive = isRunning && tailIsLiveWork && idx === items.length - 1
               return <WorkBlock key={item.key} messages={item.msgs} active={isActive} />
             }
             const msg = item.msg
@@ -5650,6 +5679,20 @@ function ChatPanel({
 
         {/* Input area — single floating card (VSCode Claude style) */}
         <form onSubmit={sendMessage} className="shrink-0 px-3 pb-3 pt-1">
+          {/* Offline banner — only shown when the companion (Mac daemon)
+              can't be reached. Keeps the input visually present but
+              communicates clearly why Send is locked, so the user isn't
+              left wondering why nothing happens on Enter. */}
+          {!companionConnected && (
+            <div className="mb-2 flex items-center gap-2 rounded-lg border border-zinc-700/60 bg-zinc-900/40 px-3 py-1.5 text-[11px] text-zinc-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-zinc-600" />
+              <span>
+                {companionStatus === 'connecting'
+                  ? 'Connecting to your Mac companion…'
+                  : 'Mac companion offline — start it with `bornastar start` to continue.'}
+              </span>
+            </div>
+          )}
           <div
             className="flex flex-col rounded-2xl border border-[#3C3C3C] shadow-xl shadow-black/30 transition-colors focus-within:border-[#505050]"
             style={{ backgroundColor: '#313131' }}
@@ -5754,22 +5797,35 @@ function ChatPanel({
               <textarea
                 value={input}
                 onChange={(e) => {
-                  setInput(e.target.value)
+                  const v = e.target.value
+                  setInput(v)
+                  // Persist the draft so switching chats doesn't lose
+                  // what the user was typing. Bound to `sessionId`
+                  // captured at render, so even during a switch the
+                  // right chat gets the text.
+                  companionStore.setDraft(sessionId, v)
                   // Auto-resize
                   e.target.style.height = 'auto'
                   const maxHeight = 36 * 4 // 4x the base line height
                   e.target.style.height = Math.min(e.target.scrollHeight, maxHeight) + 'px'
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
+                  // While Claude is running we let the user keep typing
+                  // — Enter inserts a newline normally and the draft
+                  // sits in the box until the turn ends (or they hit
+                  // Stop), at which point the Send button comes back.
+                  // Also gate on companion connectivity: if the daemon
+                  // is offline, Enter must NOT fire a send (the request
+                  // would queue with nowhere to run). sendMessage has
+                  // its own defensive check too.
+                  if (e.key === 'Enter' && !e.shiftKey && !isRunning && companionConnected) {
                     e.preventDefault()
                     sendMessage(e)
                   }
                 }}
                 placeholder={activeMode === 'team' ? `Message ${activeTeam?.name ?? 'team'}...` : activeMode === 'skill' ? `Message ${activeEmployee?.name ?? 'employee'}...` : 'Message Claude...'}
-                disabled={isRunning}
                 rows={1}
-                className="w-full resize-none bg-transparent text-sm text-zinc-200 placeholder-zinc-500 outline-none disabled:opacity-50"
+                className="w-full resize-none bg-transparent text-sm text-zinc-200 placeholder-zinc-500 outline-none"
                 style={{ maxHeight: `${36 * 4}px` }}
               />
             </div>

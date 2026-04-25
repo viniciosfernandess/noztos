@@ -84,7 +84,14 @@ export class SyncWorker {
       for (let i = 0; i < 20; i++) {
         const batch = this.opts.queue.peek(BATCH_SIZE)
         if (batch.length === 0) break
-        console.log(`[sync-worker] sending batch=${batch.length} (pending=${this.opts.queue.pendingCount()})`)
+        const pendingBefore = this.opts.queue.pendingCount()
+        // Oldest row in the batch tells us how long it sat queued —
+        // high values here mean the write-through is falling behind
+        // and the queue is the real path to durability.
+        const oldestAt = Math.min(...batch.map((e) => e.createdAt ?? Date.now()))
+        const ageMs = Date.now() - oldestAt
+        console.log(`[sync-worker] sending batch=${batch.length} pending=${pendingBefore} oldest=${ageMs}ms`)
+        const tSend = Date.now()
         let result: { ok: boolean }
         try {
           result = await this.opts.send(batch)
@@ -92,14 +99,15 @@ export class SyncWorker {
           console.warn('[sync-worker] send threw:', (err as Error).message)
           result = { ok: false }
         }
+        const sendMs = Date.now() - tSend
         if (result.ok) {
           this.opts.queue.ack(batch.map((e) => e.id))
           batchesOk++
-          console.log(`[sync-worker] ack batch=${batch.length}`)
+          console.log(`[sync-worker] ack batch=${batch.length} sendMs=${sendMs} pending=${this.opts.queue.pendingCount()}`)
         } else {
           this.opts.queue.nack(batch.map((e) => e.id))
           batchesFail++
-          console.warn(`[sync-worker] nack batch=${batch.length}, backing off`)
+          console.warn(`[sync-worker] nack batch=${batch.length} sendMs=${sendMs}, backing off`)
           // Stop draining on failure — further batches will hit the
           // same problem. The next `wake()` (by enqueue or backoff
           // re-trigger) will retry.

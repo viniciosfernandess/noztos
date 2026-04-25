@@ -52,11 +52,12 @@ export async function POST(request: NextRequest) {
   // a Promise; either way the daemon gets its 200 immediately and the
   // stream SSE relay (synchronous above) never waits on Supabase.
   after(async () => {
+    const tAfter = Date.now()
     console.log(`[response] after() running, frames=${frames.length}`)
     for (const frame of frames) {
       await writeThrough(frame, auth.userId)
     }
-    console.log(`[response] after() done`)
+    console.log(`[response] after() done elapsed=${Date.now() - tAfter}ms frames=${frames.length}`)
   })
 
   return NextResponse.json({ ok: true })
@@ -87,16 +88,29 @@ async function writeThrough(frame: unknown, userId: string): Promise<void> {
     return
   }
 
+  const tStart = Date.now()
   try {
+    const tCtx = Date.now()
     const ctx = await loadSessionContext(sessionId, userId)
+    const ctxMs = Date.now() - tCtx
     if (!ctx) {
-      console.warn(`[write-through] skip: loadSessionContext returned null for sessionId=${sessionId.slice(0, 8)}`)
+      console.warn(`[write-through] skip: loadSessionContext returned null for sessionId=${sessionId.slice(0, 8)} ctxMs=${ctxMs}`)
       return
     }
+    const tPersist = Date.now()
     await persistRows(rows, ctx)
-    console.log(`[write-through] ok sessionId=${sessionId.slice(0, 8)} rows=${rows.length}`)
+    const persistMs = Date.now() - tPersist
+    const totalMs = Date.now() - tStart
+    console.log(
+      `[write-through] ok sessionId=${sessionId.slice(0, 8)} rows=${rows.length} `
+      + `ctx=${ctxMs}ms persist=${persistMs}ms total=${totalMs}ms`,
+    )
   } catch (err) {
+    const totalMs = Date.now() - tStart
     // Non-fatal — the daemon queue will cover us. Log for observability.
-    console.warn(`[write-through] failed sessionId=${sessionId.slice(0, 8)}:`, (err as Error).message)
+    console.warn(
+      `[write-through] failed sessionId=${sessionId.slice(0, 8)} elapsed=${totalMs}ms:`,
+      (err as Error).message,
+    )
   }
 }

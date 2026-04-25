@@ -3,39 +3,28 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useGitHubModal } from './GitHubModal'
 import { ClaudeSetupModal } from './ClaudeSetupModal'
+import { useCompanionStatus, useCompanionInfo } from '@/lib/hooks/useCompanionStore'
 
-interface ConnectionStatus {
-  claude: 'connected' | 'offline' | 'checking'
-  github: 'connected' | 'not_connected' | 'checking'
-  machine: 'connected' | 'offline' | 'checking'
-  claudeDetail?: string
-  githubDetail?: string
-  machineName?: string
-  lastSeen?: number
-}
-
-function formatLastSeen(ts?: number): string {
-  if (!ts) return ''
-  const diff = Date.now() - ts
-  const s = Math.floor(diff / 1000)
-  if (s < 30) return 'just now'
-  if (s < 60) return `${s}s ago`
-  const m = Math.floor(s / 60)
-  if (m < 60) return `${m} min ago`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h ago`
-  const d = Math.floor(h / 24)
-  return `${d}d ago`
+// ── Sidebar connection state ────────────────────────────────────────
+// Companion + Machine state are now derived from the single reactive
+// source of truth: the companionStore, populated live over SSE by
+// CompanionProvider. When the server's heartbeat sweeper flips a
+// channel to disconnected, this sidebar re-renders within the same
+// tick as the chat input — one truth, one UI reaction.
+//
+// GitHub state stays on its own short poll: unrelated concern, and
+// the GitHub OAuth flow doesn't emit status into our SSE stream.
+interface GitHubStatus {
+  state: 'connected' | 'not_connected' | 'checking'
+  detail?: string
 }
 
 export function DashboardSidebar() {
   const { openGitHub } = useGitHubModal()
   const [mounted, setMounted] = useState(false)
-  const [status, setStatus] = useState<ConnectionStatus>({
-    claude: 'checking',
-    github: 'checking',
-    machine: 'checking',
-  })
+  const companionStatus = useCompanionStatus()
+  const companionInfo = useCompanionInfo()
+  const [github, setGithub] = useState<GitHubStatus>({ state: 'checking' })
   const [showMachineMenu, setShowMachineMenu] = useState(false)
   const [showClaudeSetup, setShowClaudeSetup] = useState(false)
   const [showReconnectModal, setShowReconnectModal] = useState<'same' | 'new' | null>(null)
@@ -57,44 +46,45 @@ export function DashboardSidebar() {
     leaveTimer.current = setTimeout(() => setHoveredTooltip(null), 200)
   }
 
+  // GitHub auth is orthogonal to the companion daemon — keep its own
+  // lightweight poll. Companion / Claude state now flows through SSE.
   useEffect(() => {
-    async function check() {
-      try {
-        const res = await fetch('/api/companion/status')
-        const data = await res.json()
-        setStatus((prev) => ({
-          ...prev,
-          claude: !data.connected ? 'offline' : data.authInfo?.authenticated === false ? 'offline' : 'connected',
-          claudeDetail: !data.connected
-            ? 'Companion not running'
-            : data.authInfo?.authenticated === false
-              ? 'Claude not authenticated — run: claude login'
-              : `Claude Code ${data.authInfo?.version?.split(' ')[0] ?? ''} — ${data.authInfo?.plan ?? 'subscription'}`,
-          machine: data.connected ? 'connected' : 'offline',
-          machineName: data.machineName ?? data.authInfo?.tokenName ?? 'Local Machine',
-          lastSeen: data.lastSeen,
-        }))
-      } catch {
-        setStatus((prev) => ({ ...prev, claude: 'offline', machine: 'offline', claudeDetail: 'Could not reach server' }))
-      }
-
+    async function checkGitHub() {
       try {
         const res = await fetch('/api/github/status')
         const data = await res.json()
-        setStatus((prev) => ({
-          ...prev,
-          github: data.connected ? 'connected' : 'not_connected',
-          githubDetail: data.connected ? `@${data.username}` : 'Not connected',
-        }))
+        setGithub({
+          state: data.connected ? 'connected' : 'not_connected',
+          detail: data.connected ? `@${data.username}` : 'Not connected',
+        })
       } catch {
-        setStatus((prev) => ({ ...prev, github: 'not_connected', githubDetail: 'Not connected' }))
+        setGithub({ state: 'not_connected', detail: 'Not connected' })
       }
     }
-
-    check()
-    const interval = setInterval(check, 15000)
+    checkGitHub()
+    const interval = setInterval(checkGitHub, 15000)
     return () => clearInterval(interval)
   }, [])
+
+  // Derived companion / machine presentation. The store's companionStatus
+  // is the single source: 'connected' | 'connecting' | 'disconnected' |
+  // 'error'. We split the two concerns the sidebar surfaces:
+  //   - Claude auth inside the companion (info.plan signals auth)
+  //   - Machine reachability (whether SSE heartbeat is fresh)
+  const isCompanionLive = companionStatus === 'connected'
+  const isClaudeAuthed = isCompanionLive && Boolean(companionInfo?.plan)
+  const claudeState: 'connected' | 'offline' | 'checking' = companionStatus === 'connecting'
+    ? 'checking'
+    : isClaudeAuthed ? 'connected' : 'offline'
+  const claudeDetail = !isCompanionLive
+    ? 'Companion not running'
+    : !isClaudeAuthed
+      ? 'Claude not authenticated — run: claude login'
+      : `Claude Code ${companionInfo?.version?.split(' ')[0] ?? ''} — ${companionInfo?.plan ?? 'subscription'}`
+  const machineState: 'connected' | 'offline' | 'checking' = companionStatus === 'connecting'
+    ? 'checking'
+    : isCompanionLive ? 'connected' : 'offline'
+  const machineName = companionInfo?.email ?? 'Local Machine'
 
   const generateNewToken = useCallback(async () => {
     setGeneratingToken(true)
@@ -151,14 +141,14 @@ export function DashboardSidebar() {
           onMouseLeave={leaveTooltip}
         >
           <button
-            onClick={() => { if (status.claude !== 'connected') setShowClaudeSetup(true) }}
+            onClick={() => { if (claudeState !== 'connected') setShowClaudeSetup(true) }}
             className="flex h-14 w-14 items-center justify-center rounded-xl transition-colors hover:bg-white/5"
           >
             <img src="/claude-logo.png" alt="Claude" className="h-8 w-8 rounded" />
           </button>
           <span className={`mt-1.5 h-2.5 w-2.5 rounded-full ${
-            status.claude === 'connected' ? 'bg-emerald-400' :
-            status.claude === 'checking' ? 'bg-zinc-600 animate-pulse' :
+            claudeState === 'connected' ? 'bg-emerald-400' :
+            claudeState === 'checking' ? 'bg-zinc-600 animate-pulse' :
             'bg-amber-400'
           }`} />
           <div
@@ -168,11 +158,11 @@ export function DashboardSidebar() {
             onMouseLeave={leaveTooltip}
           >
             <div className="flex items-center gap-1.5">
-              <span className={`h-1.5 w-1.5 rounded-full ${status.claude === 'connected' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+              <span className={`h-1.5 w-1.5 rounded-full ${claudeState === 'connected' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
               <span className="text-[11px] font-medium text-zinc-200">Claude Code</span>
             </div>
-            <p className="mt-1 text-[10px] text-zinc-500">{status.claudeDetail ?? 'Checking...'}</p>
-            {status.claude !== 'connected' && (
+            <p className="mt-1 text-[10px] text-zinc-500">{claudeDetail}</p>
+            {claudeState !== 'connected' && (
               <button
                 onClick={() => setShowClaudeSetup(true)}
                 className="mt-2 w-full rounded-md bg-white/10 px-2 py-1 text-[10px] font-medium text-zinc-200 transition-colors hover:bg-white/15"
@@ -190,7 +180,7 @@ export function DashboardSidebar() {
           onMouseLeave={leaveTooltip}
         >
           <button
-            onClick={() => { if (status.github !== 'connected') openGitHub() }}
+            onClick={() => { if (github.state !== 'connected') openGitHub() }}
             className="flex h-14 w-14 items-center justify-center rounded-xl transition-colors hover:bg-white/5"
           >
             <svg className="h-8 w-8 text-zinc-400" viewBox="0 0 24 24" fill="currentColor">
@@ -198,8 +188,8 @@ export function DashboardSidebar() {
             </svg>
           </button>
           <span className={`mt-1.5 h-2.5 w-2.5 rounded-full ${
-            status.github === 'connected' ? 'bg-emerald-400' :
-            status.github === 'checking' ? 'bg-zinc-600 animate-pulse' :
+            github.state === 'connected' ? 'bg-emerald-400' :
+            github.state === 'checking' ? 'bg-zinc-600 animate-pulse' :
             'bg-zinc-600'
           }`} />
           <div
@@ -209,11 +199,11 @@ export function DashboardSidebar() {
             onMouseLeave={leaveTooltip}
           >
             <div className="flex items-center gap-1.5">
-              <span className={`h-1.5 w-1.5 rounded-full ${status.github === 'connected' ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
+              <span className={`h-1.5 w-1.5 rounded-full ${github.state === 'connected' ? 'bg-emerald-400' : 'bg-zinc-600'}`} />
               <span className="text-[11px] font-medium text-zinc-200">GitHub</span>
             </div>
-            <p className="mt-1 text-[10px] text-zinc-500">{status.githubDetail ?? 'Checking...'}</p>
-            {status.github !== 'connected' && (
+            <p className="mt-1 text-[10px] text-zinc-500">{github.detail ?? 'Checking...'}</p>
+            {github.state !== 'connected' && (
               <button
                 onClick={() => openGitHub()}
                 className="mt-2 w-full rounded-md bg-white/10 px-2 py-1 text-[10px] font-medium text-zinc-200 transition-colors hover:bg-white/15"
@@ -238,8 +228,8 @@ export function DashboardSidebar() {
             </svg>
           </div>
           <span className={`mt-1.5 h-2.5 w-2.5 rounded-full ${
-            status.machine === 'connected' ? 'bg-emerald-400' :
-            status.machine === 'checking' ? 'bg-zinc-600 animate-pulse' :
+            machineState === 'connected' ? 'bg-emerald-400' :
+            machineState === 'checking' ? 'bg-zinc-600 animate-pulse' :
             'bg-amber-400'
           }`} />
           <div
@@ -249,17 +239,17 @@ export function DashboardSidebar() {
             onMouseLeave={leaveTooltip}
           >
             <div className="flex items-center gap-2">
-              <span className={`h-2 w-2 shrink-0 rounded-full ${status.machine === 'connected' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+              <span className={`h-2 w-2 shrink-0 rounded-full ${machineState === 'connected' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[11px] font-medium text-zinc-200">
-                  {status.machineName ?? 'Local Machine'}
+                  {machineName}
                 </p>
                 <p className="text-[9px] text-zinc-500">
-                  {status.machine === 'connected'
+                  {machineState === 'connected'
                     ? 'Connected — running locally'
-                    : status.lastSeen
-                      ? `Offline — last seen ${formatLastSeen(status.lastSeen)}`
-                      : 'Offline — no connection yet'}
+                    : machineState === 'checking'
+                      ? 'Connecting…'
+                      : 'Offline — start companion to reconnect'}
                 </p>
               </div>
               <button
@@ -305,7 +295,7 @@ export function DashboardSidebar() {
               <div>
                 <p className="text-[11px] font-medium text-zinc-200">Cloud</p>
                 <p className="text-[9px] text-zinc-500">
-                  {status.machine === 'connected'
+                  {machineState === 'connected'
                     ? 'Available — ready if needed'
                     : 'Available — switch to cloud to continue working'}
                 </p>

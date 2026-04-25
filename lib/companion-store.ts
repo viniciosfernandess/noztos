@@ -24,6 +24,36 @@ import type { ChatMessage, ClaudeEvent, CompanionStatus } from '@/lib/hooks/useC
 // (per-slice, per-field), so a token arriving on chat A only re-renders
 // consumers of chat A's messages — chat B / sidebar / etc. stay idle.
 
+// ── Tunable memory budget ──────────────────────────────────────────
+//
+// These four knobs bound the browser-side "ponta A" cache. Total memory
+// stays predictable regardless of how long the tab stays open or how
+// many chats the user visits. Cold slices rehydrate from the server
+// ring (/session-state) in ~5ms, imperceptible.
+//
+// Review via telemetry post-launch — adjust if real usage diverges.
+
+// Global ceiling: total messages across ALL slices in RAM. This is
+// the whole pool — no per-chat cap. A lone chat can use the full 5000
+// via scroll-up; when multiple chats are active they share the pool
+// water-filling style (each grows as needed, inactive ones cede space
+// when pressure arrives).
+const MAX_TOTAL_MESSAGES = 5000
+// Max number of distinct chat slices in RAM. Beyond this, LRU evicts
+// the least-recently-accessed slice entirely.
+const MAX_SLICE_COUNT = 15
+// Idle eviction: a slice untouched (no read, write, or subscribe) for
+// this long is dropped. Running chats are exempt.
+const IDLE_EVICTION_MS = 30 * 60 * 1000
+// How often the idle sweeper runs.
+const IDLE_SWEEP_INTERVAL_MS = 60 * 1000
+// Fuzzy-match window for adopting a hydrated row under a live id when
+// exact-id match fails. Kept tight (5s) so a clock skew on the daemon
+// can't merge two genuinely different messages that happen to share
+// role + content. The exact-id path covers 99% of cases; this is a
+// narrow fallback, not a primary matcher.
+const FUZZY_MATCH_WINDOW_MS = 5_000
+
 interface ChatSlice {
   messages: Map<string, ChatMessage>
   claudeSessionId: string | null
@@ -33,6 +63,9 @@ interface ChatSlice {
   // stable while nothing relevant changed (React bails out of re-render
   // when the reference matches).
   sortedCache: ChatMessage[] | null
+  // Last time any code touched this slice — read, write, or a
+  // ChatPanel subscribing to it. Drives LRU + idle eviction.
+  lastAccessedAt: number
 }
 
 export interface CompanionInfo {
@@ -40,12 +73,16 @@ export interface CompanionInfo {
   plan?: string
   version?: string
   projects?: Array<{ id: string; path: string; name: string }>
+  // Human-friendly name of the Mac running the companion. Surfaces in
+  // the sidebar tooltip so a user juggling multiple machines can tell
+  // which one is currently driving this tab.
+  machineName?: string
 }
 
 type Listener = () => void
 
 function emptySlice(): ChatSlice {
-  return { messages: new Map(), claudeSessionId: null, costUsd: 0, sortedCache: null }
+  return { messages: new Map(), claudeSessionId: null, costUsd: 0, sortedCache: null, lastAccessedAt: Date.now() }
 }
 
 class CompanionStore {
@@ -57,6 +94,9 @@ class CompanionStore {
   private unreadSessionIds: Set<string> = new Set()
   // Bumped on reconnect() so provider's SSE useEffect can re-run.
   private connectionEpoch = 0
+  // Background sweeper handle. Null on SSR; started lazily in the
+  // browser the first time any mutating/observing method runs.
+  private idleSweeper: ReturnType<typeof setInterval> | null = null
 
   // ── Scoped listeners ───────────────────────────────────────────
   private sliceListeners: Map<string, Set<Listener>> = new Map()
@@ -65,11 +105,17 @@ class CompanionStore {
   private statusListeners: Set<Listener> = new Set()
   private epochListeners: Set<Listener> = new Set()
 
+  // Per-chat draft text the user typed but didn't send. Kept alive as
+  // long as the WorkPanel is mounted so switching chats doesn't lose
+  // what they were typing. Not persisted to disk/DB — reload clears.
+  private drafts: Map<string, string> = new Map()
+
   // ── Snapshot helpers (referentially stable between notifies) ──
 
   getMessages(sessionId: string): ChatMessage[] {
     const slice = this.slices.get(sessionId)
     if (!slice) return EMPTY_MESSAGES
+    slice.lastAccessedAt = Date.now()
     if (slice.sortedCache) return slice.sortedCache
     const arr = Array.from(slice.messages.values()).sort((a, b) => a.timestamp - b.timestamp)
     slice.sortedCache = arr
@@ -110,6 +156,10 @@ class CompanionStore {
     let set = this.sliceListeners.get(sessionId)
     if (!set) { set = new Set(); this.sliceListeners.set(sessionId, set) }
     set.add(cb)
+    // A fresh subscriber means someone is viewing this chat now.
+    // Bump so LRU eviction doesn't kick a just-opened slice.
+    const slice = this.slices.get(sessionId)
+    if (slice) slice.lastAccessedAt = Date.now()
     return () => {
       const s = this.sliceListeners.get(sessionId)
       s?.delete(cb)
@@ -146,16 +196,177 @@ class CompanionStore {
   private notifyStatus(): void { for (const l of this.statusListeners) l() }
   private notifyEpoch(): void { for (const l of this.epochListeners) l() }
 
+  // ── Drafts (unsent text, per chat) ─────────────────────────────
+
+  getDraft(sessionId: string): string {
+    return this.drafts.get(sessionId) ?? ''
+  }
+
+  setDraft(sessionId: string, value: string): void {
+    if (value === '') this.drafts.delete(sessionId)
+    else this.drafts.set(sessionId, value)
+    // No listener notify — the only consumer is the active ChatPanel
+    // which syncs synchronously on its own text-change handler.
+  }
+
+  clearDraft(sessionId: string): void {
+    this.drafts.delete(sessionId)
+  }
+
   // ── Actions ────────────────────────────────────────────────────
 
   private getOrCreateSlice(sessionId: string): ChatSlice {
     let slice = this.slices.get(sessionId)
-    if (!slice) { slice = emptySlice(); this.slices.set(sessionId, slice) }
+    if (!slice) { slice = emptySlice(); this.slices.set(sessionId, slice); this.ensureIdleSweeper() }
+    slice.lastAccessedAt = Date.now()
     return slice
   }
 
   private invalidateSortedCache(slice: ChatSlice): void {
     slice.sortedCache = null
+  }
+
+  // Sum of messages across every slice in RAM — the number we compare
+  // against MAX_TOTAL_MESSAGES.
+  private totalMessageCount(): number {
+    let n = 0
+    for (const s of this.slices.values()) n += s.messages.size
+    return n
+  }
+
+  // Drop the N oldest messages from a slice (by timestamp). Used by
+  // the global budget enforcer to shrink the least-active chat instead
+  // of evicting it whole. Returns the number actually dropped.
+  private trimOldestFromSlice(sessionId: string, slice: ChatSlice, drop: number): number {
+    if (drop <= 0 || slice.messages.size === 0) return 0
+    const sorted = Array.from(slice.messages.values()).sort((a, b) => a.timestamp - b.timestamp)
+    const n = Math.min(drop, sorted.length)
+    for (let i = 0; i < n; i++) slice.messages.delete(sorted[i].id)
+    slice.sortedCache = null
+    console.log(`[store] trim sid=${sessionId.slice(0, 8)} dropped=${n} now=${slice.messages.size}`)
+    this.notifySlice(sessionId)
+    return n
+  }
+
+  // Evict the single oldest-accessed slice entirely. A "safe" slice is
+  // one not currently running on the daemon — dropping a running slice
+  // mid-stream would lose incoming deltas. Used only for slot-cap
+  // enforcement. Returns the evicted sessionId, or null if nothing can
+  // be dropped.
+  private evictOneLRU(reason: string): string | null {
+    let oldestSid: string | null = null
+    let oldestAt = Infinity
+    for (const [sid, slice] of this.slices) {
+      if (this.runningSessionIds.has(sid)) continue
+      if (slice.lastAccessedAt < oldestAt) {
+        oldestAt = slice.lastAccessedAt
+        oldestSid = sid
+      }
+    }
+    if (!oldestSid) return null
+    const msgs = this.slices.get(oldestSid)?.messages.size ?? 0
+    this.slices.delete(oldestSid)
+    console.log(`[store] evict sid=${oldestSid.slice(0, 8)} reason=${reason} msgs=${msgs}`)
+    this.notifySlice(oldestSid)
+    return oldestSid
+  }
+
+  // Global budget enforcement. Two independent ceilings:
+  //
+  // (1) MAX_SLICE_COUNT — too many distinct chats in RAM. Evict whole
+  //     least-active slice (LRU, excluding running).
+  //
+  // (2) MAX_TOTAL_MESSAGES — too many messages across all slices.
+  //     Shed msgs from the LEAST-ACCESSED slice first (don't kill the
+  //     slice, just trim its oldest). If that slice is exhausted and
+  //     still over budget, move to next least-accessed. Currently
+  //     running or just-touched chats are last to lose content.
+  private enforceGlobalCaps(): void {
+    const totalBefore = this.totalMessageCount()
+    const slicesBefore = this.slices.size
+    let slotEvictions = 0
+    let totalTrims = 0
+
+    let guard = this.slices.size + 1
+    while (this.slices.size > MAX_SLICE_COUNT && guard-- > 0) {
+      if (!this.evictOneLRU('slot-cap')) break
+      slotEvictions++
+    }
+
+    // Total-message cap: shrink from the least-active slice outward.
+    // Running chats are NOT excluded — trimming *oldest* messages from
+    // a running slice is safe (live SSE events land at the tail, not
+    // the head). Only whole-slice eviction must avoid running chats.
+    guard = MAX_SLICE_COUNT * 2 + 1
+    while (this.totalMessageCount() > MAX_TOTAL_MESSAGES && guard-- > 0) {
+      const sorted = Array.from(this.slices.entries())
+        .sort((a, b) => a[1].lastAccessedAt - b[1].lastAccessedAt)
+      if (sorted.length === 0) break
+      const overBy = this.totalMessageCount() - MAX_TOTAL_MESSAGES
+      // Take the oldest-accessed slice; trim up to what it can offer.
+      // If it can't cover the overage alone, the outer loop picks the
+      // next oldest on the following iteration.
+      const [sid, slice] = sorted[0]
+      const dropped = this.trimOldestFromSlice(sid, slice, Math.min(overBy, slice.messages.size))
+      if (dropped === 0) break
+      totalTrims++
+    }
+
+    // Only log when something actually happened — otherwise silent to
+    // avoid spam on every single upsert.
+    if (slotEvictions > 0 || totalTrims > 0) {
+      const totalAfter = this.totalMessageCount()
+      console.log(
+        `[store] enforceCaps slices=${slicesBefore}→${this.slices.size} total=${totalBefore}→${totalAfter} `
+        + `slotEvictions=${slotEvictions} totalTrims=${totalTrims} `
+        + `cap=${MAX_TOTAL_MESSAGES}/${MAX_SLICE_COUNT}`,
+      )
+    }
+  }
+
+  // Called by the ChatPanel before a scroll-up fetch. Returns true if
+  // the chat has room under the shared global budget — i.e. the sum
+  // of all OTHER slices leaves headroom for this one to grow. When
+  // false, the UI stops showing the load-more spinner (the chat has
+  // "filled its share" given what other chats are using).
+  canLoadMore(sessionId: string): boolean {
+    const mine = this.slices.get(sessionId)?.messages.size ?? 0
+    let others = 0
+    const otherDetails: string[] = []
+    for (const [sid, s] of this.slices) {
+      if (sid !== sessionId) {
+        others += s.messages.size
+        otherDetails.push(`${sid.slice(0, 8)}:${s.messages.size}`)
+      }
+    }
+    const headroom = MAX_TOTAL_MESSAGES - others
+    const ok = mine < headroom
+    console.log(
+      `[store] canLoadMore sid=${sessionId.slice(0, 8)} mine=${mine} others=[${otherDetails.join(',')}]=${others} `
+      + `headroom=${headroom} result=${ok ? 'yes' : 'no'}`,
+    )
+    return ok
+  }
+
+  // Start the idle sweeper on first use in the browser. Running chats
+  // never get evicted — daemon may still stream to them. setInterval is
+  // unref'd implicitly (browser always treats it that way).
+  private ensureIdleSweeper(): void {
+    if (this.idleSweeper || typeof window === 'undefined') return
+    this.idleSweeper = setInterval(() => {
+      const now = Date.now()
+      const expired: string[] = []
+      for (const [sid, slice] of this.slices) {
+        if (this.runningSessionIds.has(sid)) continue
+        if (now - slice.lastAccessedAt > IDLE_EVICTION_MS) expired.push(sid)
+      }
+      for (const sid of expired) {
+        const msgs = this.slices.get(sid)?.messages.size ?? 0
+        this.slices.delete(sid)
+        console.log(`[store] evict sid=${sid.slice(0, 8)} reason=idle msgs=${msgs}`)
+        this.notifySlice(sid)
+      }
+    }, IDLE_SWEEP_INTERVAL_MS)
   }
 
   upsertMessage(sessionId: string, incoming: ChatMessage, opts?: { fuzzyMatch?: boolean }): void {
@@ -169,7 +380,7 @@ class CompanionStore {
         if (
           existing.role === incoming.role
           && existing.content === incoming.content
-          && Math.abs(existing.timestamp - incoming.timestamp) < 30_000
+          && Math.abs(existing.timestamp - incoming.timestamp) < FUZZY_MATCH_WINDOW_MS
         ) {
           slice.messages.delete(existingId)
           slice.messages.set(incoming.id, { ...existing, id: incoming.id })
@@ -182,6 +393,7 @@ class CompanionStore {
       slice.messages.set(incoming.id, incoming)
     }
     this.invalidateSortedCache(slice)
+    this.enforceGlobalCaps()
     this.notifySlice(sessionId)
   }
 
@@ -203,7 +415,9 @@ class CompanionStore {
   setClaudeSessionId(sessionId: string, value: string | null): void {
     const slice = this.getOrCreateSlice(sessionId)
     if (slice.claudeSessionId === value) return
+    const prev = slice.claudeSessionId
     slice.claudeSessionId = value
+    console.log(`[store] claudeSessionId sid=${sessionId.slice(0, 8)} ${prev ?? 'null'} → ${value ?? 'null'}`)
     this.notifySlice(sessionId)
   }
 
@@ -229,6 +443,7 @@ class CompanionStore {
       for (const id of next) if (!this.runningSessionIds.has(id)) { same = false; break }
       if (same) return
     }
+    console.log(`[store] running ids=[${ids.map(i => i.slice(0, 8)).join(',')}]`)
     this.runningSessionIds = next
     this.notifyRunning()
   }
@@ -295,6 +510,8 @@ class CompanionStore {
   ): Promise<void> {
     this.markBusy(sessionId)
     const userMsgId = this.mintStableId()
+    const claudeSid = this.getClaudeSessionId(sessionId)
+    console.log(`[store] sendPrompt sid=${sessionId.slice(0, 8)} userMsgId=${userMsgId.slice(0, 16)} claude=${claudeSid ?? 'new'} model=${opts?.model ?? '-'} thinking=${opts?.thinking ?? 'off'}`)
     this.upsertMessage(sessionId, {
       id: userMsgId,
       role: 'user',
@@ -311,7 +528,7 @@ class CompanionStore {
           projectId,
           prompt,
           userMsgId,
-          claudeSessionId: this.getClaudeSessionId(sessionId),
+          claudeSessionId: claudeSid,
           bornastarSessionId: sessionId,
           mode: opts?.mode ?? 'auto',
           model: opts?.model,
@@ -356,8 +573,11 @@ class CompanionStore {
   // safe to re-run on visibility-resume or whenever the client wants
   // to refresh the slice.
   hydrateSlice(sessionId: string, msgs: ChatMessage[], claudeSessionId?: string | null): void {
+    const before = this.slices.get(sessionId)?.messages.size ?? 0
     for (const m of msgs) this.upsertMessage(sessionId, m, { fuzzyMatch: true })
     if (claudeSessionId) this.setClaudeSessionId(sessionId, claudeSessionId)
+    const after = this.slices.get(sessionId)?.messages.size ?? 0
+    console.log(`[store] hydrateSlice sid=${sessionId.slice(0, 8)} incoming=${msgs.length} before=${before} after=${after} claude=${claudeSessionId ?? 'null'}`)
   }
 
   // Poke the daemon for the current set of running chats. Daemon
@@ -403,7 +623,13 @@ class CompanionStore {
       this.setStatus(
         event.connected ? 'connected' : 'disconnected',
         event.connected
-          ? { email: event.authInfo?.email, plan: event.authInfo?.plan, version: event.authInfo?.version, projects: event.projects }
+          ? {
+              email: event.authInfo?.email,
+              plan: event.authInfo?.plan,
+              version: event.authInfo?.version,
+              projects: event.projects,
+              machineName: event.machineName,
+            }
           : null,
       )
       return

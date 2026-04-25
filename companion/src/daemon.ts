@@ -550,6 +550,11 @@ export class Daemon extends EventEmitter {
       // the relay (for server write-through) and the ring buffer.
       const rows = persistCtx ? this.buildPersistRows(event, persistCtx) : []
       console.log(`[bridge] event type=${event.type} session=${bornastarSessionId?.slice(0, 8) ?? '(none)'} persistCtx=${!!persistCtx} rows=${rows.length}`)
+      // Durability before broadcast: enqueue to the local SQLite WAL
+      // first, THEN relay to the server. If the daemon crashes between
+      // the two calls, the row survives in the queue and sync-worker
+      // eventually pushes it to Supabase — no data loss.
+      if (persistCtx) for (const row of rows) this.enqueueRow(row, persistCtx)
       this.send({
         type: 'claude_event',
         payload: {
@@ -559,7 +564,6 @@ export class Daemon extends EventEmitter {
           ...(rows.length > 0 && { persistRows: rows }),
         },
       })
-      if (persistCtx) for (const row of rows) this.enqueueRow(row, persistCtx)
     })
 
     bridge.on('done', (summary: { code: number; sessionId: string | null }) => {
@@ -576,6 +580,11 @@ export class Daemon extends EventEmitter {
             claudeSessionId: summary.sessionId,
           }
         : null
+      // Durability before broadcast — same rule as the 'event' handler
+      // above. The system/result row carries claudeSessionId, which the
+      // browser needs to resume the chat; losing it costs the user their
+      // --resume path, so we enqueue first.
+      if (persistCtx && systemRow) this.enqueueRow(systemRow, persistCtx)
       this.send({
         type: 'claude_event',
         payload: {
@@ -589,7 +598,6 @@ export class Daemon extends EventEmitter {
           ...(systemRow && { persistRows: [systemRow] }),
         },
       })
-      if (persistCtx && systemRow) this.enqueueRow(systemRow, persistCtx)
       // Flush now — user just saw the response settle; push Supabase
       // to catch up immediately.
       this.syncWorker.flushNow().catch(() => {})

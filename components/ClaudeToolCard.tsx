@@ -288,35 +288,30 @@ export function WorkBlock({
         const last = messages[messages.length - 1].timestamp
         return ((last - first) / 1000).toFixed(1)
       })()
-  const summaryLabel = active ? 'Working…' : `Thought for ${durationSec}s`
 
   return (
     <div className="my-1">
-      {/* Summary row — plain text floating in the chat, no box/border.
-          Hover subtly lifts the text color so the user can see it's
-          clickable when the turn is collapsed. During an active turn
-          the amber dot signals "working", the text sits muted, and
-          the click-to-expand is disabled (already expanded). */}
-      <button
-        type="button"
-        onClick={() => !active && setExpanded((v) => !v)}
-        className={`group flex w-full items-center gap-2 py-0.5 text-left text-[11px] transition-colors ${
-          active ? 'cursor-default text-zinc-400' : 'cursor-pointer text-zinc-500 hover:text-zinc-200'
-        }`}
-      >
-        {active && (
-          <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-amber-400" />
-        )}
-        <span className="flex-1 font-medium">{summaryLabel}</span>
-        {!active && (
+      {/* Summary row ONLY renders once the turn finishes, as a subtle
+          "Thought for Xs" affordance that collapses the log. While
+          active we skip the header entirely — logs speak for
+          themselves and the amber-dot spinner already lives in the
+          parent chat header. Keeps the stream feeling like real logs,
+          not a framed widget. */}
+      {!active && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="group flex w-full cursor-pointer items-center gap-2 py-0.5 text-left text-[11px] text-zinc-500 transition-colors hover:text-zinc-200"
+        >
+          <span className="flex-1 font-medium">{`Thought for ${durationSec}s`}</span>
           <svg
             className={`h-3 w-3 shrink-0 text-zinc-600 transition-all group-hover:text-zinc-400 ${expanded ? 'rotate-180' : ''}`}
             fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"
           >
             <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
           </svg>
-        )}
-      </button>
+        </button>
+      )}
 
       {/* Steps — inline in the chat flow, no container. While the turn
           is active we cap the height so the chat doesn't scroll down

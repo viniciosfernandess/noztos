@@ -35,6 +35,7 @@ export async function GET(request: NextRequest) {
         connected: channel.isCompanionConnected(),
         authInfo: channel.companion?.authInfo,
         projects: channel.companion?.projects,
+        machineName: channel.companion?.machineName,
       })
 
       // Drain queued events

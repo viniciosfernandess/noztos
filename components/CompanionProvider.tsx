@@ -26,16 +26,18 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
     let disposed = false
 
     async function connect() {
+      console.log('[provider] SSE connecting...')
       companionStore.setStatus('connecting')
       try {
         const res = await fetch('/api/companion/stream', { signal: controller.signal })
-        if (!res.ok || !res.body) { companionStore.setStatus('error'); return }
+        if (!res.ok || !res.body) { console.warn('[provider] SSE open failed'); companionStore.setStatus('error'); return }
+        console.log('[provider] SSE open')
         const reader = res.body.getReader()
         const decoder = new TextDecoder()
         let buffer = ''
         while (true) {
           const { done, value } = await reader.read()
-          if (done) break
+          if (done) { console.log('[provider] SSE closed by server'); break }
           buffer += decoder.decode(value, { stream: true })
           const lines = buffer.split('\n')
           buffer = lines.pop() ?? ''
@@ -68,6 +70,14 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
                 if (sid && contentEvent && sid !== getActiveSessionId()) {
                   companionStore.markUnread(sid)
                 }
+                // Trace key fields to diagnose context / ordering issues
+                // without dumping the whole payload.
+                const innerType = inner?.type ?? '(none)'
+                const claudeSid = inner?.session_id?.slice(0, 8) ?? '-'
+                const persistRowsN = Array.isArray(event.payload?.persistRows) ? event.payload.persistRows.length : 0
+                console.log(`[provider] claude_event sid=${sid?.slice(0, 8) ?? '-'} inner=${innerType} claude=${claudeSid} rows=${persistRowsN}`)
+              } else if (event.type !== 'running_sessions' && event.type !== 'companion_status') {
+                console.log(`[provider] event type=${event.type}`)
               }
               companionStore.ingestClaudeEvent(event)
             } catch { /* non-JSON line */ }
@@ -84,6 +94,7 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
       const next = companionStore.getConnectionEpoch()
       if (next === epochRef.current) return
       epochRef.current = next
+      console.log(`[provider] reconnect (epoch=${next})`)
       // Abort and reopen. No wait — keep event loop tight.
       controller.abort()
       controller = new AbortController()

@@ -35,6 +35,16 @@ const BUFFER_TTL_MS = 24 * 60 * 60_000 // 24h
 const BUFFER_GLOBAL_BYTE_CAP = 500 * 1024 * 1024 // 500 MB
 const BUFFER_SWEEP_INTERVAL_MS = 5 * 60_000 // sweep every 5 min
 
+// ── Companion liveness ──────────────────────────────────────────────
+// A companion is "alive" if it heartbeated within the last 60s.
+// HEARTBEAT_STALE_MS defines that window. CONN_SWEEP_INTERVAL_MS runs
+// the detector periodically: on each tick, any channel whose companion
+// has gone stale gets a one-shot "disconnected" broadcast. That flips
+// the UI to offline state AND wipes the running chats list so the send
+// button unlocks across every open browser tab.
+const HEARTBEAT_STALE_MS = 60_000
+const CONN_SWEEP_INTERVAL_MS = 15_000
+
 interface CompanionConnection {
   connectedAt: number
   lastHeartbeat: number
@@ -125,8 +135,7 @@ class RelayChannel {
 
   isCompanionConnected(): boolean {
     if (!this.companion) return false
-    // Consider disconnected if no heartbeat for 60s
-    return Date.now() - this.companion.lastHeartbeat < 60_000
+    return Date.now() - this.companion.lastHeartbeat < HEARTBEAT_STALE_MS
   }
 }
 
@@ -143,6 +152,7 @@ const globalForRelay = globalThis as unknown as {
   __bornastarSessionBuffers?: Map<string, SessionBuffer>
   __bornastarBufferSweeper?: NodeJS.Timeout
   __bornastarBufferBytes?: { value: number }
+  __bornastarConnSweeper?: NodeJS.Timeout
 }
 const channels: Map<string, RelayChannel> =
   globalForRelay.__bornastarCompanionChannels ?? new Map<string, RelayChannel>()
@@ -165,6 +175,17 @@ if (!globalForRelay.__bornastarBufferSweeper) {
   const t = setInterval(sweepExpired, BUFFER_SWEEP_INTERVAL_MS)
   if (typeof t.unref === 'function') t.unref()
   globalForRelay.__bornastarBufferSweeper = t
+}
+
+// Companion liveness sweeper: once per CONN_SWEEP_INTERVAL_MS, walk
+// every channel and fire a "disconnected" broadcast for channels whose
+// companion heartbeat has gone stale. One-shot per transition — once
+// the channel is marked disconnected, subsequent sweeps skip it until
+// the daemon re-registers.
+if (!globalForRelay.__bornastarConnSweeper) {
+  const t = setInterval(sweepStaleCompanions, CONN_SWEEP_INTERVAL_MS)
+  if (typeof t.unref === 'function') t.unref()
+  globalForRelay.__bornastarConnSweeper = t
 }
 
 function estimateBytes(evt: unknown): number {
@@ -216,11 +237,16 @@ function maybeBufferEvent(event: unknown, userId: string): void {
 
   // Per-session FIFO cap. When we drop from the head we also refund
   // bytes so the global counter stays accurate.
+  let perSessionDropped = 0
   while (buf.events.length > BUFFER_MAX_EVENTS_PER_SESSION) {
     const dropped = buf.events.shift()
     const droppedSize = estimateBytes(dropped)
     buf.bytes -= droppedSize
     bufferBytes.value -= droppedSize
+    perSessionDropped++
+  }
+  if (perSessionDropped > 0) {
+    console.log(`[relay-buffer] per-session cap drop sessionId=${sessionId.slice(0, 8)} dropped=${perSessionDropped} kept=${buf.events.length}/${BUFFER_MAX_EVENTS_PER_SESSION}`)
   }
 
   // Global byte cap: evict least-recently-accessed sessions until we're
@@ -264,13 +290,50 @@ function sweepExpired(): void {
   }
 }
 
+// Detect channels whose companion went silent. For each one, we do:
+//   (a) flip the server-side connection state to disconnected
+//   (b) broadcast `companion_status { connected: false }` so every
+//       browser tab immediately knows the Mac is offline (badge → zinc)
+//   (c) broadcast `running_sessions { sessionIds: [] }` so every chat
+//       UI unlocks the send button (nothing is running once the daemon
+//       is gone) AND stops showing stale "busy" spinners
+// The daemon's next heartbeat reverses this via setCompanionConnected.
+function sweepStaleCompanions(): void {
+  const now = Date.now()
+  let flipped = 0
+  for (const [userId, channel] of channels) {
+    const c = channel.companion
+    if (!c) continue // already disconnected, nothing to do
+    if (now - c.lastHeartbeat < HEARTBEAT_STALE_MS) continue
+    const staleFor = now - c.lastHeartbeat
+    console.warn(`[conn-sweep] userId=${userId.slice(0, 8)} companion offline (staleFor=${staleFor}ms) — broadcasting disconnected + empty running`)
+    channel.setCompanionDisconnected()
+    channel.pushEvent({ type: 'companion_status', connected: false }, userId)
+    channel.pushEvent({ type: 'running_sessions', payload: { sessionIds: [] } }, userId)
+    flipped++
+  }
+  if (flipped > 0) {
+    console.log(`[conn-sweep] flipped ${flipped} channel(s) to disconnected`)
+  }
+}
+
 export function getSessionBuffer(sessionId: string, userId: string): unknown[] | null {
   const buf = sessionBuffers.get(sessionId)
-  if (!buf) return null
+  if (!buf) {
+    console.log(`[relay-buffer] MISS sessionId=${sessionId.slice(0, 8)} — will fall through to DB`)
+    return null
+  }
   // Ownership check — a session id leaked across users should never
   // surface another user's events. Defensive; upstream already checks.
-  if (buf.userId !== userId) return null
+  if (buf.userId !== userId) {
+    console.warn(`[relay-buffer] ownership mismatch sessionId=${sessionId.slice(0, 8)}`)
+    return null
+  }
+  // Capture the age of the cache BEFORE refreshing lastAccess —
+  // otherwise we'd always log 0ms.
+  const ageMs = Date.now() - buf.lastAccess
   buf.lastAccess = Date.now()
+  console.log(`[relay-buffer] HIT sessionId=${sessionId.slice(0, 8)} events=${buf.events.length} bytes=${buf.bytes} staleFor=${ageMs}ms`)
   return buf.events.slice()
 }
 
