@@ -3,18 +3,44 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useGitHubModal } from './GitHubModal'
+import { useCompanionStatus } from '@/lib/hooks/useCompanionStore'
 
 export function CreateProjectButton({ label }: { label?: string } = {}) {
   const [showPicker, setShowPicker] = useState(false)
+  // Adding a project requires the Mac companion to be reachable so the
+  // daemon can register the folder path (clone target / local scan
+  // result / new template scaffold). Claude auth is irrelevant here —
+  // the user can sign Claude in later. When cloud sandbox lands, this
+  // gate flips to "either local OR cloud is ready".
+  const companionStatus = useCompanionStatus()
+  const companionConnected = companionStatus === 'connected'
 
   return (
     <>
-      <button
-        onClick={() => setShowPicker(true)}
-        className="flex h-10 items-center justify-center rounded-full bg-zinc-900 px-5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
-      >
-        {label ?? 'New Project'}
-      </button>
+      <div className="flex flex-col items-center gap-2">
+        <button
+          onClick={() => setShowPicker(true)}
+          disabled={!companionConnected}
+          title={companionConnected ? '' : 'Start your Mac companion to add projects: bornastar start'}
+          className="flex h-10 items-center justify-center rounded-full bg-zinc-900 px-5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+        >
+          {label ?? 'New Project'}
+        </button>
+        {!companionConnected && (
+          // Visible hint instead of relying on the disabled-button
+          // tooltip alone — same dim/zinc styling we use in the chat
+          // input banner so the offline language is consistent across
+          // the app. Disappears the moment the daemon heartbeats back.
+          <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+            <span className="h-1.5 w-1.5 rounded-full bg-zinc-600" />
+            <span>
+              {companionStatus === 'connecting'
+                ? 'Connecting to your Mac…'
+                : 'Start your Mac to add projects: bornastar start'}
+            </span>
+          </div>
+        )}
+      </div>
       {showPicker && <ProjectPickerModal onClose={() => setShowPicker(false)} />}
     </>
   )

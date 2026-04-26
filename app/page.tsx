@@ -5,6 +5,7 @@ import { Header } from '@/components/Header'
 import { ProjectList } from '@/components/ProjectList'
 import { CompanionSetup } from '@/components/CompanionSetup'
 import { DashboardSidebar } from '@/components/DashboardSidebar'
+import { CompanionProvider } from '@/components/CompanionProvider'
 
 export default async function Home() {
   const cookieStore = await cookies()
@@ -40,16 +41,28 @@ export default async function Home() {
     <div className="flex flex-col flex-1 font-sans" style={{ backgroundColor: '#1a1a22' }}>
       <Header userName={userName} />
       <div className="flex flex-1 overflow-hidden">
-        {hasCompanionToken && <DashboardSidebar />}
-        <main className="flex flex-1 flex-col px-6 py-8 overflow-y-auto">
-          <div className="w-full max-w-4xl mx-auto flex-1">
-            {!hasCompanionToken ? (
+        {hasCompanionToken ? (
+          // Authenticated dashboard — wrap with CompanionProvider so
+          // the sidebar's connection badge and any embedded chat state
+          // both subscribe to the same SSE source-of-truth that
+          // populates companionStore. Without this the sidebar shows
+          // a permanent "Offline" because nothing was opening the
+          // /api/companion/stream connection on this page.
+          <CompanionProvider>
+            <DashboardSidebar />
+            <main className="flex flex-1 flex-col px-6 py-8 overflow-y-auto">
+              <div className="w-full max-w-4xl mx-auto flex-1">
+                <ProjectList projects={projects} />
+              </div>
+            </main>
+          </CompanionProvider>
+        ) : (
+          <main className="flex flex-1 flex-col px-6 py-8 overflow-y-auto">
+            <div className="w-full max-w-4xl mx-auto flex-1">
               <CompanionSetup />
-            ) : (
-              <ProjectList projects={projects} />
-            )}
-          </div>
-        </main>
+            </div>
+          </main>
+        )}
       </div>
     </div>
   )

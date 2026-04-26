@@ -5514,16 +5514,45 @@ function ChatPanel({
           </div>
         )}
 
-        {/* ── Claude Code via companion ─────────────────────────────── */}
+        {/* Empty state — terminal-prompt vibe with pinstriped letters
+            (background-clip:text + repeating gradient gives the
+            "formed by many strokes" look without needing ASCII art).
+            Connection state lives in the sidebar + input banner; this
+            slot stays neutral so it works the same whether the
+            companion is online or not. */}
         {messages.length === 0 && (
-          <div className="flex h-full flex-col items-center justify-center gap-3">
-            <CompanionStatusBadge status={companionStatus} info={companionInfo} />
-            <p className="text-sm text-zinc-400">
-              {companionStatus === 'connecting' ? 'Connecting to companion…' :
-               companionStatus === 'connected' ? 'Send a message to start coding with Claude Code' :
-               companionStatus === 'error' ? 'Companion error — check terminal' :
-               'Start the companion: bornastar start'}
-            </p>
+          <div className="flex h-full flex-col items-center justify-center">
+            <style>{`
+              @keyframes letscode-type {
+                0%   { width: 0; }
+                40%  { width: 8.5ch; }   /* finish typing "let's code" */
+                88%  { width: 8.5ch; }   /* hold */
+                94%  { width: 0; }       /* erase fast */
+                100% { width: 0; }       /* tiny pause before retype */
+              }
+              @keyframes letscode-caret { 0%,49% { opacity: 1 } 50%,100% { opacity: 0 } }
+              .letscode-typed {
+                display: inline-block;
+                overflow: hidden;
+                white-space: nowrap;
+                vertical-align: bottom;
+                animation: letscode-type 5s steps(10, end) infinite;
+              }
+              .letscode-caret { animation: letscode-caret 1s step-end infinite; }
+            `}</style>
+            <div className="flex items-baseline font-mono font-black tracking-tight text-4xl">
+              <span className="text-zinc-600 mr-2">&gt;</span>
+              <span
+                className="bg-clip-text text-transparent letscode-typed"
+                style={{
+                  backgroundImage:
+                    'repeating-linear-gradient(180deg, #f4f4f5 0 2px, transparent 2px 4px)',
+                }}
+              >
+                let&apos;s code
+              </span>
+              <span className="ml-0.5 text-zinc-300 letscode-caret">_</span>
+            </div>
           </div>
         )}
         {(() => {
