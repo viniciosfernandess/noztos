@@ -2473,7 +2473,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                   {/* User message — typing effect, right aligned */}
                   <div className="flex justify-end">
                     <div className="t-type rounded-md bg-[#313131] px-2 py-1 text-zinc-300">
-                      make a miracle in this repo
+                      make this idea real
                     </div>
                   </div>
 
@@ -2491,7 +2491,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                   {/* Done */}
                   <div className="t-fade-5 flex items-center gap-1">
                     <span className="text-[#28C840]">✓</span>
-                    <span className="text-zinc-400">miracle shipped.</span>
+                    <span className="text-zinc-400">shipped.</span>
                   </div>
 
                   {/* Cursor */}
