@@ -14,12 +14,22 @@ import type { ClaudeStreamEvent } from './types.js'
 //   await bridge.prompt('Add dark mode to the settings page')
 //   bridge.interrupt()  // Ctrl-C equivalent
 
-// Maps Bornastar UI mode names to Claude Code CLI --permission-mode values
-export type BornastarMode = 'plan' | 'edit' | 'auto' | 'agent'
+// Maps Bornastar UI mode names to Claude Code CLI --permission-mode values.
+//
+// Three modes match the documented `--permission-mode` values the CLI
+// accepts. The names here are stable identifiers — the user-facing labels
+// in the UI are `Plan` / `Auto` / `Bypass`, but the IDs stay short and
+// stay aligned with what already lives in persisted drafts and event
+// payloads, so renaming the labels never requires a migration.
+//
+// We intentionally don't expose the SDK-only `auto` mode (model classifier,
+// research preview at time of writing) — passing that to the CLI silently
+// falls back to `default` and the user sees a permission prompt for every
+// edit, which is the bug we're fixing here.
+export type BornastarMode = 'plan' | 'edit' | 'agent'
 const MODE_MAP: Record<BornastarMode, string> = {
   plan: 'plan',
   edit: 'acceptEdits',
-  auto: 'auto',
   agent: 'bypassPermissions',
 }
 
@@ -44,7 +54,7 @@ export class ClaudeBridge extends EventEmitter {
   private process: ChildProcess | null = null
   private sessionId: string | null = null
   private buffer = ''
-  private mode: BornastarMode = 'auto'
+  private mode: BornastarMode = 'edit'
   private model?: string
   private thinking: ThinkingLevel = 'off'
 
@@ -52,7 +62,7 @@ export class ClaudeBridge extends EventEmitter {
     super()
     this.cwd = cwd
     this.sessionId = sessionId ?? null
-    this.mode = mode ?? 'auto'
+    this.mode = mode ?? 'edit'
     this.model = options?.model
     this.thinking = options?.thinking ?? 'off'
   }
@@ -66,7 +76,11 @@ export class ClaudeBridge extends EventEmitter {
       throw new Error('A prompt is already running. Interrupt first or wait for completion.')
     }
 
-    const permissionMode = MODE_MAP[this.mode] ?? 'auto'
+    // Fallback to `acceptEdits` (the documented "Auto" CLI value) on the
+    // off chance an unknown id slips in via persisted state — never to
+    // the SDK-only `auto` literal, which the CLI silently downgrades to
+    // `default` and reintroduces the permission prompts on every edit.
+    const permissionMode = MODE_MAP[this.mode] ?? 'acceptEdits'
     // Prepend the thinking-budget keyword when the user asked for
     // extended thinking. Haiku ignores the keyword (no extended-thinking
     // support) — harmless leading sentence rather than a hard error.

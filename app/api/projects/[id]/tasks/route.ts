@@ -64,7 +64,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: access.error }, { status: access.status })
   }
 
-  let body: { name?: string; instruction?: string; teamId?: string; executorType?: string; executorId?: string; status?: string; scheduledAt?: string; isRecurring?: boolean; recurrenceConfig?: Record<string, unknown>; accumulatedContext?: Record<string, unknown>; context?: Record<string, unknown>; permissionMode?: 'plan' | 'edit' | 'auto' | 'agent' }
+  let body: { name?: string; instruction?: string; teamId?: string; executorType?: string; executorId?: string; status?: string; scheduledAt?: string; isRecurring?: boolean; recurrenceConfig?: Record<string, unknown>; accumulatedContext?: Record<string, unknown>; context?: Record<string, unknown>; permissionMode?: 'plan' | 'edit' | 'agent' }
   try {
     body = await request.json()
   } catch {

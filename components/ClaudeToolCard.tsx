@@ -152,10 +152,216 @@ function EditDiffBlock({ message }: { message: ChatMessage }) {
   )
 }
 
+// ── Todo block (Claude Code-style checklist) ───────────────────────
+// TodoWrite's toolInput.todos is an array of { content, activeForm, status }.
+// We render it as a checklist matching how Claude Code's CLI / VSCode
+// extension renders it, so the user sees the actual plan instead of a
+// generic "Tasks" bullet that hides behind a JSON dump.
+//
+// Status mapping:
+//   pending     → ☐ + zinc text
+//   in_progress → ◐ + amber text + uses `activeForm` (e.g. "Running tests")
+//   completed   → ☑ + emerald text + strikethrough
+//
+// Defensive on shape: if `todos` is missing or malformed (schema drift,
+// stale buffered row from before this block existed) the block returns
+// null and the parent's generic JSON-expand fallback takes over. No
+// throw, no broken row.
+type TodoStatus = 'pending' | 'in_progress' | 'completed'
+interface TodoItem {
+  content?: string
+  activeForm?: string
+  status?: TodoStatus
+}
+
+// `variant`:
+//   • 'inline'  — buried inside a CompactToolRow's expansion; full list
+//     always visible, with left margin aligning it under the bullet.
+//     Used when the user has manually expanded a "Thought for Xs" log.
+//   • 'pinned'  — sits OUTSIDE the work block as the turn's "current
+//     plan". Renders Cursor-style: a single compact header line by
+//     default ("◐ <current task>  3/5  ▼") that always stays visible,
+//     click toggles the full checklist below. Stays even after the
+//     work block collapses, so the user can always see where Claude is.
+export function TodoBlock({ message, variant = 'inline' }: { message: ChatMessage; variant?: 'inline' | 'pinned' }) {
+  const [pinnedExpanded, setPinnedExpanded] = useState(false)
+  const input = message.toolInput as { todos?: unknown } | undefined
+  const todos = Array.isArray(input?.todos) ? (input.todos as TodoItem[]) : null
+  if (!todos || todos.length === 0) return null
+
+  const counts = { pending: 0, in_progress: 0, completed: 0 }
+  for (const t of todos) {
+    if (t.status === 'in_progress') counts.in_progress++
+    else if (t.status === 'completed') counts.completed++
+    else counts.pending++
+  }
+
+  // Renders one row of the checklist. Used by both variants — same
+  // visual contract regardless of where the list shows up.
+  const renderRow = (todo: TodoItem, i: number, big: boolean) => {
+    const status: TodoStatus = todo.status ?? 'pending'
+    // While in_progress show `activeForm` ("Running tests") which reads
+    // as live narration; otherwise the imperative `content` ("Run
+    // tests") which reads like a checklist item.
+    const text = status === 'in_progress' ? (todo.activeForm || todo.content || '') : (todo.content || '')
+    const icon = status === 'completed' ? '☑' : status === 'in_progress' ? '◐' : '☐'
+    const tone =
+      status === 'completed' ? 'text-emerald-400 line-through opacity-70'
+      : status === 'in_progress' ? 'text-amber-300'
+      : 'text-zinc-400'
+    const iconCls = big
+      ? 'mt-[1px] shrink-0 font-mono text-[15px] leading-5'
+      : 'mt-[1px] shrink-0 font-mono'
+    const rowCls = big
+      ? 'flex items-start gap-2 px-1 py-0.5'
+      : 'flex items-start gap-2 px-2 py-0.5'
+    return (
+      <div key={i} className={rowCls}>
+        <span className={`${iconCls} ${tone}`}>{icon}</span>
+        <span className={`min-w-0 flex-1 ${tone}`}>{text}</span>
+      </div>
+    )
+  }
+
+  // ── Inline variant — full list, framed, used inside the log ────
+  if (variant === 'inline') {
+    return (
+      <div className="ml-3 mt-0.5 overflow-hidden rounded border border-white/5 text-[11px] leading-5">
+        <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-2 py-1 text-[10px] text-zinc-500">
+          <span className="font-medium">Tasks</span>
+          <span className="space-x-2 font-mono">
+            {counts.completed > 0 && <span className="text-emerald-400">{counts.completed} done</span>}
+            {counts.in_progress > 0 && <span className="text-amber-400">{counts.in_progress} active</span>}
+            {counts.pending > 0 && <span className="text-zinc-500">{counts.pending} pending</span>}
+          </span>
+        </div>
+        <div className="max-h-64 overflow-auto py-1">
+          {todos.map((todo, i) => renderRow(todo, i, false))}
+        </div>
+      </div>
+    )
+  }
+
+  // ── Pinned variant — Cursor-style compact header, click to expand ─
+  // "Current step" is whichever task is actively being worked on. If
+  // none is in_progress (e.g. between updates) we fall back to the
+  // first pending; if nothing is pending we use the last completed
+  // (the "all done" terminal state). currentStep is 1-based for
+  // display: `<currentStep>/<total>`.
+  let currentIdx = todos.findIndex((t) => t.status === 'in_progress')
+  if (currentIdx === -1) currentIdx = todos.findIndex((t) => (t.status ?? 'pending') !== 'completed')
+  if (currentIdx === -1) currentIdx = todos.length - 1
+  const currentTask = todos[currentIdx]
+  const currentStatus: TodoStatus = currentTask.status ?? 'pending'
+  const currentText = currentStatus === 'in_progress'
+    ? (currentTask.activeForm || currentTask.content || '')
+    : (currentTask.content || '')
+  const currentIcon = currentStatus === 'completed' ? '☑' : currentStatus === 'in_progress' ? '◐' : '☐'
+  const currentTone =
+    currentStatus === 'completed' ? 'text-emerald-400'
+    : currentStatus === 'in_progress' ? 'text-amber-300'
+    : 'text-zinc-300'
+  const allDone = counts.completed === todos.length
+
+  return (
+    <div className="my-2 overflow-hidden rounded-lg border border-white/10 bg-white/[0.03] text-[11px] leading-5 backdrop-blur-sm">
+      <button
+        type="button"
+        onClick={() => setPinnedExpanded((v) => !v)}
+        className="group flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors hover:bg-white/[0.04]"
+      >
+        <span className={`shrink-0 font-mono text-[15px] leading-5 ${currentTone}`}>{currentIcon}</span>
+        <span className={`min-w-0 flex-1 truncate ${currentTone}`}>
+          {currentText}
+        </span>
+        <span className={`shrink-0 font-mono text-[10px] ${allDone ? 'text-emerald-400' : 'text-zinc-500'}`}>
+          {currentIdx + 1}/{todos.length}
+        </span>
+        <svg
+          className={`h-3 w-3 shrink-0 text-zinc-600 transition-transform group-hover:text-zinc-400 ${pinnedExpanded ? 'rotate-180' : ''}`}
+          fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+        </svg>
+      </button>
+      {pinnedExpanded && (
+        <div className="max-h-64 overflow-auto border-t border-white/5 px-1.5 py-1">
+          {todos.map((todo, i) => renderRow(todo, i, true))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Todo transition row ────────────────────────────────────────────
+// Inside the log we don't repeat the full checklist (the pinned widget
+// already does that, live). Instead each TodoWrite call shows up as a
+// single transition line: "[just-completed task] → [now-active task]".
+// First call shows just the starting task; final call shows just the
+// last completed. Keeps the log compact and useful — the user sees the
+// progress milestones in chronological order without scrolling past
+// 5 identical-looking checklists.
+function TodoTransitionRow({ message }: { message: ChatMessage }) {
+  const input = message.toolInput as { todos?: unknown } | undefined
+  const todos = Array.isArray(input?.todos) ? (input.todos as TodoItem[]) : null
+  if (!todos || todos.length === 0) return null
+  // The "just-completed" milestone is the LAST completed task in the
+  // array (Claude updates them in order, so the deepest completed is
+  // what changed most recently). "Active" is the in_progress task; if
+  // none, fall back to the first pending so the row still shows what's
+  // queued next. When everything is completed and nothing is pending
+  // we surface the terminal state explicitly.
+  let lastCompleted: TodoItem | null = null
+  for (const t of todos) if (t.status === 'completed') lastCompleted = t
+  const inProgress = todos.find((t) => t.status === 'in_progress') ?? null
+  const nextPending = inProgress ? null : (todos.find((t) => (t.status ?? 'pending') === 'pending') ?? null)
+  const allDone = !inProgress && !nextPending && !!lastCompleted
+
+  return (
+    <div className="flex items-start gap-2 px-1 py-0.5 text-[12px] leading-5">
+      <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-zinc-500" />
+      <span className="min-w-0 flex-1">
+        {lastCompleted && (
+          <>
+            <span className="font-mono text-emerald-400">☑</span>
+            <span className="ml-1.5 text-zinc-400 line-through opacity-70">{lastCompleted.content}</span>
+          </>
+        )}
+        {lastCompleted && (inProgress || nextPending) && <span className="mx-2 text-zinc-600">→</span>}
+        {inProgress && (
+          <>
+            <span className="font-mono text-amber-400">◐</span>
+            <span className="ml-1.5 text-amber-300">{inProgress.activeForm || inProgress.content}</span>
+          </>
+        )}
+        {!inProgress && nextPending && (
+          <>
+            <span className="font-mono text-zinc-500">☐</span>
+            <span className="ml-1.5 text-zinc-400">{nextPending.content}</span>
+          </>
+        )}
+        {allDone && (
+          <span className="ml-1.5 text-emerald-400 italic">All tasks done</span>
+        )}
+      </span>
+    </div>
+  )
+}
+
 // One compact line per item — bullet + label + preview. Handles tool,
 // thinking and intermediate assistant text rows inside the work block.
 function CompactToolRow({ message }: { message: ChatMessage }) {
   const [expanded, setExpanded] = useState(false)
+
+  // TodoWrite gets a custom one-liner showing the transition (just-
+  // completed → now-active). The pinned widget outside the work block
+  // already renders the full checklist live, so a plain "Tasks" bullet
+  // here would be redundant noise. Early-return AFTER useState so the
+  // hook order stays consistent across renders even if the row ever
+  // had its toolName mutated (defensive — it doesn't today).
+  if (message.toolName === 'TodoWrite') {
+    return <TodoTransitionRow message={message} />
+  }
 
   // Thinking / intermediate assistant text — single-line preview,
   // click expands to the full text in italics.
@@ -198,14 +404,19 @@ function CompactToolRow({ message }: { message: ChatMessage }) {
         ? `"${message.searchPattern}"`
         : ''
 
-  // Bash and Edit get rich inline blocks — always visible, no click.
+  // Bash, Edit and TodoWrite get rich inline blocks — always visible, no
+  // click. Matches Claude Code's CLI/VSCode extension rendering so the
+  // user sees plans, diffs and command output without expanding JSON.
   const isBash = message.toolName === 'Bash'
   const isEdit = message.toolName === 'Edit' || message.toolName === 'MultiEdit'
+  const isTodoWrite = message.toolName === 'TodoWrite'
   const inlineBlock = isBash
     ? hasResult || isLoading ? <BashBlock message={message} /> : null
     : isEdit && (message.oldString || message.newString)
       ? <EditDiffBlock message={message} />
-      : null
+      : isTodoWrite
+        ? <TodoBlock message={message} />
+        : null
 
   return (
     <div className="group">
@@ -590,7 +801,11 @@ export function SessionResultCard({ message }: { message: ChatMessage }) {
 
 // ── Mode Selector ───────────────────────────────────────────────────
 
-type ModeId = 'plan' | 'edit' | 'auto' | 'agent'
+// IDs match the documented Claude Code `--permission-mode` values via
+// the daemon's MODE_MAP. Labels here use the friendlier names the
+// official VSCode extension shows so users coming from there feel at
+// home: Plan / Auto (= acceptEdits) / Bypass (= bypassPermissions).
+type ModeId = 'plan' | 'edit' | 'agent'
 
 const MODE_ICONS: Record<ModeId, (props: { className?: string }) => React.ReactElement> = {
   plan: ({ className }) => (
@@ -601,12 +816,6 @@ const MODE_ICONS: Record<ModeId, (props: { className?: string }) => React.ReactE
     </svg>
   ),
   edit: ({ className }) => (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
-    </svg>
-  ),
-  auto: ({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
       <path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z" />
     </svg>
@@ -621,9 +830,8 @@ const MODE_ICONS: Record<ModeId, (props: { className?: string }) => React.ReactE
 
 const MODES: { id: ModeId; label: string; desc: string }[] = [
   { id: 'plan', label: 'Plan', desc: 'Research only, no edits' },
-  { id: 'edit', label: 'Edit', desc: 'Edit files, confirm commands' },
-  { id: 'auto', label: 'Auto', desc: 'Smart — classifier decides safety' },
-  { id: 'agent', label: 'Agent', desc: 'Full autonomy, no prompts' },
+  { id: 'edit', label: 'Auto', desc: 'Auto-accept file edits, ask before shell commands' },
+  { id: 'agent', label: 'Bypass', desc: 'Full autonomy — no permission prompts' },
 ]
 
 export function ModeSelector({
@@ -635,7 +843,10 @@ export function ModeSelector({
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
-  const current = MODES.find((m) => m.id === mode) ?? MODES[2]
+  // Fallback to "Auto" (acceptEdits) — same default as the daemon when
+  // no mode is specified. Avoids ever rendering a stale id from before
+  // the modes list was trimmed.
+  const current = MODES.find((m) => m.id === mode) ?? MODES[1]
   const CurrentIcon = MODE_ICONS[current.id]
 
   useEffect(() => {

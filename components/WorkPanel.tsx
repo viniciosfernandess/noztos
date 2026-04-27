@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, Fragment } from 'react'
 import { diffLines } from 'diff'
 import { MarkdownRenderer } from './MarkdownRenderer'
 // ChatTabs removed — companion mode replaced tab-based chat
@@ -27,7 +27,7 @@ import {
   useBusySessions, useUnreadSessions, useCompanionStatus, useCompanionInfo, usePendingSessions,
 } from '@/lib/hooks/useCompanionStore'
 import { CompanionProvider, setActiveSessionIdForUnread } from './CompanionProvider'
-import { ClaudeToolCard, SessionResultCard, ModeSelector, ModelSelector, ThinkingSelector, CompanionStatusBadge, WorkBlock } from './ClaudeToolCard'
+import { ClaudeToolCard, SessionResultCard, ModeSelector, ModelSelector, ThinkingSelector, CompanionStatusBadge, WorkBlock, TodoBlock } from './ClaudeToolCard'
 import { ReportBadge } from './ChatReport'
 import type { ChatReport } from '@/lib/report-types'
 
@@ -5559,7 +5559,11 @@ function ChatPanel({
       isPaginatingRef.current = false
     })
   }, [projectId, sessionId, hasMoreOlder, loadingOlder, oldestMessageId])
-  const [claudeMode, setClaudeMode] = useState<'plan' | 'edit' | 'auto' | 'agent'>('auto')
+  // Three modes — `plan`, `edit` (label "Auto" = acceptEdits) and `agent`
+  // (label "Bypass" = bypassPermissions). Defaults to `edit` so files
+  // get auto-accepted but Bash still asks, matching what the user expects
+  // from a Claude Code "Auto" session.
+  const [claudeMode, setClaudeMode] = useState<'plan' | 'edit' | 'agent'>('edit')
 
   // The companion daemon has its own project registry with hex IDs keyed by
   // local path. We resolve the Bornastar DB projectId → companion hex ID
@@ -6050,7 +6054,8 @@ function ChatPanel({
           // while the process details collapse to "Thought for Xs".
           type Item =
             | { kind: 'single'; msg: ChatMessage }
-            | { kind: 'work'; msgs: ChatMessage[]; key: string }
+            | { kind: 'work'; msgs: ChatMessage[]; key: string; pinnedTodo?: ChatMessage }
+            | { kind: 'pinnedTodo'; msg: ChatMessage }
           const items: Item[] = []
           const isBoundary = (m: ChatMessage) =>
             m.role === 'user' || (m.role === 'system' && m.costUsd !== undefined)
@@ -6081,7 +6086,20 @@ function ChatPanel({
             if (turnComplete && last && last.role === 'assistant') {
               finalText = group.pop()!
             }
-            if (group.length > 0) items.push({ kind: 'work', msgs: group, key: group[0].id })
+            // Pin the LAST TodoWrite of the turn outside the collapsible
+            // work block — TodoWrite is a plan, not log noise, so the
+            // user should see the latest version even after "Thought
+            // for Xs" collapses. Earlier TodoWrite versions stay inside
+            // the block (visible if expanded) so the evolution is
+            // preserved without cluttering the chat. We scan from the
+            // end because that's the freshest plan; staying inside the
+            // group means the work-block expand still shows v1, v2…vN.
+            let pinnedTodo: ChatMessage | undefined
+            for (let j = group.length - 1; j >= 0; j--) {
+              if (group[j].toolName === 'TodoWrite') { pinnedTodo = group[j]; break }
+            }
+            if (group.length > 0) items.push({ kind: 'work', msgs: group, key: group[0].id, pinnedTodo })
+            else if (pinnedTodo) items.push({ kind: 'pinnedTodo', msg: pinnedTodo })
             if (finalText) items.push({ kind: 'single', msg: finalText })
           }
           // A work block is "active" only when it's LITERALLY the last
@@ -6093,7 +6111,20 @@ function ChatPanel({
           return items.map((item, idx) => {
             if (item.kind === 'work') {
               const isActive = isRunning && tailIsLiveWork && idx === items.length - 1
-              return <WorkBlock key={item.key} messages={item.msgs} active={isActive} />
+              // Render the work block (collapses to "Thought for Xs"
+              // after the turn) followed by the pinned TodoBlock when
+              // the turn produced one. The pinned block stays visible
+              // even after collapse — that's the whole point of pulling
+              // it out.
+              return (
+                <Fragment key={item.key}>
+                  <WorkBlock messages={item.msgs} active={isActive} />
+                  {item.pinnedTodo && <TodoBlock message={item.pinnedTodo} variant="pinned" />}
+                </Fragment>
+              )
+            }
+            if (item.kind === 'pinnedTodo') {
+              return <TodoBlock key={item.msg.id} message={item.msg} variant="pinned" />
             }
             const msg = item.msg
             if (msg.role === 'user') {
