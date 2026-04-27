@@ -271,3 +271,15 @@ function sweepIdle(): void {
     )
   }
 }
+
+/**
+ * Test-only — run the sweep immediately, on demand. Production code
+ * never calls this; the sweeper runs via `setInterval` started lazily
+ * by `setCacheProtector`. Vitest's `environment: 'node'` has no
+ * `window`, so the lazy start never fires there. This export gives
+ * tests a deterministic way to assert eviction behavior without
+ * pulling in jsdom or stubbing globalThis.
+ */
+export function _sweepIdleForTest(): void {
+  sweepIdle()
+}
