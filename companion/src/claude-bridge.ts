@@ -16,22 +16,89 @@ import type { ClaudeStreamEvent } from './types.js'
 
 // Maps Bornastar UI mode names to Claude Code CLI --permission-mode values.
 //
-// Three modes match the documented `--permission-mode` values the CLI
-// accepts. The names here are stable identifiers — the user-facing labels
-// in the UI are `Plan` / `Auto` / `Bypass`, but the IDs stay short and
-// stay aligned with what already lives in persisted drafts and event
-// payloads, so renaming the labels never requires a migration.
+// Three Bornastar-flavored modes (Plan/Ask/Agent) sitting on top of the
+// CLI primitives. Naming chosen for product clarity, not for parity with
+// the CLI's internal labels:
 //
-// We intentionally don't expose the SDK-only `auto` mode (model classifier,
-// research preview at time of writing) — passing that to the CLI silently
-// falls back to `default` and the user sees a permission prompt for every
-// edit, which is the bug we're fixing here.
-export type BornastarMode = 'plan' | 'edit' | 'agent'
+//   • Plan  — uses the CLI's plan mode as-is. Anthropic ships a tuned
+//             system prompt for it (structured plan output, ExitPlanMode
+//             tool); we don't fight that.
+//   • Ask   — bypassPermissions at the CLI level + a tools blacklist
+//             that hides Edit/Write/MultiEdit/NotebookEdit. Bash works
+//             so the user can ask `git status` / `npm test` style
+//             questions; the system prompt covers the "no destructive
+//             bash" rule the CLI can't enforce by itself.
+//   • Agent — bypassPermissions, no restrictions. Default mode.
+export type BornastarMode = 'plan' | 'ask' | 'agent'
 const MODE_MAP: Record<BornastarMode, string> = {
   plan: 'plan',
-  edit: 'acceptEdits',
+  ask: 'bypassPermissions',
   agent: 'bypassPermissions',
 }
+
+// Tools blocked at the CLI level for each mode. Plan handles its own
+// enforcement via the CLI's built-in plan-mode behavior, so the list
+// is empty there. Ask blocks every file-write tool — Claude literally
+// cannot call Edit/Write because the CLI rejects the call before it
+// reaches the model. Agent has no restrictions.
+const DISALLOWED_TOOLS_BY_MODE: Record<BornastarMode, string[]> = {
+  plan: [],
+  ask: ['Edit', 'Write', 'MultiEdit', 'NotebookEdit'],
+  agent: [],
+}
+
+// Mode-specific instruction we hand the model on top of whatever the
+// CLI injects. Plan ships with Anthropic's tuned plan prompt already,
+// so we leave its body empty and only the wrapper-naming rule below
+// gets appended. Ask gets the full "show, don't apply" guidance with
+// concrete verb lists; Agent gets the autonomy framing.
+const MODE_PROMPT: Record<BornastarMode, string> = {
+  plan: '',
+  ask: `You are in Ask mode.
+
+You CAN read code, search, and run safe Bash commands like \`git status\`,
+\`ls\`, \`npm test\`, \`cat\`, \`grep\`, \`find\`, etc. Use them freely to
+answer the user's questions.
+
+You CANNOT modify, create, or delete files. Edit, Write, MultiEdit and
+NotebookEdit are disabled at the CLI level. You also MUST NOT use Bash
+to write or change anything — no \`mkdir\`, \`rm\`, \`touch\`, \`mv\`, \`cp\`,
+\`git commit\`, \`git push\`, \`git checkout\`, \`npm install\`, shell
+redirects (\`>\`, \`>>\`, \`tee\`), or any other side-effecting command.
+
+When the user asks you to "write", "draft", "compose", "show", "sketch",
+or "propose" content (a README, a function, a config, an SQL migration,
+an email, anything textual) — produce that content INLINE in your chat
+response. The user wants to read and review it. Don't refuse. This is
+exactly what Ask is for.
+
+Only when the user asks you to APPLY, SAVE, EXECUTE, IMPLEMENT, COMMIT,
+RUN, INSTALL or CREATE the change in the project itself — that's the
+write side that Ask doesn't cover. Respond:
+"I can show you what I'd do here in chat, but to actually apply it I
+need Agent mode. Want me to draft it inline first, or are you ready to
+switch?"`,
+  agent: `You are in Agent mode.
+
+You have full autonomy — read, edit, write, create, delete, run any
+command. Execute the user's request without asking for permission
+unless an action is clearly destructive and irreversible (e.g. \`rm -rf\`
+outside the project, force-pushing main, dropping production data).`,
+}
+
+// Wrapper-naming rule appended to every mode. Claude knows the CLI
+// modes by their internal names (plan / acceptEdits / bypassPermissions);
+// here we tell it to use OUR names when nudging the user to switch, so
+// the chat copy lines up with the picker labels.
+const NAMING_RULE = `
+This wrapper exposes three modes to the user:
+- "Plan"  — read-only with structured plan output
+- "Ask"   — read-only conversational (no edits, no destructive bash)
+- "Agent" — full autonomy
+
+When you suggest the user switch modes, ALWAYS use these wrapper names
+(Plan / Ask / Agent). NEVER reference the underlying CLI names
+(plan / acceptEdits / bypassPermissions / default) in your replies.`
 
 export type ThinkingLevel = 'off' | 'low' | 'medium' | 'high'
 // Official Anthropic extended-thinking keywords. The CLI has no
@@ -54,7 +121,7 @@ export class ClaudeBridge extends EventEmitter {
   private process: ChildProcess | null = null
   private sessionId: string | null = null
   private buffer = ''
-  private mode: BornastarMode = 'edit'
+  private mode: BornastarMode = 'agent'
   private model?: string
   private thinking: ThinkingLevel = 'off'
 
@@ -62,7 +129,7 @@ export class ClaudeBridge extends EventEmitter {
     super()
     this.cwd = cwd
     this.sessionId = sessionId ?? null
-    this.mode = mode ?? 'edit'
+    this.mode = mode ?? 'agent'
     this.model = options?.model
     this.thinking = options?.thinking ?? 'off'
   }
@@ -76,11 +143,13 @@ export class ClaudeBridge extends EventEmitter {
       throw new Error('A prompt is already running. Interrupt first or wait for completion.')
     }
 
-    // Fallback to `acceptEdits` (the documented "Auto" CLI value) on the
-    // off chance an unknown id slips in via persisted state — never to
-    // the SDK-only `auto` literal, which the CLI silently downgrades to
-    // `default` and reintroduces the permission prompts on every edit.
-    const permissionMode = MODE_MAP[this.mode] ?? 'acceptEdits'
+    // Fallback to `bypassPermissions` (Agent's CLI value) on the off
+    // chance an unknown id slips in via persisted state from before the
+    // mode rename — matches the new default. Old persisted 'edit' values
+    // hit this fallback and behave like Agent, which is the closest
+    // semantic match for "auto-accept everything" and avoids leaving
+    // the user stuck in a broken-mode chat.
+    const permissionMode = MODE_MAP[this.mode] ?? 'bypassPermissions'
     // Prepend the thinking-budget keyword when the user asked for
     // extended thinking. Haiku ignores the keyword (no extended-thinking
     // support) — harmless leading sentence rather than a hard error.
@@ -93,6 +162,22 @@ export class ClaudeBridge extends EventEmitter {
       '--permission-mode', permissionMode,
       '--verbose',
     ]
+
+    // Tool blacklist (Ask mode mainly — blocks Edit/Write at the CLI
+    // before they reach the model). Empty list = flag omitted entirely.
+    const disallowed = DISALLOWED_TOOLS_BY_MODE[this.mode] ?? []
+    if (disallowed.length > 0) {
+      args.push('--disallowedTools', disallowed.join(','))
+    }
+
+    // Append our mode-specific instruction + the wrapper-naming rule.
+    // Plan ships with an empty body so we don't override Anthropic's
+    // tuned plan prompt — only the naming rule goes there.
+    const appendPrompt = (MODE_PROMPT[this.mode] + NAMING_RULE).trim()
+    if (appendPrompt) {
+      args.push('--append-system-prompt', appendPrompt)
+    }
+
     if (this.model) {
       args.push('--model', this.model)
     }
@@ -102,7 +187,7 @@ export class ClaudeBridge extends EventEmitter {
       args.push('--resume', this.sessionId)
     }
 
-    console.log(`[isolation] claude spawn cwd=${this.cwd} mode=${permissionMode} model=${this.model ?? 'default'} thinking=${this.thinking} resume=${this.sessionId?.slice(0, 8) ?? 'new'}`)
+    console.log(`[isolation] claude spawn cwd=${this.cwd} bornastarMode=${this.mode} cliMode=${permissionMode} disallowed=${disallowed.length} prompt=${appendPrompt.length}b model=${this.model ?? 'default'} thinking=${this.thinking} resume=${this.sessionId?.slice(0, 8) ?? 'new'}`)
     this.process = spawn('claude', args, {
       cwd: this.cwd,
       env: { ...process.env },

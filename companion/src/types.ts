@@ -59,9 +59,9 @@ export interface CompanionCommand {
   sessionId?: string
   projectId?: string
   prompt?: string
-  // Claude Code permission mode. See claude-bridge.ts MODE_MAP for the
-  // mapping to documented `--permission-mode` values.
-  mode?: 'plan' | 'edit' | 'agent'
+  // Bornastar UI mode. See claude-bridge.ts MODE_MAP / DISALLOWED_TOOLS_BY_MODE
+  // / MODE_PROMPT for the full mapping to CLI primitives.
+  mode?: 'plan' | 'ask' | 'agent'
   // Worktree isolation — when set, the Claude Code CLI is spawned in this
   // absolute path instead of project.path. Lets each chat in its own branch
   // operate on its own files.

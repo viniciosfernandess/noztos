@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     template?: string
     bornastarSessionId?: string
     claudeSessionId?: string
-    mode?: 'plan' | 'edit' | 'agent'
+    mode?: 'plan' | 'ask' | 'agent'
     model?: string
     thinking?: 'off' | 'low' | 'medium' | 'high'
     // Stable id the browser minted for the user's own message. The

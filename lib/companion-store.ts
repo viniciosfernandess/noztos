@@ -133,7 +133,7 @@ class CompanionStore {
     sessionId: string
     projectId: string
     prompt: string
-    opts?: { mode?: 'plan' | 'edit' | 'agent'; model?: string; thinking?: 'off' | 'low' | 'medium' | 'high' }
+    opts?: { mode?: 'plan' | 'ask' | 'agent'; model?: string; thinking?: 'off' | 'low' | 'medium' | 'high' }
   }>> = new Map()
 
   // ── Snapshot helpers (referentially stable between notifies) ──
@@ -267,7 +267,7 @@ class CompanionStore {
       sessionId: string
       projectId: string
       prompt: string
-      opts?: { mode?: 'plan' | 'edit' | 'agent'; model?: string; thinking?: 'off' | 'low' | 'medium' | 'high' }
+      opts?: { mode?: 'plan' | 'ask' | 'agent'; model?: string; thinking?: 'off' | 'low' | 'medium' | 'high' }
     },
   ): void {
     const list = this.worktreeSendQueue.get(worktreeId) ?? []
@@ -646,7 +646,7 @@ class CompanionStore {
     projectId: string,
     prompt: string,
     opts?: {
-      mode?: 'plan' | 'edit' | 'agent'
+      mode?: 'plan' | 'ask' | 'agent'
       model?: string
       thinking?: 'off' | 'low' | 'medium' | 'high'
     },
@@ -673,7 +673,7 @@ class CompanionStore {
           userMsgId,
           claudeSessionId: claudeSid,
           bornastarSessionId: sessionId,
-          mode: opts?.mode ?? 'edit',
+          mode: opts?.mode ?? 'agent',
           model: opts?.model,
           thinking: opts?.thinking ?? 'off',
         }),

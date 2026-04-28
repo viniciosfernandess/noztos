@@ -5559,11 +5559,12 @@ function ChatPanel({
       isPaginatingRef.current = false
     })
   }, [projectId, sessionId, hasMoreOlder, loadingOlder, oldestMessageId])
-  // Three modes — `plan`, `edit` (label "Auto" = acceptEdits) and `agent`
-  // (label "Bypass" = bypassPermissions). Defaults to `edit` so files
-  // get auto-accepted but Bash still asks, matching what the user expects
-  // from a Claude Code "Auto" session.
-  const [claudeMode, setClaudeMode] = useState<'plan' | 'edit' | 'agent'>('edit')
+  // Three Bornastar modes — Plan (CLI plan mode), Ask (bypassPermissions
+  // + Edit/Write/MultiEdit/NotebookEdit blacklisted), Agent (full bypass).
+  // Defaults to Agent so a fresh chat just runs without permission
+  // friction; the user can step down to Ask/Plan when they want
+  // guardrails. See companion/src/claude-bridge.ts for the full mapping.
+  const [claudeMode, setClaudeMode] = useState<'plan' | 'ask' | 'agent'>('agent')
 
   // The companion daemon has its own project registry with hex IDs keyed by
   // local path. We resolve the Bornastar DB projectId → companion hex ID

@@ -1825,9 +1825,13 @@ export function SessionResultCard({ message }: { message: ChatMessage }) {
 
 // IDs match the documented Claude Code `--permission-mode` values via
 // the daemon's MODE_MAP. Labels here use the friendlier names the
-// official VSCode extension shows so users coming from there feel at
-// home: Plan / Auto (= acceptEdits) / Bypass (= bypassPermissions).
-type ModeId = 'plan' | 'edit' | 'agent'
+// Bornastar exposes three modes (Plan/Ask/Agent) on top of Claude Code's
+// CLI primitives. Plan = the CLI's plan mode (Anthropic-tuned plan output);
+// Ask = bypassPermissions + Edit/Write/MultiEdit/NotebookEdit blacklisted
+// at the CLI level + a system-prompt rule to keep destructive bash off;
+// Agent = bypassPermissions, no restrictions. See companion/src/claude-bridge.ts
+// for the full mapping.
+type ModeId = 'plan' | 'ask' | 'agent'
 
 const MODE_ICONS: Record<ModeId, (props: { className?: string }) => React.ReactElement> = {
   plan: ({ className }) => (
@@ -1837,9 +1841,9 @@ const MODE_ICONS: Record<ModeId, (props: { className?: string }) => React.ReactE
       <path d="M9 12h6M9 16h4" />
     </svg>
   ),
-  edit: ({ className }) => (
+  ask: ({ className }) => (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z" />
+      <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
     </svg>
   ),
   agent: ({ className }) => (
@@ -1851,9 +1855,9 @@ const MODE_ICONS: Record<ModeId, (props: { className?: string }) => React.ReactE
 }
 
 const MODES: { id: ModeId; label: string; desc: string }[] = [
-  { id: 'plan', label: 'Plan', desc: 'Research only, no edits' },
-  { id: 'edit', label: 'Auto', desc: 'Auto-accept file edits, ask before shell commands' },
-  { id: 'agent', label: 'Bypass', desc: 'Full autonomy — no permission prompts' },
+  { id: 'plan', label: 'Plan', desc: 'Structured plan output, no execution' },
+  { id: 'ask', label: 'Ask', desc: 'Read & search freely, no file changes' },
+  { id: 'agent', label: 'Agent', desc: 'Full autonomy, executes everything' },
 ]
 
 export function ModeSelector({
@@ -1865,10 +1869,11 @@ export function ModeSelector({
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
-  // Fallback to "Auto" (acceptEdits) — same default as the daemon when
-  // no mode is specified. Avoids ever rendering a stale id from before
-  // the modes list was trimmed.
-  const current = MODES.find((m) => m.id === mode) ?? MODES[1]
+  // Fallback to Agent (the daemon default). Old persisted ids like
+  // 'edit' from before the rename land here and render as Agent — the
+  // closest semantic match for "auto-accept everything" — instead of
+  // showing a blank label.
+  const current = MODES.find((m) => m.id === mode) ?? MODES[2]
   const CurrentIcon = MODE_ICONS[current.id]
 
   useEffect(() => {

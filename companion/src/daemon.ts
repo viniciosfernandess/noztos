@@ -476,7 +476,7 @@ export class Daemon extends EventEmitter {
     const bridgeKey = cmd.bornastarSessionId ?? project.id
 
     const scope = cmd.worktreePath ? 'worktree' : 'main'
-    console.log(`[isolation] prompt project=${project.name} scope=${scope} cwd=${cwd} bridgeKey=${bridgeKey.slice(0, 8)} mode=${cmd.mode ?? 'edit'}`)
+    console.log(`[isolation] prompt project=${project.name} scope=${scope} cwd=${cwd} bridgeKey=${bridgeKey.slice(0, 8)} mode=${cmd.mode ?? 'agent'}`)
 
     let bridge = this.bridges.get(bridgeKey)
     if (bridge?.isRunning()) {
@@ -487,7 +487,7 @@ export class Daemon extends EventEmitter {
       return
     }
 
-    bridge = new ClaudeBridge(cwd, cmd.sessionId ?? undefined, cmd.mode ?? 'edit', {
+    bridge = new ClaudeBridge(cwd, cmd.sessionId ?? undefined, cmd.mode ?? 'agent', {
       model: cmd.model,
       thinking: cmd.thinking,
     })
@@ -513,7 +513,7 @@ export class Daemon extends EventEmitter {
         createdAt: Date.now(),
         role: 'user',
         content: cmd.prompt,
-        permissionMode: cmd.mode ?? 'edit',
+        permissionMode: cmd.mode ?? 'agent',
         ...(cmd.model && { model: cmd.model }),
       }
       const idSource = cmd.userMsgId ? 'browser' : 'generated'
