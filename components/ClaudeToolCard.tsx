@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect } from 'react'
 import type { ChatMessage } from '@/lib/hooks/useCompanionStream'
 
 // ── Work block (groups consecutive tool messages) ───────────────────
@@ -183,8 +183,13 @@ interface TodoItem {
 //     default ("◐ <current task>  3/5  ▼") that always stays visible,
 //     click toggles the full checklist below. Stays even after the
 //     work block collapses, so the user can always see where Claude is.
-export function TodoBlock({ message, variant = 'inline' }: { message: ChatMessage; variant?: 'inline' | 'pinned' }) {
-  const [pinnedExpanded, setPinnedExpanded] = useState(false)
+export function TodoBlock({ message, variant = 'inline', active = false }: { message: ChatMessage; variant?: 'inline' | 'pinned'; active?: boolean }) {
+  // Pinned card expansion: tracks an explicit user override (null = "no
+  // override, follow the default"). Default is `!active` — open while
+  // showing the plan or the final result, closed while Claude is mid-
+  // execution to keep the chat compact. Once the user clicks to toggle,
+  // their choice sticks even across the active→idle transition.
+  const [userOverride, setUserOverride] = useState<boolean | null>(null)
   const input = message.toolInput as { todos?: unknown } | undefined
   const todos = Array.isArray(input?.todos) ? (input.todos as TodoItem[]) : null
   if (!todos || todos.length === 0) return null
@@ -242,12 +247,32 @@ export function TodoBlock({ message, variant = 'inline' }: { message: ChatMessag
     )
   }
 
-  // ── Pinned variant — Cursor-style compact header, click to expand ─
+  // ── Pinned variant — single card, dynamic default expansion ────
+  //
+  // Always wrapped in the same translucent card so the visual identity
+  // doesn't shift when Claude transitions from planning → executing →
+  // done. What CHANGES is whether the body is expanded by default:
+  //
+  //   • Active (mid-execution)    → header collapsed by default, just
+  //                                 a single live line "◐ <current task>
+  //                                 3/5". Logs above are already noisy;
+  //                                 the compact header keeps the chat
+  //                                 column readable while still showing
+  //                                 progress at a glance.
+  //   • Idle (plan or finished)   → body open by default. The list IS
+  //                                 the takeaway at this point — no
+  //                                 reason to hide it behind a click.
+  //
+  // The user can always toggle. `userOverride` (null = follow default,
+  // bool = explicit user choice) makes their click sticky even when
+  // active flips false at end of turn.
+  const expanded = userOverride !== null ? userOverride : !active
+
   // "Current step" is whichever task is actively being worked on. If
-  // none is in_progress (e.g. between updates) we fall back to the
-  // first pending; if nothing is pending we use the last completed
-  // (the "all done" terminal state). currentStep is 1-based for
-  // display: `<currentStep>/<total>`.
+  // none is in_progress (between updates / not yet started) we fall
+  // back to the first pending; if nothing is pending we use the last
+  // completed (terminal "all done" state). Used by the compact header
+  // when active=true to show what Claude is actually on.
   let currentIdx = todos.findIndex((t) => t.status === 'in_progress')
   if (currentIdx === -1) currentIdx = todos.findIndex((t) => (t.status ?? 'pending') !== 'completed')
   if (currentIdx === -1) currentIdx = todos.length - 1
@@ -267,24 +292,41 @@ export function TodoBlock({ message, variant = 'inline' }: { message: ChatMessag
     <div className="my-2 overflow-hidden rounded-lg border border-white/10 bg-white/[0.03] text-[11px] leading-5 backdrop-blur-sm">
       <button
         type="button"
-        onClick={() => setPinnedExpanded((v) => !v)}
+        onClick={() => setUserOverride(!expanded)}
         className="group flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors hover:bg-white/[0.04]"
       >
-        <span className={`shrink-0 font-mono text-[15px] leading-5 ${currentTone}`}>{currentIcon}</span>
-        <span className={`min-w-0 flex-1 truncate ${currentTone}`}>
-          {currentText}
-        </span>
-        <span className={`shrink-0 font-mono text-[10px] ${allDone ? 'text-emerald-400' : 'text-zinc-500'}`}>
-          {currentIdx + 1}/{todos.length}
-        </span>
+        {active ? (
+          // Active header — current step icon + activeForm + N/total
+          <>
+            <span className={`shrink-0 font-mono text-[15px] leading-5 ${currentTone}`}>{currentIcon}</span>
+            <span className={`min-w-0 flex-1 truncate ${currentTone}`}>
+              {currentText}
+            </span>
+            <span className={`shrink-0 font-mono text-[10px] ${allDone ? 'text-emerald-400' : 'text-zinc-500'}`}>
+              {currentIdx + 1}/{todos.length}
+            </span>
+          </>
+        ) : (
+          // Idle header — "Tasks" label + count breakdown. Cleaner than
+          // showing a single task because the body below already shows
+          // every task with its status.
+          <>
+            <span className="font-medium text-zinc-200">Tasks</span>
+            <span className="min-w-0 flex-1 space-x-2 font-mono text-[10px]">
+              {counts.completed > 0 && <span className="text-emerald-400">{counts.completed} done</span>}
+              {counts.in_progress > 0 && <span className="text-amber-400">{counts.in_progress} active</span>}
+              {counts.pending > 0 && <span className="text-zinc-500">{counts.pending} pending</span>}
+            </span>
+          </>
+        )}
         <svg
-          className={`h-3 w-3 shrink-0 text-zinc-600 transition-transform group-hover:text-zinc-400 ${pinnedExpanded ? 'rotate-180' : ''}`}
+          className={`h-3 w-3 shrink-0 text-zinc-600 transition-transform group-hover:text-zinc-400 ${expanded ? 'rotate-180' : ''}`}
           fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"
         >
           <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
         </svg>
       </button>
-      {pinnedExpanded && (
+      {expanded && (
         <div className="max-h-64 overflow-auto border-t border-white/5 px-1.5 py-1">
           {todos.map((todo, i) => renderRow(todo, i, true))}
         </div>
@@ -473,10 +515,13 @@ export function WorkBlock({
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // Follow `active`: open when streaming starts, close when it ends.
-  // User's manual click only persists until the next active flip —
-  // which for a finished turn never happens, so their choice sticks
-  // for the rest of the session.
-  useEffect(() => {
+  // useLayoutEffect (not useEffect) so the sync to `active` happens
+  // BEFORE the browser paints — without it there's a one-frame gap
+  // where the "Thought for Xs" header and the still-expanded list
+  // both render at once, which read as a "blink" right when the turn
+  // finishes and the pinned TodoBlock below is also re-flowing. With
+  // useLayoutEffect the user only ever sees the final, settled state.
+  useLayoutEffect(() => {
     setExpanded(active)
   }, [active])
 

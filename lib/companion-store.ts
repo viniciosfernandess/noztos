@@ -471,7 +471,21 @@ class CompanionStore {
     const slice = this.getOrCreateSlice(sessionId)
     if (slice.messages.has(incoming.id)) {
       const existing = slice.messages.get(incoming.id)!
-      slice.messages.set(incoming.id, { ...existing, ...incoming })
+      // Filter out explicit `undefined` fields BEFORE merging — without
+      // this, a sync-replay frame that doesn't carry e.g. `toolName`
+      // would set `incoming.toolName = undefined` and the spread below
+      // would override the existing live tool row's name with undefined.
+      // This is exactly how the pinned TodoBlock kept "disappearing"
+      // mid-stream: the replay clobbered toolName='TodoWrite' on the
+      // live row, so `pinnedTodo` extraction (group[j].toolName ===
+      // 'TodoWrite') stopped finding it. Filtering keeps replays as
+      // strict additions — they fill in fields the live row didn't
+      // know yet, never erase fields the live row already carried.
+      const definedFields: Partial<ChatMessage> = {}
+      for (const [k, v] of Object.entries(incoming)) {
+        if (v !== undefined) (definedFields as Record<string, unknown>)[k] = v
+      }
+      slice.messages.set(incoming.id, { ...existing, ...definedFields } as ChatMessage)
     } else if (opts?.fuzzyMatch) {
       let adopted = false
       for (const [existingId, existing] of slice.messages) {

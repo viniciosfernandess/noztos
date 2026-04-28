@@ -6116,15 +6116,23 @@ function ChatPanel({
               // the turn produced one. The pinned block stays visible
               // even after collapse — that's the whole point of pulling
               // it out.
+              // Stable keys for both children — without an explicit key
+              // on TodoBlock, React infers identity from position. If
+              // mid-stream the WorkBlock re-renders into a different
+              // structure (e.g. expanded → collapsed), the inferred
+              // index can shift and the TodoBlock briefly unmounts /
+              // remounts. Pinning the key to the work block's key + a
+              // fixed suffix keeps it the same instance across every
+              // event in the turn.
               return (
                 <Fragment key={item.key}>
                   <WorkBlock messages={item.msgs} active={isActive} />
-                  {item.pinnedTodo && <TodoBlock message={item.pinnedTodo} variant="pinned" />}
+                  {item.pinnedTodo && <TodoBlock key={`${item.key}-pinned`} message={item.pinnedTodo} variant="pinned" active={isActive} />}
                 </Fragment>
               )
             }
             if (item.kind === 'pinnedTodo') {
-              return <TodoBlock key={item.msg.id} message={item.msg} variant="pinned" />
+              return <TodoBlock key={item.msg.id} message={item.msg} variant="pinned" active={false} />
             }
             const msg = item.msg
             if (msg.role === 'user') {
