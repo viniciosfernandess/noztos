@@ -1322,8 +1322,8 @@ function TodoTransitionRow({ message }: { message: ChatMessage }) {
   const allDone = !inProgress && !nextPending && !!lastCompleted
 
   return (
-    <div className="flex items-start gap-2 px-1 py-0.5 text-[12px] leading-5">
-      <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-zinc-500" />
+    <div className="relative flex items-start py-0.5 pl-4 pr-1 text-[12px] leading-5">
+      <span className="pointer-events-none absolute left-[-15px] top-[9px] h-1.5 w-1.5 rounded-full bg-zinc-500 ring-2 ring-zinc-950" />
       <span className="min-w-0 flex-1">
         {lastCompleted && (
           <>
@@ -1373,13 +1373,13 @@ function CompactToolRow({ message }: { message: ChatMessage }) {
     const isThinking = message.role === 'thinking'
     const text = message.content ?? ''
     return (
-      <div className="group">
+      <div className="group relative">
+        <span aria-hidden className="pointer-events-none absolute left-[-15px] top-[9px] h-1.5 w-1.5 rounded-full bg-zinc-500 ring-2 ring-zinc-950" />
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
-          className="flex w-full items-start gap-2 px-1 py-0.5 text-left text-[12px] leading-5 transition-colors hover:bg-white/5"
+          className="flex w-full items-start py-0.5 pl-4 pr-1 text-left text-[12px] leading-5 transition-colors hover:bg-white/5"
         >
-          <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-zinc-500" />
           <span className="min-w-0 flex-1">
             {isThinking && <span className="font-medium text-zinc-300">Thinking</span>}
             {isThinking && <span className="mx-1.5 text-zinc-600">·</span>}
@@ -1447,17 +1447,20 @@ function CompactToolRow({ message }: { message: ChatMessage }) {
                       : null
 
   return (
-    <div className="group">
-      <button
-        type="button"
-        onClick={() => !inlineBlock && hasResult && setExpanded((v) => !v)}
-        className="flex w-full items-start gap-2 px-1 py-0.5 text-left text-[12px] leading-5 transition-colors hover:bg-white/5"
-      >
-        <span className={`mt-[7px] h-1 w-1 shrink-0 rounded-full ${
+    <div className="group relative">
+      <span
+        aria-hidden
+        className={`pointer-events-none absolute left-[-15px] top-[9px] h-1.5 w-1.5 rounded-full ring-2 ring-zinc-950 ${
           isError ? 'bg-red-400'
           : isLoading ? 'bg-amber-400 animate-pulse'
           : 'bg-zinc-500'
-        }`} />
+        }`}
+      />
+      <button
+        type="button"
+        onClick={() => !inlineBlock && hasResult && setExpanded((v) => !v)}
+        className="flex w-full items-start py-0.5 pl-4 pr-1 text-left text-[12px] leading-5 transition-colors hover:bg-white/5"
+      >
         <span className="min-w-0 flex-1">
           <span className="font-medium text-zinc-300">{label}</span>
           {detail && !isBash && (
@@ -1498,7 +1501,6 @@ export function WorkBlock({
   durationMs?: number
 }) {
   const [expanded, setExpanded] = useState(active)
-  const scrollRef = useRef<HTMLDivElement>(null)
 
   // Follow `active`: open when streaming starts, close when it ends.
   // useLayoutEffect (not useEffect) so the sync to `active` happens
@@ -1510,16 +1512,6 @@ export function WorkBlock({
   useLayoutEffect(() => {
     setExpanded(active)
   }, [active])
-
-  // Keep the scroller glued to the bottom on every new row. Runs on
-  // first mount too, so opening a chat mid-stream lands at the newest
-  // step without the user having to scroll.
-  useEffect(() => {
-    if (!expanded) return
-    const el = scrollRef.current
-    if (!el) return
-    el.scrollTop = el.scrollHeight
-  }, [expanded, messages.length])
 
   if (messages.length === 0) return null
 
@@ -1555,15 +1547,14 @@ export function WorkBlock({
         </button>
       )}
 
-      {/* Steps — inline in the chat flow, no container. While the turn
-          is active we cap the height so the chat doesn't scroll down
-          with every new tool; after completion we allow more room
-          because the user explicitly asked to see it. */}
+      {/* Steps — VSCode-style timeline: dashed vertical guide on the
+          left, rows hang off it. No scroll container, no max-height —
+          the chat grows naturally with each new tool event so the user
+          watches steps roll in instead of fighting an inner scroller.
+          When the turn ends the whole thing collapses behind the
+          "Thought for Xs" stub above; click re-expands it in place. */}
       {expanded && (
-        <div
-          ref={scrollRef}
-          className={`overflow-y-auto ${active ? 'max-h-48' : 'max-h-96'}`}
-        >
+        <div className="my-1 ml-1.5 border-l border-dashed border-zinc-600 pl-3">
           {messages.map((m) => (
             <CompactToolRow key={m.id} message={m} />
           ))}
