@@ -5650,28 +5650,18 @@ function ChatPanel({
   const [thinkingLevel, setThinkingLevel] = useState<string>('off')
 
   // Plan-mode approval bridge. ExitPlanModeBlock dispatches this event
-  // when the user clicks "Approve & switch to Agent": we flip the
-  // picker to Agent and immediately send the approval as a regular
-  // user turn (with mode override) so Claude resumes execution without
-  // the user having to type. Sidesteps ExitPlanMode's undocumented
-  // tool_result protocol entirely — Claude on the next turn just sees
-  // a plain user message in Agent mode and proceeds. Safe even if
-  // multiple tabs are open: the listener only fires inside the active
-  // ChatPanel instance and the message goes to its sessionId.
+  // when the user clicks "Approve & switch to Agent": we ONLY flip the
+  // picker to Agent — execution is left to the user's next message so
+  // they keep control over what Claude does next (could be "executa",
+  // could be "antes faz X primeiro", could be a completely different
+  // task). The mode change is the commitment; the prompt that follows
+  // is theirs. Sidesteps ExitPlanMode's undocumented tool_result
+  // protocol entirely.
   useEffect(() => {
-    const handler = () => {
-      if (!sessionId || !companionProjectId) return
-      setClaudeMode('agent')
-      const opts = {
-        mode: 'agent' as const,
-        model: selectedModel,
-        thinking: (selectedModel === 'haiku' ? 'off' : (thinkingLevel as 'off' | 'low' | 'medium' | 'high')) as 'off' | 'low' | 'medium' | 'high',
-      }
-      void companionStore.sendPrompt(sessionId, companionProjectId, 'Aprovado, pode executar o plano.', opts)
-    }
+    const handler = () => setClaudeMode('agent')
     window.addEventListener('bornastar-approve-plan', handler)
     return () => window.removeEventListener('bornastar-approve-plan', handler)
-  }, [sessionId, companionProjectId, selectedModel, thinkingLevel])
+  }, [])
 
   const bottomRef = useRef<HTMLDivElement>(null)
   // Scroll container ref + pagination flag. Together they let us
@@ -6014,7 +6004,7 @@ function ChatPanel({
       {/* Messages — renders companion stream or legacy engine */}
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto p-4 space-y-3"
+        className="chat-scroll flex-1 overflow-y-auto p-4 space-y-3"
         onScroll={(e) => {
           // When the user scrolls near the top, fetch the previous page
           // of messages. 100px threshold so the scrollbar settles on the

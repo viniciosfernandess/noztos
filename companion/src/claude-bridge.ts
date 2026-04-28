@@ -36,13 +36,18 @@ const MODE_MAP: Record<BornastarMode, string> = {
   agent: 'bypassPermissions',
 }
 
-// Tools blocked at the CLI level for each mode. Plan handles its own
-// enforcement via the CLI's built-in plan-mode behavior, so the list
-// is empty there. Ask blocks every file-write tool — Claude literally
-// cannot call Edit/Write because the CLI rejects the call before it
-// reaches the model. Agent has no restrictions.
+// Tools blocked at the CLI level for each mode. Ask blocks every
+// file-write tool — Claude literally cannot call Edit/Write because
+// the CLI rejects the call before it reaches the model. Plan blocks
+// AskUserQuestion specifically: in non-interactive mode the CLI fails
+// that tool instantly with a synthetic "No response requested." reply
+// (upstream issue anthropics/claude-code#16712), which Claude then
+// interprets as the user refusing to answer and proceeds on a wrong
+// guess. Removing the tool entirely flips the model into asking via
+// plain text, which works exactly as the user expects in chat.
+// Agent has no restrictions.
 const DISALLOWED_TOOLS_BY_MODE: Record<BornastarMode, string[]> = {
-  plan: [],
+  plan: ['AskUserQuestion'],
   ask: ['Edit', 'Write', 'MultiEdit', 'NotebookEdit'],
   agent: [],
 }

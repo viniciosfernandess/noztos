@@ -9,6 +9,34 @@
   display: none;
 }
 
+/* Slim always-visible scrollbar for the chat — overrides the macOS
+   overlay default that expands on hover into a chunky square. The thumb
+   stays at 6px wide, brightening slightly on hover instead of resizing
+   so the layout never shifts and the chat keeps the same minimal look
+   it has during active scroll. */
+.chat-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+.chat-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.chat-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.chat-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  border: none;
+}
+.chat-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+.chat-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
