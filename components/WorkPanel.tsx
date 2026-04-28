@@ -27,7 +27,7 @@ import {
   useBusySessions, useUnreadSessions, useCompanionStatus, useCompanionInfo, usePendingSessions,
 } from '@/lib/hooks/useCompanionStore'
 import { CompanionProvider, setActiveSessionIdForUnread } from './CompanionProvider'
-import { ClaudeToolCard, SessionResultCard, ModeSelector, ModelSelector, ThinkingSelector, CompanionStatusBadge, WorkBlock, TodoBlock } from './ClaudeToolCard'
+import { ClaudeToolCard, SessionResultCard, ModeSelector, ModelSelector, ThinkingSelector, CompanionStatusBadge, WorkBlock, TodoBlock, ExitPlanModeBlock } from './ClaudeToolCard'
 import { ReportBadge } from './ChatReport'
 import type { ChatReport } from '@/lib/report-types'
 
@@ -5648,6 +5648,31 @@ function ChatPanel({
   const [showReminderModal, setShowReminderModal] = useState(false)
   const [selectedModel, setSelectedModel] = useState<string>('sonnet')
   const [thinkingLevel, setThinkingLevel] = useState<string>('off')
+
+  // Plan-mode approval bridge. ExitPlanModeBlock dispatches this event
+  // when the user clicks "Approve & switch to Agent": we flip the
+  // picker to Agent and immediately send the approval as a regular
+  // user turn (with mode override) so Claude resumes execution without
+  // the user having to type. Sidesteps ExitPlanMode's undocumented
+  // tool_result protocol entirely — Claude on the next turn just sees
+  // a plain user message in Agent mode and proceeds. Safe even if
+  // multiple tabs are open: the listener only fires inside the active
+  // ChatPanel instance and the message goes to its sessionId.
+  useEffect(() => {
+    const handler = () => {
+      if (!sessionId || !companionProjectId) return
+      setClaudeMode('agent')
+      const opts = {
+        mode: 'agent' as const,
+        model: selectedModel,
+        thinking: (selectedModel === 'haiku' ? 'off' : (thinkingLevel as 'off' | 'low' | 'medium' | 'high')) as 'off' | 'low' | 'medium' | 'high',
+      }
+      void companionStore.sendPrompt(sessionId, companionProjectId, 'Aprovado, pode executar o plano.', opts)
+    }
+    window.addEventListener('bornastar-approve-plan', handler)
+    return () => window.removeEventListener('bornastar-approve-plan', handler)
+  }, [sessionId, companionProjectId, selectedModel, thinkingLevel])
+
   const bottomRef = useRef<HTMLDivElement>(null)
   // Scroll container ref + pagination flag. Together they let us
   // preserve the user's scroll position when older messages are
@@ -6057,6 +6082,7 @@ function ChatPanel({
             | { kind: 'single'; msg: ChatMessage }
             | { kind: 'work'; msgs: ChatMessage[]; key: string; pinnedTodo?: ChatMessage }
             | { kind: 'pinnedTodo'; msg: ChatMessage }
+            | { kind: 'pinnedExitPlan'; msg: ChatMessage }
           const items: Item[] = []
           const isBoundary = (m: ChatMessage) =>
             m.role === 'user' || (m.role === 'system' && m.costUsd !== undefined)
@@ -6099,9 +6125,25 @@ function ChatPanel({
             for (let j = group.length - 1; j >= 0; j--) {
               if (group[j].toolName === 'TodoWrite') { pinnedTodo = group[j]; break }
             }
+            // ExitPlanMode is the call-to-action that ends Plan mode —
+            // pull it OUT of the work block so the Approve / Keep
+            // refining buttons stay visible after "Thought for Xs"
+            // collapses. Different from TodoWrite: we ALSO remove it
+            // from group.msgs (no duplicate render inside the block).
+            // Placed AFTER finalText so the natural reading order is
+            // logs → analysis → action card sitting next to the input.
+            let pinnedExitPlan: ChatMessage | undefined
+            for (let j = group.length - 1; j >= 0; j--) {
+              if (group[j].toolName === 'ExitPlanMode') {
+                pinnedExitPlan = group[j]
+                group.splice(j, 1)
+                break
+              }
+            }
             if (group.length > 0) items.push({ kind: 'work', msgs: group, key: group[0].id, pinnedTodo })
             else if (pinnedTodo) items.push({ kind: 'pinnedTodo', msg: pinnedTodo })
             if (finalText) items.push({ kind: 'single', msg: finalText })
+            if (pinnedExitPlan) items.push({ kind: 'pinnedExitPlan', msg: pinnedExitPlan })
           }
           // A work block is "active" only when it's LITERALLY the last
           // item in the chat (nothing after it, not even a user msg from
@@ -6134,6 +6176,9 @@ function ChatPanel({
             }
             if (item.kind === 'pinnedTodo') {
               return <TodoBlock key={item.msg.id} message={item.msg} variant="pinned" active={false} />
+            }
+            if (item.kind === 'pinnedExitPlan') {
+              return <ExitPlanModeBlock key={item.msg.id} message={item.msg} />
             }
             const msg = item.msg
             if (msg.role === 'user') {

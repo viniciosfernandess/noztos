@@ -183,7 +183,7 @@ function ReadBlock({ message }: { message: ChatMessage }) {
   const language = langFromPath(path)
 
   return (
-    <div className="ml-3 mt-0.5 overflow-hidden rounded border border-white/5 bg-white/[0.02] text-[11px] leading-5">
+    <div className="ml-3 mt-0.5 max-w-2xl overflow-hidden rounded border border-white/5 bg-white/[0.02] text-[11px] leading-5">
       <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-2 py-1 text-[10px]">
         <span className="font-mono text-zinc-300">
           {shortPath(path) || 'file'}
@@ -283,7 +283,7 @@ function WriteBlock({ message }: { message: ChatMessage }) {
   const statusTone = isError ? 'text-red-400' : isLoading ? 'text-zinc-500' : 'text-emerald-400'
 
   return (
-    <div className="ml-3 mt-0.5 overflow-hidden rounded border border-white/5 bg-white/[0.02] text-[11px] leading-5">
+    <div className="ml-3 mt-0.5 max-w-2xl overflow-hidden rounded border border-white/5 bg-white/[0.02] text-[11px] leading-5">
       <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-2 py-1 text-[10px]">
         <span className="font-mono text-zinc-300">
           {shortPath(path) || 'file'}
@@ -441,7 +441,7 @@ function GrepBlock({ message }: { message: ChatMessage }) {
   }
 
   return (
-    <div className="ml-3 mt-0.5 overflow-hidden rounded border border-white/5 bg-white/[0.02] text-[11px] leading-5">
+    <div className="ml-3 mt-0.5 max-w-2xl overflow-hidden rounded border border-white/5 bg-white/[0.02] text-[11px] leading-5">
       <div className="flex items-center justify-between gap-2 border-b border-white/5 bg-white/[0.02] px-2 py-1 text-[10px]">
         <span className="min-w-0 truncate font-mono text-zinc-300">
           <span className="text-zinc-500">grep </span>
@@ -540,7 +540,7 @@ function GlobBlock({ message }: { message: ChatMessage }) {
   const headerPath = shortPath(path)
 
   return (
-    <div className="ml-3 mt-0.5 overflow-hidden rounded border border-white/5 bg-white/[0.02] text-[11px] leading-5">
+    <div className="ml-3 mt-0.5 max-w-2xl overflow-hidden rounded border border-white/5 bg-white/[0.02] text-[11px] leading-5">
       <div className="flex items-center justify-between gap-2 border-b border-white/5 bg-white/[0.02] px-2 py-1 text-[10px]">
         <span className="min-w-0 truncate font-mono text-zinc-300">
           <span className="text-zinc-500">glob </span>
@@ -658,7 +658,7 @@ function LSBlock({ message }: { message: ChatMessage }) {
   }
 
   return (
-    <div className="ml-3 mt-0.5 overflow-hidden rounded border border-white/5 bg-white/[0.02] text-[11px] leading-5">
+    <div className="ml-3 mt-0.5 max-w-2xl overflow-hidden rounded border border-white/5 bg-white/[0.02] text-[11px] leading-5">
       <div className="flex items-center justify-between gap-2 border-b border-white/5 bg-white/[0.02] px-2 py-1 text-[10px]">
         <span className="min-w-0 truncate font-mono text-zinc-300">
           <span className="text-zinc-500">ls </span>
@@ -737,7 +737,7 @@ function WebFetchBlock({ message }: { message: ChatMessage }) {
   const statusTone = isError ? 'text-red-400' : isLoading ? 'text-zinc-500' : 'text-emerald-400'
 
   return (
-    <div className="ml-3 mt-0.5 overflow-hidden rounded border border-white/5 bg-white/[0.02] text-[11px] leading-5">
+    <div className="ml-3 mt-0.5 max-w-2xl overflow-hidden rounded border border-white/5 bg-white/[0.02] text-[11px] leading-5">
       <div className="flex items-center justify-between gap-2 border-b border-white/5 bg-white/[0.02] px-2 py-1 text-[10px]">
         <span className="min-w-0 truncate font-mono text-zinc-300">
           <span className="text-zinc-500">fetch </span>
@@ -864,7 +864,7 @@ function WebSearchBlock({ message }: { message: ChatMessage }) {
     : 'text-zinc-500'
 
   return (
-    <div className="ml-3 mt-0.5 overflow-hidden rounded border border-white/5 bg-white/[0.02] text-[11px] leading-5">
+    <div className="ml-3 mt-0.5 max-w-2xl overflow-hidden rounded border border-white/5 bg-white/[0.02] text-[11px] leading-5">
       <div className="flex items-center justify-between gap-2 border-b border-white/5 bg-white/[0.02] px-2 py-1 text-[10px]">
         <span className="min-w-0 truncate font-mono text-zinc-300">
           <span className="text-zinc-500">search </span>
@@ -921,6 +921,98 @@ function WebSearchBlock({ message }: { message: ChatMessage }) {
         </button>
       )}
     </div>
+  )
+}
+
+// ── ExitPlanMode block (Plan-mode plan + Approve / Keep-refining) ─
+//
+// Anthropic's plan mode ends with the model calling `ExitPlanMode`
+// with the proposed plan in markdown. The official UI renders an
+// interactive Approve/Reject dialog there; without one the user gets
+// stuck because the wrapper has no way to advance.
+//
+// We sidestep the undocumented ExitPlanMode tool_result protocol
+// (filed as upstream bugs) and instead use the picker + chat as the
+// "approval" channel: clicking Approve dispatches a custom event the
+// WorkPanel listens for, which switches the picker to Agent and
+// auto-sends an "approve, execute" message. Keep-refining just
+// dismisses the buttons and lets the user keep typing in Plan.
+//
+// Plan markdown gets a richer render than the raw fallback would —
+// numbered lists, code blocks and emphasis read like an actual plan
+// document instead of a JSON dump.
+export function ExitPlanModeBlock({ message }: { message: ChatMessage }) {
+  const planText = (message.toolInput?.plan as string) ?? ''
+  // `dismissed` hides the action buttons after the user picks one,
+  // so the card stays in the log as a record of what was decided
+  // without leaving live buttons that could fire twice.
+  const [dismissed, setDismissed] = useState(false)
+
+  const handleApprove = () => {
+    setDismissed(true)
+    window.dispatchEvent(new CustomEvent('bornastar-approve-plan', {
+      detail: { plan: planText },
+    }))
+  }
+  const handleRefine = () => {
+    setDismissed(true)
+  }
+
+  return (
+    <div className="ml-3 mt-0.5 max-w-2xl overflow-hidden rounded border border-amber-500/20 bg-amber-500/[0.04] text-[11px] leading-5">
+      <div className="flex items-center justify-between border-b border-amber-500/15 bg-amber-500/[0.06] px-2 py-1 text-[10px]">
+        <span className="font-mono text-amber-300">Plan ready for review</span>
+        <span className="font-mono text-[10px] text-zinc-500">{planText.split('\n').length} lines</span>
+      </div>
+      {/* Lazy import MarkdownRenderer to keep ClaudeToolCard's bundle
+          lean — the renderer pulls remark + prism, only worth loading
+          when an ExitPlanMode actually shows up. */}
+      <div className="px-3 py-2">
+        <MarkdownRendererLazy content={planText} />
+      </div>
+      {!dismissed && (
+        <div className="flex gap-2 border-t border-amber-500/15 bg-amber-500/[0.04] px-2 py-2">
+          <button
+            type="button"
+            onClick={handleApprove}
+            className="flex-1 rounded bg-emerald-500/15 px-3 py-1.5 text-[11px] font-medium text-emerald-300 transition-colors hover:bg-emerald-500/25"
+          >
+            Approve & switch to Agent
+          </button>
+          <button
+            type="button"
+            onClick={handleRefine}
+            className="rounded border border-white/10 bg-white/[0.02] px-3 py-1.5 text-[11px] text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-200"
+          >
+            Keep refining
+          </button>
+        </div>
+      )}
+      {dismissed && (
+        <div className="border-t border-amber-500/15 bg-amber-500/[0.04] px-3 py-1.5 text-[10px] italic text-zinc-500">
+          Decision recorded.
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Tiny lazy wrapper around MarkdownRenderer — defers the heavy import
+// until the first ExitPlanMode actually renders. Until the chunk
+// arrives we show a plain <pre> fallback so the plan is still
+// readable.
+function MarkdownRendererLazy({ content }: { content: string }) {
+  const [loaded, setLoaded] = useState<null | React.ComponentType<{ content: string }>>(null)
+  useEffect(() => {
+    let alive = true
+    import('./MarkdownRenderer').then((mod) => {
+      if (alive) setLoaded(() => mod.MarkdownRenderer)
+    })
+    return () => { alive = false }
+  }, [])
+  const Renderer = loaded
+  return Renderer ? <Renderer content={content} /> : (
+    <pre className="whitespace-pre-wrap font-mono text-[11px] text-zinc-300">{content}</pre>
   )
 }
 
@@ -1089,7 +1181,7 @@ function EditDiffBlock({ message }: { message: ChatMessage }) {
   const language = langFromPath(message.filePath ?? '')
 
   return (
-    <div className="ml-3 mt-0.5 overflow-hidden rounded border border-white/5 bg-white/[0.02] text-[11px] leading-5">
+    <div className="ml-3 mt-0.5 max-w-2xl overflow-hidden rounded border border-white/5 bg-white/[0.02] text-[11px] leading-5">
       <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-2 py-1 text-[10px]">
         <span className="font-mono text-zinc-300">
           {message.filePath ? shortPath(message.filePath) : 'Edit'}
@@ -1193,7 +1285,7 @@ export function TodoBlock({ message, variant = 'inline', active = false }: { mes
   // ── Inline variant — full list, framed, used inside the log ────
   if (variant === 'inline') {
     return (
-      <div className="ml-3 mt-0.5 overflow-hidden rounded border border-white/5 text-[11px] leading-5">
+      <div className="ml-3 mt-0.5 max-w-2xl overflow-hidden rounded border border-white/5 text-[11px] leading-5">
         <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-2 py-1 text-[10px] text-zinc-500">
           <span className="font-medium">Tasks</span>
           <span className="space-x-2 font-mono">
@@ -1424,6 +1516,7 @@ function CompactToolRow({ message }: { message: ChatMessage }) {
   const isLs = message.toolName === 'LS'
   const isWebFetch = message.toolName === 'WebFetch'
   const isWebSearch = message.toolName === 'WebSearch'
+  const isExitPlanMode = message.toolName === 'ExitPlanMode'
   const inlineBlock = isBash
     ? hasResult || isLoading ? <BashBlock message={message} /> : null
     : isEdit
@@ -1444,7 +1537,9 @@ function CompactToolRow({ message }: { message: ChatMessage }) {
                     ? <WebFetchBlock message={message} />
                     : isWebSearch
                       ? <WebSearchBlock message={message} />
-                      : null
+                      : isExitPlanMode
+                        ? <ExitPlanModeBlock message={message} />
+                        : null
 
   return (
     <div className="group relative">

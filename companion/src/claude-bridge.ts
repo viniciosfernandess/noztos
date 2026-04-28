@@ -53,7 +53,14 @@ const DISALLOWED_TOOLS_BY_MODE: Record<BornastarMode, string[]> = {
 // gets appended. Ask gets the full "show, don't apply" guidance with
 // concrete verb lists; Agent gets the autonomy framing.
 const MODE_PROMPT: Record<BornastarMode, string> = {
-  plan: '',
+  plan: `UI note for this wrapper: when you call ExitPlanMode, the plan
+markdown you pass to that tool renders as a dedicated review card
+below your conversational reply, with Approve / Keep-refining buttons.
+The user reads the plan content in that card.
+
+So you don't need to repeat the plan body in your text — the user will
+already see it right below. Write your reply naturally; just don't
+duplicate the same content twice.`,
   ask: `You are in Ask mode.
 
 You CAN read code, search, and run safe Bash commands like \`git status\`,
