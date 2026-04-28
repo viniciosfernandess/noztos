@@ -1,7 +1,35 @@
 'use client'
 
 import { useState, useRef, useEffect, useLayoutEffect } from 'react'
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import type { ChatMessage } from '@/lib/hooks/useCompanionStream'
+
+// Maps file extensions to Prism language names. Mirrors the Monaco set
+// used by the file tree's CodeMirrorFileView so the highlight palette
+// the user sees in the editor matches what shows up in Read previews.
+// Lowercase ext → Prism language id; unknown extensions fall through
+// to plain text (no highlighting, but still renders safely).
+const READ_LANG_BY_EXT: Record<string, string> = {
+  ts: 'typescript', tsx: 'tsx', js: 'javascript', jsx: 'jsx', mjs: 'javascript', cjs: 'javascript',
+  py: 'python', rb: 'ruby', go: 'go', rs: 'rust', java: 'java', kt: 'kotlin', swift: 'swift',
+  c: 'c', h: 'c', cpp: 'cpp', cc: 'cpp', cxx: 'cpp', hpp: 'cpp', hh: 'cpp',
+  cs: 'csharp', php: 'php', sh: 'bash', bash: 'bash', zsh: 'bash', fish: 'bash',
+  sql: 'sql', graphql: 'graphql', gql: 'graphql', yaml: 'yaml', yml: 'yaml',
+  json: 'json', toml: 'toml', xml: 'xml', html: 'markup', htm: 'markup', svg: 'markup',
+  css: 'css', scss: 'scss', sass: 'sass', less: 'less',
+  md: 'markdown', mdx: 'markdown', dockerfile: 'docker', prisma: 'prisma',
+}
+
+function langFromPath(path: string): string {
+  if (!path) return 'text'
+  const lower = path.toLowerCase()
+  // Dockerfile / Makefile have no extension — match by basename.
+  if (lower.endsWith('/dockerfile') || lower === 'dockerfile') return 'docker'
+  if (lower.endsWith('/makefile') || lower === 'makefile') return 'makefile'
+  const ext = lower.split('.').pop() ?? ''
+  return READ_LANG_BY_EXT[ext] ?? 'text'
+}
 
 // ── Work block (groups consecutive tool messages) ───────────────────
 //
@@ -14,15 +42,33 @@ import type { ChatMessage } from '@/lib/hooks/useCompanionStream'
 function shortPath(p: string | undefined): string {
   if (!p) return ''
   // Strip the `.bornastar-worktrees/<id>/` prefix if present so paths
-  // read like `src/foo.ts` instead of the full absolute path.
+  // read like `src/foo.ts` instead of the full absolute path. When the
+  // path IS exactly the worktree root (no path after the id), return
+  // empty — callers use that as a signal to hide the location chip.
   const worktreeIdx = p.lastIndexOf('.bornastar-worktrees/')
   if (worktreeIdx >= 0) {
     const afterId = p.indexOf('/', worktreeIdx + '.bornastar-worktrees/'.length)
     if (afterId >= 0) return p.slice(afterId + 1)
+    return ''
   }
   // Otherwise keep the last 3 segments at most — enough context, not noisy.
   const parts = p.split('/')
   if (parts.length > 3) return '…/' + parts.slice(-3).join('/')
+  return p
+}
+
+// Like shortPath, but skips the 3-segment truncation — used by body
+// rows of file-list blocks (Glob/LS results) that live inside a
+// scrollable container, where preserving the full project-relative
+// path is more useful than fitting on one line.
+function relPath(p: string | undefined): string {
+  if (!p) return ''
+  const worktreeIdx = p.lastIndexOf('.bornastar-worktrees/')
+  if (worktreeIdx >= 0) {
+    const afterId = p.indexOf('/', worktreeIdx + '.bornastar-worktrees/'.length)
+    if (afterId >= 0) return p.slice(afterId + 1)
+    return ''
+  }
   return p
 }
 
@@ -97,57 +143,973 @@ function BashBlock({ message }: { message: ChatMessage }) {
   )
 }
 
-// ── Edit diff block (green/red lines, inline compact) ──────────────
-function EditDiffBlock({ message }: { message: ChatMessage }) {
-  // Lazy-require the diff package to avoid loading it on every row.
-  // Compute line-level diff between old_string and new_string.
-  const rows: { kind: 'add' | 'remove' | 'context'; text: string }[] = []
-  const oldStr = message.oldString ?? ''
-  const newStr = message.newString ?? ''
-  let added = 0
-  let removed = 0
-  if (oldStr || newStr) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { diffLines } = require('diff') as typeof import('diff')
-    const parts = diffLines(oldStr, newStr)
-    for (const part of parts) {
-      const lines = part.value.split('\n')
-      // Drop the trailing empty line diffLines tends to leave.
-      if (lines[lines.length - 1] === '') lines.pop()
-      for (const line of lines) {
-        if (part.added) { rows.push({ kind: 'add', text: line }); added++ }
-        else if (part.removed) { rows.push({ kind: 'remove', text: line }); removed++ }
-        else rows.push({ kind: 'context', text: line })
+// ── Read block (file path + content preview) ───────────────────────
+// Header shows the file path and either "whole file · N lines" (when
+// Claude read it all) or "lines X-Y" (when Claude scoped the read with
+// offset+limit). Body strips the CLI's `   N→` line-number prefix and
+// hands the raw code to react-syntax-highlighter so the preview reads
+// with the same vivid palette the file tree uses — line numbers are
+// reconstructed from the first parsed prefix as `startingLineNumber`.
+//
+// Visual style mirrors TodoBlock's inline card (border-white/5 + soft
+// bg-white/[0.02]) so blocks feel like one consistent family across
+// the chat, with the highlighted code itself supplying the only color.
+function ReadBlock({ message }: { message: ChatMessage }) {
+  const [expanded, setExpanded] = useState(false)
+  const path = (message.toolInput?.file_path as string) ?? message.filePath ?? ''
+  const offset = message.toolInput?.offset
+  const limit = message.toolInput?.limit
+  const isPartial = typeof offset === 'number' && typeof limit === 'number'
+  const raw = typeof message.toolResult === 'string' ? message.toolResult : ''
+  // Parse `   NNN→<content>`. Keep the cleaned content (fed to the
+  // highlighter) and the first line number (used as the gutter's
+  // starting offset). Lines without the prefix (error output, system
+  // notes) pass through unchanged.
+  const parsedLines = raw ? raw.split('\n').map((line) => {
+    const m = /^(\s*)(\d+)→(.*)$/.exec(line)
+    return m ? { num: parseInt(m[2], 10), text: m[3] } : { num: null as number | null, text: line }
+  }) : []
+  const totalLines = parsedLines.length
+  const PREVIEW_LINES = totalLines > 200 ? 4 : 6
+  const truncated = !expanded && totalLines > PREVIEW_LINES
+  const hidden = Math.max(0, totalLines - PREVIEW_LINES)
+  const visible = expanded ? parsedLines : parsedLines.slice(0, PREVIEW_LINES)
+  const rangeLabel = isPartial ? `lines ${offset}-${(offset as number) + (limit as number)}` : 'whole file'
+  const code = visible.map((r) => r.text).join('\n')
+  // First numbered line in the preview becomes the starting gutter
+  // value — matches what the user would see scrolling that file in
+  // their editor instead of restarting at 1.
+  const firstNum = visible.find((r) => r.num !== null)?.num ?? 1
+  const language = langFromPath(path)
+
+  return (
+    <div className="ml-3 mt-0.5 overflow-hidden rounded border border-white/5 bg-white/[0.02] text-[11px] leading-5">
+      <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-2 py-1 text-[10px]">
+        <span className="font-mono text-zinc-300">
+          {shortPath(path) || 'file'}
+          <span className="ml-2 text-zinc-500">· {rangeLabel}</span>
+        </span>
+        {totalLines > 0 && (
+          <span className="font-mono text-[10px] text-zinc-500">{totalLines} {totalLines === 1 ? 'line' : 'lines'}</span>
+        )}
+      </div>
+      <div className="max-h-64 overflow-auto">
+        {visible.length === 0 ? (
+          <div className="px-2 py-1 font-mono text-zinc-500">{message.toolResult === undefined ? '…' : '(empty)'}</div>
+        ) : (
+          <SyntaxHighlighter
+            style={vscDarkPlus}
+            language={language}
+            PreTag="div"
+            showLineNumbers
+            startingLineNumber={firstNum}
+            wrapLines
+            wrapLongLines
+            lineNumberStyle={{
+              minWidth: '2.5rem',
+              paddingRight: '0.75rem',
+              textAlign: 'right',
+              color: '#52525b',
+              userSelect: 'none',
+            }}
+            customStyle={{
+              margin: 0,
+              padding: '6px 0',
+              background: 'transparent',
+              fontSize: '11px',
+              lineHeight: '1.5',
+            }}
+            codeTagProps={{
+              style: { fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
+            }}
+          >
+            {code}
+          </SyntaxHighlighter>
+        )}
+      </div>
+      {truncated && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="w-full border-t border-white/5 bg-white/[0.02] py-1 text-[10px] text-zinc-400 transition-colors hover:bg-white/[0.04] hover:text-zinc-200"
+        >
+          Show {hidden} more {hidden === 1 ? 'line' : 'lines'}
+        </button>
+      )}
+      {expanded && totalLines > PREVIEW_LINES && (
+        <button
+          type="button"
+          onClick={() => setExpanded(false)}
+          className="w-full border-t border-white/5 bg-white/[0.02] py-1 text-[10px] text-zinc-400 transition-colors hover:bg-white/[0.04] hover:text-zinc-200"
+        >
+          Collapse
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ── Write block (new-file content preview) ─────────────────────────
+// Write is a tool that creates/overwrites a file with `content`.
+// Unlike Edit (a diff against the prior version), the whole payload is
+// always brand new — so the right rendering is "here's the full code
+// being written" rather than a +/- diff. Same shell as ReadBlock for
+// visual consistency, syntax-highlighted body so the user can scan the
+// new file in the same palette as the editor.
+//
+// Renders eagerly: `toolInput.content` is available the moment the
+// tool_use event lands, before the result returns. So unlike ReadBlock
+// (which needs the result to know what was read) we show the body
+// immediately and just dim the header chip to "writing…" until the
+// confirmation arrives.
+function WriteBlock({ message }: { message: ChatMessage }) {
+  const [expanded, setExpanded] = useState(false)
+  const path = (message.toolInput?.file_path as string) ?? message.filePath ?? ''
+  const content = (message.toolInput?.content as string) ?? ''
+  const isLoading = message.toolResult === undefined
+  const isError = message.toolError === true
+  const lines = content ? content.split('\n') : []
+  const totalLines = lines.length
+  const PREVIEW_LINES = totalLines > 200 ? 4 : 6
+  const truncated = !expanded && totalLines > PREVIEW_LINES
+  const hidden = Math.max(0, totalLines - PREVIEW_LINES)
+  const visible = expanded ? lines : lines.slice(0, PREVIEW_LINES)
+  const code = visible.join('\n')
+  const language = langFromPath(path)
+  // Status chip: pending while waiting for the tool_result, error
+  // (red) if Write failed, otherwise emerald "+N lines" so the user
+  // gets one clear signal that the file was created.
+  const statusLabel = isError ? 'failed' : isLoading ? 'writing…' : `+${totalLines} ${totalLines === 1 ? 'line' : 'lines'}`
+  const statusTone = isError ? 'text-red-400' : isLoading ? 'text-zinc-500' : 'text-emerald-400'
+
+  return (
+    <div className="ml-3 mt-0.5 overflow-hidden rounded border border-white/5 bg-white/[0.02] text-[11px] leading-5">
+      <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-2 py-1 text-[10px]">
+        <span className="font-mono text-zinc-300">
+          {shortPath(path) || 'file'}
+          <span className="ml-2 text-zinc-500">· new file</span>
+        </span>
+        <span className={`font-mono text-[10px] ${statusTone}`}>{statusLabel}</span>
+      </div>
+      <div className="max-h-64 overflow-auto">
+        {visible.length === 0 ? (
+          <div className="px-2 py-1 font-mono text-zinc-500">(empty)</div>
+        ) : (
+          <SyntaxHighlighter
+            style={vscDarkPlus}
+            language={language}
+            PreTag="div"
+            showLineNumbers
+            startingLineNumber={1}
+            wrapLines
+            wrapLongLines
+            lineNumberStyle={{
+              minWidth: '2.5rem',
+              paddingRight: '0.75rem',
+              textAlign: 'right',
+              color: '#52525b',
+              userSelect: 'none',
+            }}
+            customStyle={{
+              margin: 0,
+              padding: '6px 0',
+              background: 'transparent',
+              fontSize: '11px',
+              lineHeight: '1.5',
+            }}
+            codeTagProps={{
+              style: { fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
+            }}
+          >
+            {code}
+          </SyntaxHighlighter>
+        )}
+      </div>
+      {truncated && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="w-full border-t border-white/5 bg-white/[0.02] py-1 text-[10px] text-zinc-400 transition-colors hover:bg-white/[0.04] hover:text-zinc-200"
+        >
+          Show {hidden} more {hidden === 1 ? 'line' : 'lines'}
+        </button>
+      )}
+      {expanded && totalLines > PREVIEW_LINES && (
+        <button
+          type="button"
+          onClick={() => setExpanded(false)}
+          className="w-full border-t border-white/5 bg-white/[0.02] py-1 text-[10px] text-zinc-400 transition-colors hover:bg-white/[0.04] hover:text-zinc-200"
+        >
+          Collapse
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ── Grep block (pattern + matches) ─────────────────────────────────
+// Grep returns one of three text shapes depending on `output_mode`:
+//   • files_with_matches (default) — one path per line, prefixed by
+//     "Found N files" header line that ripgrep/the wrapper emits.
+//   • content                       — `path:line:text` rows (or
+//     `path-line-text` for context lines), separated by "--".
+//   • count                         — `path:N` per file.
+// We parse minimally — peel the "Found N…" header, render the rest as
+// a list. Path + line number get a dim gutter so the matched text
+// stays readable; the matched substring isn't highlighted (would
+// require regex execution per row, and ripgrep's `--color` codes aren't
+// in the result anyway). Same grey shell as ReadBlock/WriteBlock.
+function GrepBlock({ message }: { message: ChatMessage }) {
+  const [expanded, setExpanded] = useState(false)
+  const pattern = (message.toolInput?.pattern as string) ?? message.searchPattern ?? ''
+  const path = (message.toolInput?.path as string) ?? ''
+  const glob = (message.toolInput?.glob as string) ?? ''
+  const type = (message.toolInput?.type as string) ?? ''
+  const outputMode = (message.toolInput?.output_mode as string) ?? 'files_with_matches'
+  const isLoading = message.toolResult === undefined
+  const isError = message.toolError === true
+  const raw = typeof message.toolResult === 'string' ? message.toolResult : ''
+  // Strip `<tool_use_error>...</tool_use_error>` wrapper the CLI emits
+  // around tool failures — render the inner text plain so the user
+  // sees a readable error instead of XML noise. Also strips the
+  // worktree's absolute prefix from any embedded path so the error
+  // reads `pasta/que/nao/existe` instead of the full
+  // `/Users/.../bornastar-worktrees/wt-XXX/pasta/que/nao/existe`, and
+  // drops the trailing "your current working directory is …" hint that
+  // doubles the path noise.
+  const errorText = isError
+    ? raw
+        .replace(/^<tool_use_error>([\s\S]*?)<\/tool_use_error>$/, '$1')
+        .replace(/\/Users\/[^/\s]+\/[^\s]*?\.bornastar-worktrees\/[^/\s]+\//g, '')
+        .replace(/\s*Note: your current working directory is[\s\S]*$/i, '')
+        .trim()
+    : ''
+  // Peel the leading "Found N files/matches" line if ripgrep's wrapper
+  // emitted it — we render the count in the header chip instead.
+  // Also detect the empty-result string ("No files found" / "No matches
+  // found") so it's reported as 0, not as a 1-line result.
+  const allLines = !isError && raw ? raw.split('\n').filter((l) => l.length > 0) : []
+  const isEmptyResult = allLines.length === 1 && /^No (files|matches) found/i.test(allLines[0])
+  const headerMatch = allLines[0]?.match(/^Found (\d+)/)
+  const headerCount = isEmptyResult ? 0 : headerMatch ? parseInt(headerMatch[1], 10) : null
+  const dataLines = isEmptyResult ? [] : headerMatch ? allLines.slice(1) : allLines
+  const totalLines = dataLines.length
+  const PREVIEW_LINES = totalLines > 40 ? 5 : 8
+  const truncated = !expanded && totalLines > PREVIEW_LINES
+  const hidden = Math.max(0, totalLines - PREVIEW_LINES)
+  const visible = expanded ? dataLines : dataLines.slice(0, PREVIEW_LINES)
+
+  // Filter chips shown next to the pattern: path / glob / type — only
+  // when set, so simple "grep across repo" greps stay clean.
+  const filters: string[] = []
+  if (path) filters.push(shortPath(path))
+  if (glob) filters.push(glob)
+  if (type) filters.push(`type:${type}`)
+
+  // Status chip: pending while running, error red on failure, dimmed
+  // count when results are in. "0 results" is its own state — the user
+  // probably wants to know the search ran AND came up empty.
+  const statusLabel = isError ? 'failed'
+    : isLoading ? 'searching…'
+    : headerCount !== null ? `${headerCount} ${headerCount === 1 ? 'match' : 'matches'}`
+    : totalLines === 0 ? 'no results'
+    : `${totalLines} ${totalLines === 1 ? 'result' : 'results'}`
+  const statusTone = isError ? 'text-red-400'
+    : isLoading ? 'text-zinc-500'
+    : (headerCount ?? totalLines) === 0 ? 'text-zinc-500'
+    : 'text-emerald-400'
+
+  // Renders one result line. For `content` mode we split off the
+  // `path:N:` prefix into a dim gutter so the matched text reads
+  // cleanly; for `files_with_matches` and `count` we render the raw
+  // line as-is (already a path or path:N).
+  const renderRow = (line: string, i: number) => {
+    if (outputMode === 'content') {
+      const m = /^([^:]+):(\d+):(.*)$/.exec(line) ?? /^([^-]+)-(\d+)-(.*)$/.exec(line)
+      if (m) {
+        return (
+          <div key={i} className="flex gap-2 px-2 py-0.5 font-mono">
+            <span className="shrink-0 text-zinc-500">{shortPath(m[1])}<span className="text-zinc-600">:{m[2]}</span></span>
+            <span className="min-w-0 flex-1 truncate text-zinc-300">{m[3]}</span>
+          </div>
+        )
+      }
+    }
+    return (
+      <div key={i} className="px-2 py-0.5 font-mono text-zinc-300">{line}</div>
+    )
+  }
+
+  return (
+    <div className="ml-3 mt-0.5 overflow-hidden rounded border border-white/5 bg-white/[0.02] text-[11px] leading-5">
+      <div className="flex items-center justify-between gap-2 border-b border-white/5 bg-white/[0.02] px-2 py-1 text-[10px]">
+        <span className="min-w-0 truncate font-mono text-zinc-300">
+          <span className="text-zinc-500">grep </span>
+          <span className="text-amber-300">&quot;{pattern}&quot;</span>
+          {filters.length > 0 && <span className="ml-2 text-zinc-500">in {filters.join(' · ')}</span>}
+        </span>
+        <span className={`shrink-0 font-mono text-[10px] ${statusTone}`}>{statusLabel}</span>
+      </div>
+      <div className="max-h-64 overflow-auto py-0.5">
+        {isLoading ? (
+          <div className="px-2 py-1 font-mono text-zinc-500">…</div>
+        ) : isError ? (
+          <div className="whitespace-pre-wrap px-2 py-1 font-mono text-red-300/90">{errorText || 'Tool error'}</div>
+        ) : visible.length === 0 ? (
+          <div className="px-2 py-1 font-mono text-zinc-500">no matches</div>
+        ) : (
+          visible.map((line, i) => renderRow(line, i))
+        )}
+      </div>
+      {truncated && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="w-full border-t border-white/5 bg-white/[0.02] py-1 text-[10px] text-zinc-400 transition-colors hover:bg-white/[0.04] hover:text-zinc-200"
+        >
+          Show {hidden} more {hidden === 1 ? 'result' : 'results'}
+        </button>
+      )}
+      {expanded && totalLines > PREVIEW_LINES && (
+        <button
+          type="button"
+          onClick={() => setExpanded(false)}
+          className="w-full border-t border-white/5 bg-white/[0.02] py-1 text-[10px] text-zinc-400 transition-colors hover:bg-white/[0.04] hover:text-zinc-200"
+        >
+          Collapse
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ── File-list helpers ─────────────────────────────────────────────
+// Splits a path into its dir prefix and the filename. Used by Glob/LS
+// row rendering so the dim folder path and the bright filename can be
+// styled separately — same visual contract the file tree uses.
+function splitPath(p: string): { dir: string; name: string } {
+  const idx = p.lastIndexOf('/')
+  if (idx < 0) return { dir: '', name: p }
+  return { dir: p.slice(0, idx + 1), name: p.slice(idx + 1) }
+}
+
+// ── Glob block (pattern → list of files) ───────────────────────────
+// Glob's result is a newline-separated list of paths sorted by mtime
+// (recent first). We strip the worktree prefix the CLI emits, split
+// each row into a dim folder prefix + brighter filename so the user
+// can scan the list at a glance — same shell as ReadBlock/WriteBlock/
+// GrepBlock for visual consistency.
+function GlobBlock({ message }: { message: ChatMessage }) {
+  const [expanded, setExpanded] = useState(false)
+  const pattern = (message.toolInput?.pattern as string) ?? message.searchPattern ?? ''
+  const path = (message.toolInput?.path as string) ?? ''
+  const isLoading = message.toolResult === undefined
+  const isError = message.toolError === true
+  const raw = typeof message.toolResult === 'string' ? message.toolResult : ''
+  const errorText = isError
+    ? raw
+        .replace(/^<tool_use_error>([\s\S]*?)<\/tool_use_error>$/, '$1')
+        .replace(/\/Users\/[^/\s]+\/[^\s]*?\.bornastar-worktrees\/[^/\s]+\//g, '')
+        .replace(/\s*Note: your current working directory is[\s\S]*$/i, '')
+        .trim()
+    : ''
+  // Glob emits a leading "Found N files" line + the filenames; or
+  // "No files found" when empty.
+  const allLines = !isError && raw ? raw.split('\n').filter((l) => l.length > 0) : []
+  const isEmpty = allLines.length === 1 && /^No files found/i.test(allLines[0])
+  const headerMatch = allLines[0]?.match(/^Found (\d+)/)
+  const headerCount = isEmpty ? 0 : headerMatch ? parseInt(headerMatch[1], 10) : null
+  const dataLines = isEmpty ? [] : headerMatch ? allLines.slice(1) : allLines
+  const totalLines = dataLines.length
+  const PREVIEW_LINES = totalLines > 40 ? 5 : 8
+  const truncated = !expanded && totalLines > PREVIEW_LINES
+  const hidden = Math.max(0, totalLines - PREVIEW_LINES)
+  const visible = expanded ? dataLines : dataLines.slice(0, PREVIEW_LINES)
+
+  const statusLabel = isError ? 'failed'
+    : isLoading ? 'searching…'
+    : (headerCount ?? totalLines) === 0 ? 'no files'
+    : `${headerCount ?? totalLines} ${(headerCount ?? totalLines) === 1 ? 'file' : 'files'}`
+  const statusTone = isError ? 'text-red-400'
+    : isLoading ? 'text-zinc-500'
+    : (headerCount ?? totalLines) === 0 ? 'text-zinc-500'
+    : 'text-emerald-400'
+  // Header location chip: hidden when path is empty OR resolves to the
+  // worktree root after stripping (i.e. the search is across the whole
+  // project anyway, no extra info to convey).
+  const headerPath = shortPath(path)
+
+  return (
+    <div className="ml-3 mt-0.5 overflow-hidden rounded border border-white/5 bg-white/[0.02] text-[11px] leading-5">
+      <div className="flex items-center justify-between gap-2 border-b border-white/5 bg-white/[0.02] px-2 py-1 text-[10px]">
+        <span className="min-w-0 truncate font-mono text-zinc-300">
+          <span className="text-zinc-500">glob </span>
+          <span className="text-amber-300">{pattern}</span>
+          {headerPath && <span className="ml-2 text-zinc-500">in {headerPath}</span>}
+        </span>
+        <span className={`shrink-0 font-mono text-[10px] ${statusTone}`}>{statusLabel}</span>
+      </div>
+      <div className="max-h-64 overflow-auto py-0.5">
+        {isLoading ? (
+          <div className="px-2 py-1 font-mono text-zinc-500">…</div>
+        ) : isError ? (
+          <div className="whitespace-pre-wrap px-2 py-1 font-mono text-red-300/90">{errorText || 'Tool error'}</div>
+        ) : visible.length === 0 ? (
+          <div className="px-2 py-1 font-mono text-zinc-500">no files</div>
+        ) : (
+          visible.map((line, i) => {
+            const { dir, name } = splitPath(relPath(line))
+            return (
+              <div key={i} className="px-2 py-0.5 font-mono">
+                {dir && <span className="text-zinc-500">{dir}</span>}
+                <span className="text-zinc-200">{name}</span>
+              </div>
+            )
+          })
+        )}
+      </div>
+      {truncated && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="w-full border-t border-white/5 bg-white/[0.02] py-1 text-[10px] text-zinc-400 transition-colors hover:bg-white/[0.04] hover:text-zinc-200"
+        >
+          Show {hidden} more {hidden === 1 ? 'file' : 'files'}
+        </button>
+      )}
+      {expanded && totalLines > PREVIEW_LINES && (
+        <button
+          type="button"
+          onClick={() => setExpanded(false)}
+          className="w-full border-t border-white/5 bg-white/[0.02] py-1 text-[10px] text-zinc-400 transition-colors hover:bg-white/[0.04] hover:text-zinc-200"
+        >
+          Collapse
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ── LS block (path → tree of files & folders) ─────────────────────
+// LS's result is a pre-formatted indented tree:
+//   - /abs/path/
+//     - foo.ts
+//     - sub/
+//       - bar.ts
+// We strip the leading "- " bullets, the colon-prefixed root, and the
+// trailing "NOTE: …" advisory the CLI tacks on; render the rest in a
+// monospace block, preserving indentation. Folders (lines ending in /)
+// get a faint accent so the structure reads at a glance.
+function LSBlock({ message }: { message: ChatMessage }) {
+  const [expanded, setExpanded] = useState(false)
+  const path = (message.toolInput?.path as string) ?? message.filePath ?? ''
+  const isLoading = message.toolResult === undefined
+  const isError = message.toolError === true
+  const raw = typeof message.toolResult === 'string' ? message.toolResult : ''
+  const errorText = isError
+    ? raw
+        .replace(/^<tool_use_error>([\s\S]*?)<\/tool_use_error>$/, '$1')
+        .replace(/\/Users\/[^/\s]+\/[^\s]*?\.bornastar-worktrees\/[^/\s]+\//g, '')
+        .replace(/\s*Note: your current working directory is[\s\S]*$/i, '')
+        .trim()
+    : ''
+  // The CLI's LS output sometimes ends with a long "NOTE: do not assume…"
+  // advisory that's noise for the user — strip it.
+  const cleaned = !isError ? raw.replace(/\n\s*NOTE: [\s\S]*$/i, '').trimEnd() : ''
+  const allLines = cleaned ? cleaned.split('\n') : []
+  // Drop the very first line if it's the absolute path of the root
+  // (LS always emits this as a context header). Keep the rest of the
+  // tree intact, including indentation.
+  const dataLines = allLines.length && allLines[0].startsWith('-') && allLines[0].endsWith('/')
+    ? allLines.slice(1)
+    : allLines
+  const totalLines = dataLines.length
+  // Count entries (anything that's a non-empty row at any depth).
+  const totalEntries = dataLines.filter((l) => l.trim().startsWith('-')).length
+  const PREVIEW_LINES = totalLines > 40 ? 6 : 10
+  const truncated = !expanded && totalLines > PREVIEW_LINES
+  const hidden = Math.max(0, totalLines - PREVIEW_LINES)
+  const visible = expanded ? dataLines : dataLines.slice(0, PREVIEW_LINES)
+
+  const statusLabel = isError ? 'failed'
+    : isLoading ? 'listing…'
+    : totalEntries === 0 ? 'empty'
+    : `${totalEntries} ${totalEntries === 1 ? 'entry' : 'entries'}`
+  const statusTone = isError ? 'text-red-400'
+    : isLoading ? 'text-zinc-500'
+    : totalEntries === 0 ? 'text-zinc-500'
+    : 'text-emerald-400'
+
+  // Renders one tree row. Preserves the original indentation, replaces
+  // the "- " bullet with a dot, and tints folder rows (trailing /) so
+  // the tree's structure is readable without parsing it manually.
+  const renderRow = (line: string, i: number) => {
+    const m = /^(\s*)-\s(.*)$/.exec(line)
+    if (!m) return <div key={i} className="px-2 py-0.5 font-mono text-zinc-300 whitespace-pre">{line}</div>
+    const [, indent, body] = m
+    const isFolder = body.endsWith('/')
+    return (
+      <div key={i} className="px-2 py-0.5 font-mono whitespace-pre">
+        <span className="text-zinc-700">{indent}</span>
+        <span className="text-zinc-600">· </span>
+        <span className={isFolder ? 'text-amber-300' : 'text-zinc-200'}>{body}</span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="ml-3 mt-0.5 overflow-hidden rounded border border-white/5 bg-white/[0.02] text-[11px] leading-5">
+      <div className="flex items-center justify-between gap-2 border-b border-white/5 bg-white/[0.02] px-2 py-1 text-[10px]">
+        <span className="min-w-0 truncate font-mono text-zinc-300">
+          <span className="text-zinc-500">ls </span>
+          <span className="text-amber-300">{shortPath(path) || '(project root)'}</span>
+        </span>
+        <span className={`shrink-0 font-mono text-[10px] ${statusTone}`}>{statusLabel}</span>
+      </div>
+      <div className="max-h-64 overflow-auto py-0.5">
+        {isLoading ? (
+          <div className="px-2 py-1 font-mono text-zinc-500">…</div>
+        ) : isError ? (
+          <div className="whitespace-pre-wrap px-2 py-1 font-mono text-red-300/90">{errorText || 'Tool error'}</div>
+        ) : visible.length === 0 ? (
+          <div className="px-2 py-1 font-mono text-zinc-500">empty</div>
+        ) : (
+          visible.map((line, i) => renderRow(line, i))
+        )}
+      </div>
+      {truncated && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="w-full border-t border-white/5 bg-white/[0.02] py-1 text-[10px] text-zinc-400 transition-colors hover:bg-white/[0.04] hover:text-zinc-200"
+        >
+          Show {hidden} more {hidden === 1 ? 'row' : 'rows'}
+        </button>
+      )}
+      {expanded && totalLines > PREVIEW_LINES && (
+        <button
+          type="button"
+          onClick={() => setExpanded(false)}
+          className="w-full border-t border-white/5 bg-white/[0.02] py-1 text-[10px] text-zinc-400 transition-colors hover:bg-white/[0.04] hover:text-zinc-200"
+        >
+          Collapse
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ── WebFetch block (URL + prompt + content preview) ───────────────
+// WebFetch's input has `url` (the page) and `prompt` (what Claude was
+// looking for in it); the result is the extracted text. Render as the
+// same grey card the other blocks use, with a clickable URL header,
+// the fetch prompt as italic context, and a dim preview of the
+// extracted text. The full body opens in a scroll container on expand.
+function WebFetchBlock({ message }: { message: ChatMessage }) {
+  const [expanded, setExpanded] = useState(false)
+  const url = (message.toolInput?.url as string) ?? ''
+  const prompt = (message.toolInput?.prompt as string) ?? ''
+  const isLoading = message.toolResult === undefined
+  const isError = message.toolError === true
+  const raw = typeof message.toolResult === 'string' ? message.toolResult : ''
+  const errorText = isError
+    ? raw.replace(/^<tool_use_error>([\s\S]*?)<\/tool_use_error>$/, '$1').trim()
+    : ''
+  const lines = !isError && raw ? raw.split('\n') : []
+  const totalLines = lines.length
+  const PREVIEW_LINES = totalLines > 100 ? 4 : 8
+  const truncated = !expanded && totalLines > PREVIEW_LINES
+  const hidden = Math.max(0, totalLines - PREVIEW_LINES)
+  const visible = expanded ? lines : lines.slice(0, PREVIEW_LINES)
+
+  // Display host instead of full URL when the URL is long — keeps the
+  // header readable even for query-heavy URLs (?utm=…&ref=…). The full
+  // URL is still the link target.
+  let displayUrl = url
+  try {
+    const u = new URL(url)
+    displayUrl = u.host + u.pathname.replace(/\/$/, '')
+    if (u.search && displayUrl.length < 50) displayUrl += u.search
+  } catch { /* not a parseable URL — show raw */ }
+  if (displayUrl.length > 70) displayUrl = displayUrl.slice(0, 70) + '…'
+
+  const statusLabel = isError ? 'failed' : isLoading ? 'fetching…' : 'done'
+  const statusTone = isError ? 'text-red-400' : isLoading ? 'text-zinc-500' : 'text-emerald-400'
+
+  return (
+    <div className="ml-3 mt-0.5 overflow-hidden rounded border border-white/5 bg-white/[0.02] text-[11px] leading-5">
+      <div className="flex items-center justify-between gap-2 border-b border-white/5 bg-white/[0.02] px-2 py-1 text-[10px]">
+        <span className="min-w-0 truncate font-mono text-zinc-300">
+          <span className="text-zinc-500">fetch </span>
+          {url ? (
+            <a href={url} target="_blank" rel="noopener noreferrer" className="text-amber-300 hover:underline">{displayUrl}</a>
+          ) : (
+            <span className="text-amber-300">(no url)</span>
+          )}
+        </span>
+        <span className={`shrink-0 font-mono text-[10px] ${statusTone}`}>{statusLabel}</span>
+      </div>
+      {prompt && (
+        <div className="border-b border-white/5 px-2 py-1 text-[10px] italic text-zinc-500">
+          looking for: {prompt}
+        </div>
+      )}
+      <div className="max-h-64 overflow-auto py-0.5">
+        {isLoading ? (
+          <div className="px-2 py-1 font-mono text-zinc-500">…</div>
+        ) : isError ? (
+          <div className="whitespace-pre-wrap px-2 py-1 font-mono text-red-300/90">{errorText || 'Tool error'}</div>
+        ) : visible.length === 0 ? (
+          <div className="px-2 py-1 font-mono text-zinc-500">(empty)</div>
+        ) : (
+          <div className="whitespace-pre-wrap px-2 py-1 text-zinc-300">{visible.join('\n')}</div>
+        )}
+      </div>
+      {truncated && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="w-full border-t border-white/5 bg-white/[0.02] py-1 text-[10px] text-zinc-400 transition-colors hover:bg-white/[0.04] hover:text-zinc-200"
+        >
+          Show {hidden} more {hidden === 1 ? 'line' : 'lines'}
+        </button>
+      )}
+      {expanded && totalLines > PREVIEW_LINES && (
+        <button
+          type="button"
+          onClick={() => setExpanded(false)}
+          className="w-full border-t border-white/5 bg-white/[0.02] py-1 text-[10px] text-zinc-400 transition-colors hover:bg-white/[0.04] hover:text-zinc-200"
+        >
+          Collapse
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ── WebSearch block (query + result list) ─────────────────────────
+// WebSearch's result is a free-form text block emitted by the CLI's
+// search wrapper — usually one paragraph of intro + a list of links.
+// We try to extract structured rows by detecting `Title (url)` or
+// markdown-style `[Title](url)` patterns; anything that doesn't match
+// renders as raw paragraph text. Same grey shell, query in amber to
+// match the other "search-shaped" blocks (Grep/Glob).
+function WebSearchBlock({ message }: { message: ChatMessage }) {
+  const [expanded, setExpanded] = useState(false)
+  const query = (message.toolInput?.query as string) ?? message.searchPattern ?? ''
+  const isLoading = message.toolResult === undefined
+  const isError = message.toolError === true
+  const raw = typeof message.toolResult === 'string' ? message.toolResult : ''
+  const errorText = isError
+    ? raw.replace(/^<tool_use_error>([\s\S]*?)<\/tool_use_error>$/, '$1').trim()
+    : ''
+  // Extract result entries. The CLI's primary shape is a JSON-tagged
+  // dump:
+  //   `Web search results for query: "..."` (header)
+  //   `Links: [{"title":"…","url":"…"}, …]`  (array of hits)
+  // We grab the bracketed JSON after `Links:` and parse it. Falls back
+  // to markdown / plain `Title (url)` shapes for older responses, then
+  // to raw text rendering if nothing structured is detected.
+  type SearchHit = { title: string; url: string }
+  const hits: SearchHit[] = []
+  if (!isError && raw) {
+    // Primary: JSON array after `Links:`. Use a non-greedy match up to
+    // the closing bracket — handles trailing prose after the array.
+    const jsonMatch = /Links:\s*(\[[\s\S]*?\])(?:\s*(?:\n|$))/.exec(raw)
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[1]) as unknown
+        if (Array.isArray(parsed)) {
+          for (const entry of parsed) {
+            if (entry && typeof entry === 'object' && 'title' in entry && 'url' in entry) {
+              const title = String((entry as { title: unknown }).title ?? '').trim()
+              const url = String((entry as { url: unknown }).url ?? '').trim()
+              if (title && url) hits.push({ title, url })
+            }
+          }
+        }
+      } catch { /* malformed JSON — fall through */ }
+    }
+    // Fallback: line-by-line markdown / plain shapes.
+    if (hits.length === 0) {
+      const lineRe = /^\s*(?:[-*]\s+)?(?:\[(.+?)\]\((https?:\/\/[^)]+)\)|(.+?)\s+\((https?:\/\/[^)]+)\))\s*$/gm
+      let m: RegExpExecArray | null
+      while ((m = lineRe.exec(raw)) !== null) {
+        const title = (m[1] ?? m[3] ?? '').trim()
+        const url = (m[2] ?? m[4] ?? '').trim()
+        if (title && url) hits.push({ title, url })
       }
     }
   }
+  const hasHits = hits.length > 0
+  const totalHits = hits.length
+  const PREVIEW_HITS = 5
+  const truncated = !expanded && totalHits > PREVIEW_HITS
+  const hidden = Math.max(0, totalHits - PREVIEW_HITS)
+  const visibleHits = expanded ? hits : hits.slice(0, PREVIEW_HITS)
+  // For non-structured fallback, paginate by lines.
+  const rawLines = !isError && raw ? raw.split('\n') : []
+  const PREVIEW_LINES = rawLines.length > 100 ? 4 : 8
+  const visibleLines = expanded ? rawLines : rawLines.slice(0, PREVIEW_LINES)
+  const truncatedLines = !expanded && rawLines.length > PREVIEW_LINES
+  const hiddenLines = Math.max(0, rawLines.length - PREVIEW_LINES)
+
+  const statusLabel = isError ? 'failed'
+    : isLoading ? 'searching…'
+    : hasHits ? `${totalHits} ${totalHits === 1 ? 'result' : 'results'}`
+    : 'done'
+  const statusTone = isError ? 'text-red-400'
+    : isLoading ? 'text-zinc-500'
+    : hasHits ? 'text-emerald-400'
+    : 'text-zinc-500'
+
   return (
-    <div className="ml-3 mt-0.5 overflow-hidden rounded border border-white/5 text-[11px] leading-5">
-      <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-2 py-1 text-[10px] text-zinc-500">
-        <span>{message.filePath ? shortPath(message.filePath) : 'Edit'}</span>
-        <span>
-          {added > 0 && <span className="text-emerald-400">+{added}</span>}
-          {added > 0 && removed > 0 && ' '}
-          {removed > 0 && <span className="text-red-400">-{removed}</span>}
+    <div className="ml-3 mt-0.5 overflow-hidden rounded border border-white/5 bg-white/[0.02] text-[11px] leading-5">
+      <div className="flex items-center justify-between gap-2 border-b border-white/5 bg-white/[0.02] px-2 py-1 text-[10px]">
+        <span className="min-w-0 truncate font-mono text-zinc-300">
+          <span className="text-zinc-500">search </span>
+          <span className="text-amber-300">&quot;{query}&quot;</span>
+        </span>
+        <span className={`shrink-0 font-mono text-[10px] ${statusTone}`}>{statusLabel}</span>
+      </div>
+      <div className="max-h-64 overflow-auto py-0.5">
+        {isLoading ? (
+          <div className="px-2 py-1 font-mono text-zinc-500">…</div>
+        ) : isError ? (
+          <div className="whitespace-pre-wrap px-2 py-1 font-mono text-red-300/90">{errorText || 'Tool error'}</div>
+        ) : hasHits ? (
+          visibleHits.map((hit, i) => {
+            let host = ''
+            try { host = new URL(hit.url).host } catch { host = hit.url }
+            return (
+              <a
+                key={i}
+                href={hit.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block border-b border-white/5 px-2 py-1 transition-colors last:border-b-0 hover:bg-white/[0.03]"
+              >
+                <div className="truncate text-zinc-200">{hit.title}</div>
+                <div className="truncate font-mono text-[10px] text-zinc-500">{host}</div>
+              </a>
+            )
+          })
+        ) : visibleLines.length === 0 ? (
+          <div className="px-2 py-1 font-mono text-zinc-500">(empty)</div>
+        ) : (
+          <div className="whitespace-pre-wrap px-2 py-1 text-zinc-300">{visibleLines.join('\n')}</div>
+        )}
+      </div>
+      {(hasHits ? truncated : truncatedLines) && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="w-full border-t border-white/5 bg-white/[0.02] py-1 text-[10px] text-zinc-400 transition-colors hover:bg-white/[0.04] hover:text-zinc-200"
+        >
+          {hasHits
+            ? `Show ${hidden} more ${hidden === 1 ? 'result' : 'results'}`
+            : `Show ${hiddenLines} more ${hiddenLines === 1 ? 'line' : 'lines'}`}
+        </button>
+      )}
+      {expanded && (hasHits ? totalHits > PREVIEW_HITS : rawLines.length > PREVIEW_LINES) && (
+        <button
+          type="button"
+          onClick={() => setExpanded(false)}
+          className="w-full border-t border-white/5 bg-white/[0.02] py-1 text-[10px] text-zinc-400 transition-colors hover:bg-white/[0.04] hover:text-zinc-200"
+        >
+          Collapse
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ── Edit diff block (per-operation, syntax-highlighted) ───────────
+// Renders the edit operations Claude performed on a file. For Edit
+// (single op) there's one entry; for MultiEdit the toolInput's `edits`
+// array is unpacked into N entries, one per operation. Each operation
+// becomes its own visual block inside the card:
+//
+//   • pure add    (old_string empty)  → green segment with the new code
+//   • pure remove (new_string empty)  → red segment with the removed code
+//   • replace     (both non-empty)    → red segment + green segment stacked
+//
+// Each operation block has a fixed preview height (PREVIEW_LINES per
+// segment); when the change is bigger, a chevron at the bottom of the
+// op expands the whole op (both red and green together). Code in each
+// segment runs through SyntaxHighlighter (vscDarkPlus) so colors match
+// what the user sees in the file tree.
+type EditOp = { oldStr: string; newStr: string }
+// Total visible-line budget per operation when collapsed. Distributed
+// across the red+green segments so no single operation grows beyond
+// this height — anything bigger gets the expand chevron and reveals
+// every line on click. No internal scroll: pure full-expand/collapse.
+const EDIT_PREVIEW_TOTAL = 8
+
+// Strips the trailing newline diffLines tends to leave so the line
+// count + the rendered preview don't double-count an empty last line.
+function trimTrailingNewline(s: string): string {
+  return s.endsWith('\n') ? s.slice(0, -1) : s
+}
+
+// Renders one operation. Self-contained collapse/expand state — each
+// op manages its own visibility independently of siblings, matching
+// the ReadBlock/WriteBlock pattern.
+function EditOpBlock({ op, language }: { op: EditOp; language: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const oldStr = trimTrailingNewline(op.oldStr)
+  const newStr = trimTrailingNewline(op.newStr)
+  const oldLines = oldStr ? oldStr.split('\n') : []
+  const newLines = newStr ? newStr.split('\n') : []
+  const oldTotal = oldLines.length
+  const newTotal = newLines.length
+
+  // Budget allocation for the collapsed view. When one side is empty
+  // the other gets the full cap; when both have content, give each
+  // side its full size if the combined fits, otherwise split. If one
+  // side fits in half the budget the leftover spills to the bigger
+  // side (matches Cursor's behavior — small remove + big add stays
+  // useful, with the add showing more context).
+  let oldShown = oldTotal
+  let newShown = newTotal
+  if (oldTotal + newTotal > EDIT_PREVIEW_TOTAL) {
+    if (oldTotal === 0) {
+      newShown = EDIT_PREVIEW_TOTAL
+    } else if (newTotal === 0) {
+      oldShown = EDIT_PREVIEW_TOTAL
+    } else {
+      const half = Math.floor(EDIT_PREVIEW_TOTAL / 2)
+      if (oldTotal <= half) {
+        oldShown = oldTotal
+        newShown = EDIT_PREVIEW_TOTAL - oldShown
+      } else if (newTotal <= half) {
+        newShown = newTotal
+        oldShown = EDIT_PREVIEW_TOTAL - newShown
+      } else {
+        oldShown = half
+        newShown = EDIT_PREVIEW_TOTAL - half
+      }
+    }
+  }
+  const hasOverflow = oldShown < oldTotal || newShown < newTotal
+  const visibleOld = expanded ? oldLines : oldLines.slice(0, oldShown)
+  const visibleNew = expanded ? newLines : newLines.slice(0, newShown)
+  const hiddenOld = oldTotal - oldShown
+  const hiddenNew = newTotal - newShown
+
+  const renderSegment = (lines: string[], kind: 'add' | 'remove') => {
+    // Tint matches Cursor's diff style — saturated enough that the
+    // user sees red/green at a glance, light enough that the syntax
+    // highlight on top stays readable. No label bar above the code:
+    // the color IS the indicator, and the +/- counts already show in
+    // the card's header chip.
+    const tint = kind === 'add' ? 'bg-emerald-500/[0.10]' : 'bg-red-500/[0.10]'
+    return (
+      <div className={`overflow-hidden ${tint}`}>
+        <SyntaxHighlighter
+          style={vscDarkPlus}
+          language={language}
+          PreTag="div"
+          wrapLongLines
+          customStyle={{
+            margin: 0,
+            padding: '4px 8px',
+            background: 'transparent',
+            fontSize: '11px',
+            lineHeight: '1.5',
+          }}
+          codeTagProps={{
+            style: { fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
+          }}
+        >
+          {lines.join('\n')}
+        </SyntaxHighlighter>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      {oldTotal > 0 && renderSegment(visibleOld, 'remove')}
+      {newTotal > 0 && renderSegment(visibleNew, 'add')}
+      {hasOverflow && (
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          className="flex w-full items-center justify-center gap-1 border-t border-white/5 bg-white/[0.02] py-1 text-[10px] text-zinc-400 transition-colors hover:bg-white/[0.04] hover:text-zinc-200"
+        >
+          {expanded ? (
+            <>
+              <span>Collapse</span>
+              <span aria-hidden>▲</span>
+            </>
+          ) : (
+            <>
+              <span>
+                Show {hiddenOld + hiddenNew} more {hiddenOld + hiddenNew === 1 ? 'line' : 'lines'}
+              </span>
+              <span aria-hidden>▼</span>
+            </>
+          )}
+        </button>
+      )}
+    </div>
+  )
+}
+
+function EditDiffBlock({ message }: { message: ChatMessage }) {
+  const ops: EditOp[] = []
+  // MultiEdit: toolInput.edits is the array of operations.
+  const rawEdits = (message.toolInput as { edits?: unknown } | undefined)?.edits
+  if (Array.isArray(rawEdits)) {
+    for (const e of rawEdits) {
+      if (e && typeof e === 'object') {
+        const oldStr = String((e as { old_string?: unknown }).old_string ?? '')
+        const newStr = String((e as { new_string?: unknown }).new_string ?? '')
+        if (oldStr || newStr) ops.push({ oldStr, newStr })
+      }
+    }
+  } else {
+    // Edit (single): the message's top-level old/new strings.
+    const oldStr = message.oldString ?? ''
+    const newStr = message.newString ?? ''
+    if (oldStr || newStr) ops.push({ oldStr, newStr })
+  }
+
+  // Header chip: total +/- across every operation, so a 5-edit
+  // MultiEdit reads at a glance as one rolled-up summary.
+  let totalAdded = 0
+  let totalRemoved = 0
+  for (const { oldStr, newStr } of ops) {
+    const o = trimTrailingNewline(oldStr)
+    const n = trimTrailingNewline(newStr)
+    if (n) totalAdded += n.split('\n').length
+    if (o) totalRemoved += o.split('\n').length
+  }
+  const language = langFromPath(message.filePath ?? '')
+
+  return (
+    <div className="ml-3 mt-0.5 overflow-hidden rounded border border-white/5 bg-white/[0.02] text-[11px] leading-5">
+      <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-2 py-1 text-[10px]">
+        <span className="font-mono text-zinc-300">
+          {message.filePath ? shortPath(message.filePath) : 'Edit'}
+          {ops.length > 1 && <span className="ml-2 text-zinc-500">· {ops.length} edits</span>}
+        </span>
+        <span className="font-mono">
+          {totalAdded > 0 && <span className="text-emerald-400">+{totalAdded}</span>}
+          {totalAdded > 0 && totalRemoved > 0 && <span className="text-zinc-600"> </span>}
+          {totalRemoved > 0 && <span className="text-red-400">-{totalRemoved}</span>}
         </span>
       </div>
-      <div className="max-h-64 overflow-auto">
-        {rows.map((row, i) => (
-          <div
-            key={i}
-            className={`flex font-mono ${
-              row.kind === 'add' ? 'bg-emerald-500/10 text-emerald-200'
-              : row.kind === 'remove' ? 'bg-red-500/10 text-red-200'
-              : 'text-zinc-400'
-            }`}
-          >
-            <span className="w-4 shrink-0 select-none text-center text-zinc-600">
-              {row.kind === 'add' ? '+' : row.kind === 'remove' ? '-' : ' '}
-            </span>
-            <span className="min-w-0 flex-1 whitespace-pre-wrap pr-2">{row.text || ' '}</span>
+      {ops.length === 0 ? (
+        <div className="px-2 py-1 font-mono text-zinc-500">(no changes)</div>
+      ) : (
+        ops.map((op, i) => (
+          <div key={i} className="border-b border-white/5 last:border-b-0">
+            <EditOpBlock op={op} language={language} />
           </div>
-        ))}
-      </div>
+        ))
+      )}
     </div>
   )
 }
@@ -446,19 +1408,43 @@ function CompactToolRow({ message }: { message: ChatMessage }) {
         ? `"${message.searchPattern}"`
         : ''
 
-  // Bash, Edit and TodoWrite get rich inline blocks — always visible, no
-  // click. Matches Claude Code's CLI/VSCode extension rendering so the
-  // user sees plans, diffs and command output without expanding JSON.
+  // Bash, Edit, TodoWrite, Read and Write get rich inline blocks —
+  // always visible, no click. Matches Claude Code's CLI/VSCode
+  // extension rendering so the user sees plans, diffs, command output
+  // and file contents without having to expand a generic JSON dump.
+  // Anything not on this list still falls through to that JSON
+  // fallback below.
   const isBash = message.toolName === 'Bash'
   const isEdit = message.toolName === 'Edit' || message.toolName === 'MultiEdit'
   const isTodoWrite = message.toolName === 'TodoWrite'
+  const isRead = message.toolName === 'Read'
+  const isWrite = message.toolName === 'Write'
+  const isGrep = message.toolName === 'Grep'
+  const isGlob = message.toolName === 'Glob'
+  const isLs = message.toolName === 'LS'
+  const isWebFetch = message.toolName === 'WebFetch'
+  const isWebSearch = message.toolName === 'WebSearch'
   const inlineBlock = isBash
     ? hasResult || isLoading ? <BashBlock message={message} /> : null
-    : isEdit && (message.oldString || message.newString)
+    : isEdit
       ? <EditDiffBlock message={message} />
       : isTodoWrite
         ? <TodoBlock message={message} />
-        : null
+        : isRead && hasResult
+          ? <ReadBlock message={message} />
+          : isWrite
+            ? <WriteBlock message={message} />
+            : isGrep
+              ? <GrepBlock message={message} />
+              : isGlob
+                ? <GlobBlock message={message} />
+                : isLs
+                  ? <LSBlock message={message} />
+                  : isWebFetch
+                    ? <WebFetchBlock message={message} />
+                    : isWebSearch
+                      ? <WebSearchBlock message={message} />
+                      : null
 
   return (
     <div className="group">
