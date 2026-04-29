@@ -128,11 +128,16 @@ class CompanionStore {
   // queue drains and the POSTs go out in order.
   // Queue is keyed by worktreeId because that's what transitions from
   // pending → ready. Inside each entry we capture (sessionId, prompt,
-  // opts) so the drainer can call companionStore.sendPrompt verbatim.
+  // userMsgId, opts) so the drainer can call companionStore.sendPrompt
+  // verbatim and reuse the SAME id the caller already inserted
+  // optimistically. Without that id, sendPrompt would mint a new one
+  // and the optimistic row + the daemon-echoed row would render as
+  // two separate bubbles (visible duplicate until reload).
   private worktreeSendQueue: Map<string, Array<{
     sessionId: string
     projectId: string
     prompt: string
+    userMsgId?: string
     opts?: { mode?: 'plan' | 'ask' | 'agent'; model?: string; thinking?: 'off' | 'low' | 'medium' | 'high' }
   }>> = new Map()
 
@@ -267,6 +272,10 @@ class CompanionStore {
       sessionId: string
       projectId: string
       prompt: string
+      // The id minted by the caller for the optimistic user-row insert.
+      // Threaded through the queue so the eventual sendPrompt call can
+      // reuse it instead of minting a fresh id (and double-inserting).
+      userMsgId?: string
       opts?: { mode?: 'plan' | 'ask' | 'agent'; model?: string; thinking?: 'off' | 'low' | 'medium' | 'high' }
     },
   ): void {
@@ -289,9 +298,11 @@ class CompanionStore {
     console.log(`[store] drainSendsForWorktree wt=${worktreeId.slice(0, 8)} count=${list.length}`)
     for (const item of list) {
       // markIdle first so sendPrompt's own markBusy works clean. The
-      // optimistic user msg is already in the slice.
+      // optimistic user msg is already in the slice — pass its id
+      // through so sendPrompt's upsertMessage hits the same row
+      // instead of minting a fresh id (which would double-insert).
       this.markIdle(item.sessionId)
-      await this.sendPrompt(item.sessionId, item.projectId, item.prompt, item.opts)
+      await this.sendPrompt(item.sessionId, item.projectId, item.prompt, item.opts, item.userMsgId)
     }
   }
 
@@ -650,13 +661,21 @@ class CompanionStore {
       model?: string
       thinking?: 'off' | 'low' | 'medium' | 'high'
     },
+    // Caller-provided id for the user message row. Used by the
+    // worktree-pending queue path so the row inserted optimistically
+    // before queueing matches the row inserted here on drain — without
+    // this, the same prompt rendered twice (different ids → two
+    // separate bubbles) until a hard reload deduped via the DB. When
+    // omitted the function mints its own id, preserving the standard
+    // single-call optimistic-render flow.
+    userMsgId?: string,
   ): Promise<void> {
     this.markBusy(sessionId)
-    const userMsgId = this.mintStableId()
+    const id = userMsgId ?? this.mintStableId()
     const claudeSid = this.getClaudeSessionId(sessionId)
-    console.log(`[store] sendPrompt sid=${sessionId.slice(0, 8)} userMsgId=${userMsgId.slice(0, 16)} claude=${claudeSid ?? 'new'} model=${opts?.model ?? '-'} thinking=${opts?.thinking ?? 'off'}`)
+    console.log(`[store] sendPrompt sid=${sessionId.slice(0, 8)} userMsgId=${id.slice(0, 16)}${userMsgId ? ' (reused)' : ''} claude=${claudeSid ?? 'new'} model=${opts?.model ?? '-'} thinking=${opts?.thinking ?? 'off'}`)
     this.upsertMessage(sessionId, {
-      id: userMsgId,
+      id,
       role: 'user',
       content: prompt,
       timestamp: Date.now(),
@@ -670,7 +689,7 @@ class CompanionStore {
           type: 'prompt',
           projectId,
           prompt,
-          userMsgId,
+          userMsgId: id,
           claudeSessionId: claudeSid,
           bornastarSessionId: sessionId,
           mode: opts?.mode ?? 'agent',

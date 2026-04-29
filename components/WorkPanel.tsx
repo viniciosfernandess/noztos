@@ -5952,10 +5952,17 @@ function ChatPanel({
         content,
         timestamp: Date.now(),
       })
+      // Pass the same id down through the queue. When the drainer fires
+      // sendPrompt after the worktree finishes provisioning, sendPrompt
+      // reuses this id for its own optimistic upsert — the row inserted
+      // here gets updated in place instead of a second row appearing
+      // alongside it. Without this, the same prompt rendered twice
+      // until a hard reload (DB only ever held one row).
       companionStore.queueSendForWorktree(activeWorktreeId, {
         sessionId,
         projectId: companionProjectId,
         prompt: content,
+        userMsgId,
         opts,
       })
       return
