@@ -15,23 +15,32 @@ import { relative } from 'node:path'
 // relative strings so the browser can tell whether the change belongs to
 // main or to a worktree (`.bornastar-worktrees/<id>/…`).
 
+// Specific noise patterns instead of a broad dotfile catch-all. The old
+// `/(^|[/\\])\../` matched `.bornastar-worktrees/` (our own state dir!)
+// and silently blocked every worktree edit from reaching the browser.
+// The list below matches what VSCode/Cursor/Zed ignore by default — only
+// truly noisy paths. Files like `.env`, `.eslintrc`, `.gitignore` stay
+// watched because users edit them.
 const DEFAULT_IGNORES = [
-  /(^|[/\\])\../,                           // dotfiles (includes .git, .DS_Store)
-  /node_modules(\/|$)/,
-  /\.next(\/|$)/,
-  /dist(\/|$)/,
-  /build(\/|$)/,
-  /__pycache__(\/|$)/,
-  /\.pytest_cache(\/|$)/,
-  /venv(\/|$)/,
-  /\.venv(\/|$)/,
-  /coverage(\/|$)/,
+  /(?:^|[/\\])\.git(?:[/\\]|$)/,             // .git directory (recursively)
+  /(?:^|[/\\])\.DS_Store$/,                  // macOS metadata
+  /(?:^|[/\\])node_modules(?:[/\\]|$)/,
+  /(?:^|[/\\])\.next(?:[/\\]|$)/,
+  /(?:^|[/\\])dist(?:[/\\]|$)/,
+  /(?:^|[/\\])build(?:[/\\]|$)/,
+  /(?:^|[/\\])__pycache__(?:[/\\]|$)/,
+  /(?:^|[/\\])\.pytest_cache(?:[/\\]|$)/,
+  /(?:^|[/\\])venv(?:[/\\]|$)/,
+  /(?:^|[/\\])\.venv(?:[/\\]|$)/,
+  /(?:^|[/\\])coverage(?:[/\\]|$)/,
 ]
 
 // Minimum gap between batched events (milliseconds). Editors save in
 // bursts (save-format-save-lint) — we wait for the burst to settle so
-// the browser only refetches once per change, not four times.
-const DEBOUNCE_MS = 300
+// the browser only refetches once per change, not four times. 50ms
+// matches the VSCode/Cursor cadence: just enough to coalesce a single
+// save burst, imperceptible to a human watching the badge flip.
+const DEBOUNCE_MS = 50
 
 export interface FsChangeBatch {
   projectPath: string
@@ -49,11 +58,14 @@ export class ProjectWatcher extends EventEmitter {
 
   start(): void {
     if (this.watcher) return
+    // No `awaitWriteFinish`: VSCode/Cursor don't use it. Native FSEvents
+    // already coalesces the kernel-level write events, and our consumers
+    // only refetch metadata — they never read file content directly off
+    // an emitted path. Removing it shaves 100-200ms off every edit.
     this.watcher = chokidar.watch(this.projectPath, {
       ignored: DEFAULT_IGNORES,
       ignoreInitial: true,
       persistent: true,
-      awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 },
     })
     this.watcher.on('all', (event, abs) => {
       if (event !== 'add' && event !== 'change' && event !== 'unlink'
