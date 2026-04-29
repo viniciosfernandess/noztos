@@ -36,28 +36,33 @@ const MODE_MAP: Record<BornastarMode, string> = {
   agent: 'bypassPermissions',
 }
 
-// Tools blocked at the CLI level for each mode. Ask blocks every
-// file-write tool — Claude literally cannot call Edit/Write because
-// the CLI rejects the call before it reaches the model. Plan blocks
-// AskUserQuestion specifically: in non-interactive mode the CLI fails
-// that tool instantly with a synthetic "No response requested." reply
-// (upstream issue anthropics/claude-code#16712), which Claude then
-// interprets as the user refusing to answer and proceeds on a wrong
-// guess. Removing the tool entirely flips the model into asking via
-// plain text, which works exactly as the user expects in chat.
-// Agent has no restrictions.
-const DISALLOWED_TOOLS_BY_MODE: Record<BornastarMode, string[]> = {
+// ── Bundled fallback values ─────────────────────────────────────────
+//
+// These are the prompts/disallow-lists the daemon ships with in its
+// dist/ bundle. They cover three cases:
+//   1. First boot before the very first server fetch lands
+//   2. Backend is unreachable (offline user / our backend down)
+//   3. Server returned malformed config (validation rejected it)
+//
+// In any of those cases the daemon stays 100% functional with these
+// values. The active values come from `getActiveConfig()` which mirrors
+// whatever the server most recently returned; when no fetch has
+// succeeded yet, that mirror is initialised to these bundled defaults.
+//
+// ⚠️  Edit here AND in scripts/seed-companion-config.ts at the same
+//    time so the seeded DB row never drifts from the bundle.
+//
+// AskUserQuestion is blocked in Plan because the CLI fails it instantly
+// with a synthetic "No response requested." reply (upstream issue
+// anthropics/claude-code#16712); removing the tool flips Claude into
+// asking via plain text instead.
+const BUNDLED_DISALLOWED_TOOLS_BY_MODE: Record<BornastarMode, string[]> = {
   plan: ['AskUserQuestion'],
   ask: ['Edit', 'Write', 'MultiEdit', 'NotebookEdit'],
   agent: [],
 }
 
-// Mode-specific instruction we hand the model on top of whatever the
-// CLI injects. Plan ships with Anthropic's tuned plan prompt already,
-// so we leave its body empty and only the wrapper-naming rule below
-// gets appended. Ask gets the full "show, don't apply" guidance with
-// concrete verb lists; Agent gets the autonomy framing.
-const MODE_PROMPT: Record<BornastarMode, string> = {
+const BUNDLED_MODE_PROMPT: Record<BornastarMode, string> = {
   plan: `UI note for this wrapper: when you call ExitPlanMode, the plan
 markdown you pass to that tool renders as a dedicated review card
 below your conversational reply, with Approve / Keep-refining buttons.
@@ -98,11 +103,7 @@ unless an action is clearly destructive and irreversible (e.g. \`rm -rf\`
 outside the project, force-pushing main, dropping production data).`,
 }
 
-// Wrapper-naming rule appended to every mode. Claude knows the CLI
-// modes by their internal names (plan / acceptEdits / bypassPermissions);
-// here we tell it to use OUR names when nudging the user to switch, so
-// the chat copy lines up with the picker labels.
-const NAMING_RULE = `
+const BUNDLED_NAMING_RULE = `
 This wrapper exposes three modes to the user:
 - "Plan"  — read-only with structured plan output
 - "Ask"   — read-only conversational (no edits, no destructive bash)
@@ -111,6 +112,40 @@ This wrapper exposes three modes to the user:
 When you suggest the user switch modes, ALWAYS use these wrapper names
 (Plan / Ask / Agent). NEVER reference the underlying CLI names
 (plan / acceptEdits / bypassPermissions / default) in your replies.`
+
+// ── Active config (process-wide, mutable) ───────────────────────────
+//
+// The shape mirrors the singleton row served by /api/companion/config.
+// `version` doubles as the source-of-truth tag the daemon compares
+// against /config-version to decide whether to re-fetch full payload.
+export interface ActiveConfig {
+  modePrompts: Record<BornastarMode, string>
+  namingRule: string
+  disallowedTools: Record<BornastarMode, string[]>
+  version: string
+}
+
+let activeConfig: ActiveConfig = {
+  modePrompts: BUNDLED_MODE_PROMPT,
+  namingRule: BUNDLED_NAMING_RULE,
+  disallowedTools: BUNDLED_DISALLOWED_TOOLS_BY_MODE,
+  version: 'bundled',
+}
+
+// Read-only accessor for callers that just want to inspect the current
+// config (e.g. logging, status endpoints). Returns a reference — do not
+// mutate. Use setActiveConfig to publish changes.
+export function getActiveConfig(): Readonly<ActiveConfig> {
+  return activeConfig
+}
+
+// Replace the active config. Called by the daemon's loader after a
+// successful /config fetch. Any in-flight `prompt()` already started
+// will keep using the prior values (its args are already built); the
+// next spawn picks up the new ones. No restart needed.
+export function setActiveConfig(next: ActiveConfig): void {
+  activeConfig = next
+}
 
 export type ThinkingLevel = 'off' | 'low' | 'medium' | 'high'
 // Official Anthropic extended-thinking keywords. The CLI has no
@@ -175,9 +210,16 @@ export class ClaudeBridge extends EventEmitter {
       '--verbose',
     ]
 
+    // Pull live config (prompts + disallowed-tools) from the
+    // process-wide active store. Initialised to bundled defaults at
+    // module load; replaced by setActiveConfig() after a successful
+    // /config fetch. Either way, this is just an object lookup —
+    // nanoseconds, identical cost to the previous hard-coded const.
+    const cfg = activeConfig
+
     // Tool blacklist (Ask mode mainly — blocks Edit/Write at the CLI
     // before they reach the model). Empty list = flag omitted entirely.
-    const disallowed = DISALLOWED_TOOLS_BY_MODE[this.mode] ?? []
+    const disallowed = cfg.disallowedTools[this.mode] ?? []
     if (disallowed.length > 0) {
       args.push('--disallowedTools', disallowed.join(','))
     }
@@ -185,7 +227,7 @@ export class ClaudeBridge extends EventEmitter {
     // Append our mode-specific instruction + the wrapper-naming rule.
     // Plan ships with an empty body so we don't override Anthropic's
     // tuned plan prompt — only the naming rule goes there.
-    const appendPrompt = (MODE_PROMPT[this.mode] + NAMING_RULE).trim()
+    const appendPrompt = ((cfg.modePrompts[this.mode] ?? '') + cfg.namingRule).trim()
     if (appendPrompt) {
       args.push('--append-system-prompt', appendPrompt)
     }
@@ -199,7 +241,7 @@ export class ClaudeBridge extends EventEmitter {
       args.push('--resume', this.sessionId)
     }
 
-    console.log(`[isolation] claude spawn cwd=${this.cwd} bornastarMode=${this.mode} cliMode=${permissionMode} disallowed=${disallowed.length} prompt=${appendPrompt.length}b model=${this.model ?? 'default'} thinking=${this.thinking} resume=${this.sessionId?.slice(0, 8) ?? 'new'}`)
+    console.log(`[isolation] claude spawn cwd=${this.cwd} bornastarMode=${this.mode} cliMode=${permissionMode} disallowed=${disallowed.length} prompt=${appendPrompt.length}b configVersion=${cfg.version} model=${this.model ?? 'default'} thinking=${this.thinking} resume=${this.sessionId?.slice(0, 8) ?? 'new'}`)
     this.process = spawn('claude', args, {
       cwd: this.cwd,
       env: { ...process.env },

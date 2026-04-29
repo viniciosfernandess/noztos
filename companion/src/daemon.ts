@@ -3,7 +3,8 @@ import { hostname } from 'node:os'
 import { spawn } from 'node:child_process'
 import { loadConfig } from './config.js'
 import { detectClaudeAuth, detectClaudeInstallation, getClaudeVersion } from './auth-detect.js'
-import { ClaudeBridge } from './claude-bridge.js'
+import { ClaudeBridge, getActiveConfig } from './claude-bridge.js'
+import { refreshPromptConfig, startPromptConfigPolling } from './prompt-config.js'
 import { ProjectWatcher, type FsChangeBatch } from './fs-watcher.js'
 import { SyncQueue, type QueuedEvent } from './sync-queue.js'
 import { SyncWorker } from './sync-worker.js'
@@ -87,6 +88,14 @@ export class Daemon extends EventEmitter {
     this.startHeartbeat()
     this.syncWatchers()
     this.syncWorker.start()
+    // Pull the live prompt config from the server. Fire-and-forget so
+    // a slow / failed fetch doesn't delay daemon readiness — the
+    // bundled defaults already in claude-bridge keep every spawn fully
+    // functional until this resolves. On success the active config
+    // gets replaced atomically; spawns after that point use the new
+    // values. Backup polling runs every 5 minutes in case SSE drops.
+    void refreshPromptConfig('startup')
+    startPromptConfigPolling(() => getActiveConfig().version)
   }
 
   stop(): void {
@@ -237,6 +246,15 @@ export class Daemon extends EventEmitter {
         break
       case 'clone':
         this.handleClone(cmd)
+        break
+      case 'config_updated':
+        // Backend pushed a new CompanionConfig version. Pull the
+        // fresh payload and replace the in-memory active config —
+        // next claude spawn picks up the new prompts. This is the
+        // primary update channel; the 5-min poll in prompt-config.ts
+        // is just a safety net in case SSE silently dropped.
+        console.log('[isolation] received SSE config_updated push — refreshing prompts')
+        void refreshPromptConfig('sse-push')
         break
       case 'create_project':
         this.handleCreateProject(cmd)

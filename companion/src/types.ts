@@ -55,12 +55,14 @@ export interface ClaudeStreamEvent {
 
 // Commands sent FROM the web to the companion
 export interface CompanionCommand {
-  type: 'prompt' | 'interrupt' | 'resume' | 'status' | 'clone' | 'create_project' | 'init_project' | 'setup_claude' | 'claude_status' | 'scan_repos' | 'query_running'
+  type: 'prompt' | 'interrupt' | 'resume' | 'status' | 'clone' | 'create_project' | 'init_project' | 'setup_claude' | 'claude_status' | 'scan_repos' | 'query_running' | 'config_updated'
   sessionId?: string
   projectId?: string
   prompt?: string
-  // Bornastar UI mode. See claude-bridge.ts MODE_MAP / DISALLOWED_TOOLS_BY_MODE
-  // / MODE_PROMPT for the full mapping to CLI primitives.
+  // Bornastar UI mode. See claude-bridge.ts MODE_MAP, BUNDLED_DISALLOWED_TOOLS_BY_MODE
+  // and BUNDLED_MODE_PROMPT for the full mapping to CLI primitives. The
+  // bundled values are overridden at runtime by setActiveConfig() once
+  // the daemon fetches the live config from the server.
   mode?: 'plan' | 'ask' | 'agent'
   // Worktree isolation — when set, the Claude Code CLI is spawned in this
   // absolute path instead of project.path. Lets each chat in its own branch
