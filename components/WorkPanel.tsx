@@ -6190,7 +6190,16 @@ function ChatPanel({
             }
             return (
               <div key={msg.id} className="flex justify-start">
-                <div className="w-full max-w-[90%]">
+                {/* Cap markdown reply width to match the tool blocks
+                    (BashBlock / ReadBlock / etc. all sit at max-w-2xl).
+                    Without this, fenced code blocks and tables in
+                    Claude's reply have no width ceiling and push the
+                    chat panel wider than its container, clipping the
+                    toolbar (mode/model/thinking pickers + send) off
+                    the right edge. The MarkdownRenderer itself stays
+                    width-agnostic so other consumers (admin panels,
+                    docs viewers) keep their own layouts. */}
+                <div className="w-full max-w-2xl min-w-0">
                   <MarkdownRenderer content={msg.content} />
                 </div>
               </div>
