@@ -14,7 +14,7 @@
 // kept hot; a user with 50 worktrees only blows ~MAX_KEYS × ~50KB of
 // browser RAM, which is invisible vs. typical SPA memory.
 
-import type { FileEntry } from './worktree-types'
+import type { FileEntry, FileDiff, WorktreeMeta } from './worktree-types'
 
 const MAX_KEYS = 20
 
@@ -171,6 +171,117 @@ export function setCachedTerminal(key: string, state: TerminalState): void {
   terminalCache.set(key, { ...state, history: trimmed })
 }
 
+// ── Per-worktree right-panel metadata ─────────────────────────────────────
+// PR draft (title/body the user is composing), live "Current changes"
+// summary (regenerated server-side when a PR is open), todos array.
+// All three are <3 KB combined and share a single LRU slice keyed by
+// worktreeId — they hydrate together when a worktree becomes active and
+// expire together when it goes idle.
+
+const worktreeMetaCache = new LruCache<WorktreeMeta>()
+
+export function getCachedMeta(key: string): WorktreeMeta | undefined {
+  return worktreeMetaCache.get(key)
+}
+
+// Merge-by-default: callers pass only the fields they're populating
+// (e.g. just `prDraft` after the GET resolves) and the cache preserves
+// every other field already there. Without this every fetch race would
+// clobber whichever sibling fetch landed last. Returns the merged value
+// for callers that want to inspect the result.
+export function setCachedMeta(key: string, partial: Partial<WorktreeMeta>): WorktreeMeta {
+  const prev = worktreeMetaCache.get(key) ?? {}
+  const next: WorktreeMeta = { ...prev, ...partial }
+  worktreeMetaCache.set(key, next)
+  return next
+}
+
+export function subscribeCachedMeta(key: string, listener: Listener): () => void {
+  return worktreeMetaCache.subscribe(key, listener)
+}
+
+// ── Per-context git-status cache ──────────────────────────────────────────
+// Shared by both useGitStatus consumers (WorkPanel header badge +
+// ChecksPanel). When the WorkPanel hook fetches first (it mounts when
+// the worktree opens), the result lands here; ChecksPanel's hook seeds
+// from the cache on mount and renders the badge / commit buttons in
+// the current frame instead of waiting for its own initial fetch to
+// resolve. Key follows the same `worktreeId ?? sessionId ?? 'main'`
+// shape useGitStatus already encodes into the URL — collisions are
+// avoided by the cuid prefix scheme (`wt-…` vs `chat-…`).
+//
+// `unknown` value type at this layer because the GitStatus shape lives
+// in lib/hooks/useGitStatus.ts and importing it here would create a
+// hooks→cache→hooks cycle. The hook casts on read.
+
+const gitStatusCache = new LruCache<unknown>()
+
+export function getCachedGitStatus<T>(key: string): T | undefined {
+  return gitStatusCache.get(key) as T | undefined
+}
+
+export function setCachedGitStatus<T>(key: string, value: T): void {
+  gitStatusCache.set(key, value as unknown)
+}
+
+// ── Per-worktree file-diff hunks cache ────────────────────────────────────
+// One slice per worktreeId; inside each slice a Record<filePath, FileDiff>.
+// Stores raw content + originalContent (NOT pre-computed hunks) — hunks
+// are derived client-side via buildHunksFromContents() at render time so
+// the cache stays small and the diff settings (context lines, ignore
+// whitespace) can change without invalidating the cache. Heavier than
+// the meta cache (1-50 KB per file) but bounded by changed-file count
+// per worktree.
+
+const hunksCache = new LruCache<Record<string, FileDiff>>()
+
+export function getCachedHunk(worktreeId: string, filePath: string): FileDiff | undefined {
+  const slice = hunksCache.get(worktreeId)
+  return slice?.[filePath]
+}
+
+export function setCachedHunk(worktreeId: string, filePath: string, diff: FileDiff): void {
+  const slice = hunksCache.get(worktreeId) ?? {}
+  hunksCache.set(worktreeId, { ...slice, [filePath]: diff })
+}
+
+export function subscribeCachedHunks(worktreeId: string, listener: Listener): () => void {
+  return hunksCache.subscribe(worktreeId, listener)
+}
+
+// Drop hunk entries whose paths landed in a daemon fs-change batch — the
+// on-disk content moved, so the cached `content`/`originalContent` is
+// stale. Invoked from `markPathsDirty` so a single fs-change event
+// invalidates the file-list flag AND the diff cache in one pass. Empty
+// slice: leave it (it'll be repopulated by the next prefetch).
+function invalidateHunksOnPaths(paths: string[]): void {
+  if (paths.length === 0) return
+  // Group affected paths by worktree (re-using the same parsing as the
+  // file list). For each worktree slice that exists in the cache, drop
+  // any matching filePath entries. Worktrees with no slice are no-ops.
+  const byKey = new Map<string, Set<string>>()
+  for (const p of paths) {
+    const m = WORKTREE_PATH_RE.exec(p)
+    if (!m) continue  // 'main' has no per-file diff cache (no worktree id)
+    const key = m[1]
+    const rel = p.slice(m[0].length)
+    let set = byKey.get(key)
+    if (!set) { set = new Set(); byKey.set(key, set) }
+    set.add(rel)
+  }
+  for (const [key, dirtyRel] of byKey) {
+    const slice = hunksCache.get(key)
+    if (!slice) continue
+    let touched = false
+    const next: Record<string, FileDiff> = {}
+    for (const [path, diff] of Object.entries(slice)) {
+      if (dirtyRel.has(path)) { touched = true; continue }
+      next[path] = diff
+    }
+    if (touched) hunksCache.set(key, next)
+  }
+}
+
 export function getCachedFiles(key: string): FileEntry[] | undefined {
   return filesCache.get(key)
 }
@@ -262,6 +373,10 @@ export function markPathsDirty(paths: string[]): Set<string> {
       changed.add(key)
     }
   }
+  // Same fs-change batch that flips file-list dirty flags also stales
+  // any cached per-file diff — drop them so the next view refetches
+  // from disk. Cheap: most batches affect <10 paths.
+  invalidateHunksOnPaths(paths)
   return changed
 }
 
@@ -313,11 +428,17 @@ function sweepIdle(): void {
   const protect = cacheProtector()
   const droppedFiles = filesCache.evictIdle(IDLE_EVICTION_MS, protect)
   const droppedTerminals = terminalCache.evictIdle(IDLE_EVICTION_MS, protect)
-  if (droppedFiles.length > 0 || droppedTerminals.length > 0) {
+  const droppedMeta = worktreeMetaCache.evictIdle(IDLE_EVICTION_MS, protect)
+  const droppedHunks = hunksCache.evictIdle(IDLE_EVICTION_MS, protect)
+  const droppedStatus = gitStatusCache.evictIdle(IDLE_EVICTION_MS, protect)
+  if (droppedFiles.length > 0 || droppedTerminals.length > 0 || droppedMeta.length > 0 || droppedHunks.length > 0 || droppedStatus.length > 0) {
     console.log(
       `[worktree-cache] idle sweep `
       + `files=${droppedFiles.length > 0 ? droppedFiles.map((k) => k.slice(0, 8)).join(',') : '-'} `
       + `terminals=${droppedTerminals.length > 0 ? droppedTerminals.map((k) => k.slice(0, 8)).join(',') : '-'} `
+      + `meta=${droppedMeta.length > 0 ? droppedMeta.map((k) => k.slice(0, 8)).join(',') : '-'} `
+      + `hunks=${droppedHunks.length > 0 ? droppedHunks.map((k) => k.slice(0, 8)).join(',') : '-'} `
+      + `status=${droppedStatus.length > 0 ? droppedStatus.map((k) => k.slice(0, 8)).join(',') : '-'} `
       + `protected=${protect.size}`,
     )
   }

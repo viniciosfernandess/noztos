@@ -7,6 +7,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { MOCK_GIT_STATUS } from '@/lib/mocks/checks-demo'
+import { getCachedGitStatus, setCachedGitStatus } from '@/lib/worktree-cache'
 
 export interface GitStatus {
   branch: string
@@ -53,11 +54,23 @@ export function deriveUnsupportedLabel(status: GitStatus | null): string | null 
   return null
 }
 
+// Single key for both ChecksPanel and the WorkPanel header so both
+// useGitStatus consumers seed/write into the same cache slice.
+function gitStatusCacheKey(sessionId: string | null, worktreeId: string | null): string {
+  return worktreeId ?? sessionId ?? 'main'
+}
+
 export function useGitStatus(projectId: string, sessionId: string | null, worktreeId: string | null, pollMs: number = 30000, enabled: boolean = true): {
   status: GitStatus | null
   refresh: () => void
 } {
-  const [status, setStatus] = useState<GitStatus | null>(null)
+  // Seed from the shared cache so a remount (e.g. ChecksPanel opening
+  // after the WorkPanel header already polled) renders the badge +
+  // "Commit and push" / "Create PR" buttons in the current frame
+  // instead of waiting for this hook's own initial fetch.
+  const [status, setStatus] = useState<GitStatus | null>(() =>
+    getCachedGitStatus<GitStatus>(gitStatusCacheKey(sessionId, worktreeId)) ?? null,
+  )
   const mounted = useRef(true)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -80,26 +93,32 @@ export function useGitStatus(projectId: string, sessionId: string | null, worktr
       if (!res.ok) return
       const data = await res.json()
       if (!mounted.current) return
+      const cacheKey = gitStatusCacheKey(sessionId, worktreeId)
       if (mode === 'localOnly') {
         // Merge local fields into the existing snapshot — keeps the last-
         // known PR / CI / mainProtected state intact between polls. First
         // call after mount runs as 'full' so `prev` always has a base.
         const local = data as LocalGitStatus
-        setStatus((prev) => prev
-          ? { ...prev, ...local }
-          // No prior state yet (first event landed before the initial
-          // poll resolved): synthesise a partial. The next poll lands
-          // ~30s later and fills in the GitHub-side fields.
-          : {
-              ...local,
-              mainProtected: false,
-              mainProtectionChecked: 0,
-              pr: null,
-              githubConnected: false,
-            },
-        )
+        setStatus((prev) => {
+          const merged: GitStatus = prev
+            ? { ...prev, ...local }
+            // No prior state yet (first event landed before the initial
+            // poll resolved): synthesise a partial. The next poll lands
+            // ~30s later and fills in the GitHub-side fields.
+            : {
+                ...local,
+                mainProtected: false,
+                mainProtectionChecked: 0,
+                pr: null,
+                githubConnected: false,
+              }
+          setCachedGitStatus(cacheKey, merged)
+          return merged
+        })
       } else {
-        setStatus(data as GitStatus)
+        const full = data as GitStatus
+        setStatus(full)
+        setCachedGitStatus(cacheKey, full)
       }
     } catch {}
   }

@@ -18,6 +18,8 @@ import {
   subscribeCachedFiles, getCachedFilesKeys, parseAffectedCacheKeys,
   markPathsDirty,
   getCachedTerminal, setCachedTerminal,
+  getCachedMeta, setCachedMeta, subscribeCachedMeta,
+  getCachedHunk, setCachedHunk, subscribeCachedHunks,
   setCacheProtector,
   type TerminalEntry, type TerminalSandboxStatus,
 } from '@/lib/worktree-cache'
@@ -1443,6 +1445,137 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
       return protect
     })
   }, [projectId, activeWorktreeId, activeSessionId, worktrees, busySessions])
+
+  // ── Right-panel prefetch ─────────────────────────────────────────
+  // When a worktree becomes active and ready, warm every right-panel
+  // surface in parallel so subsequent clicks on Changes/Checks tabs
+  // render from the cache (instant) instead of triggering a network
+  // round-trip on first view. Mirrors the daemon's "do work while the
+  // user looks at something else" philosophy: by the time the user
+  // decides to inspect, the data is already on the ponta.
+  //
+  // What we prefetch:
+  //   • PR draft + todos + (if PR exists) PR suggestion → worktreeMetaCache
+  //   • Per-file diff content for every modified file → hunksCache
+  //
+  // Skipped when:
+  //   • activeWorktreeId is null (main chat — no worktree-scoped data)
+  //   • the worktree is still pending (server returns 400 on the meta
+  //     endpoints; we re-run the moment provisioning lands via the
+  //     same fs-change refetch that fills filesCache)
+  //
+  // Files are dispatched concurrently — each per-file fetch is small
+  // (1-50 KB) and already gated by the LRU cap inside hunksCache.
+  // Files larger than 500 KB are skipped: they're almost always
+  // generated/minified, the diff renderer truncates them anyway, and
+  // they'd dominate cache footprint disproportionately.
+  const PREFETCH_FILE_SIZE_LIMIT = 500 * 1024
+  useEffect(() => {
+    if (!activeWorktreeId) return
+    // Worktree still being provisioned on the server; the fetches
+    // would 400. The post-ready re-render will re-run this effect once
+    // the worktree finalises (state flips off 'pending'). Recomputed
+    // in-effect because `activeWorktreePending` lives further down the
+    // component body — referencing it here would hit TDZ.
+    const wt = activeWorktreeId
+    const wtState = worktrees.find((w) => w.id === wt)?.state
+    if (wtState === 'pending') return
+
+    let cancelled = false
+
+    // Each prefetcher checks the cache first and skips if already
+    // populated. Effect re-runs (triggered by sibling state changes
+    // mutating `worktrees`) become no-ops once a worktree's data is
+    // hot — refreshes happen via fs-change invalidation and explicit
+    // mutations (PATCH pr-draft, POST todo) that update the cache
+    // directly.
+    async function prefetchMeta() {
+      if (getCachedMeta(wt)?.prDraft) return
+      try {
+        const r = await fetch(`/api/projects/${projectId}/worktrees/${wt}/pr-draft`)
+        if (cancelled || !r.ok) return
+        const d = await r.json()
+        setCachedMeta(wt, { prDraft: { title: d?.title ?? '', body: d?.body ?? '' } })
+      } catch {}
+    }
+
+    async function prefetchTodos() {
+      if (getCachedMeta(wt)?.todos) return
+      try {
+        const r = await fetch(`/api/projects/${projectId}/todos?worktree=${wt}`)
+        if (cancelled || !r.ok) return
+        const d = await r.json()
+        setCachedMeta(wt, { todos: d?.todos ?? [] })
+      } catch {}
+    }
+
+    async function prefetchSuggestion() {
+      // pr-suggestion is heavier (server runs git log + diff summary)
+      // and only meaningful while a PR is open. The endpoint 404s
+      // when there's no PR yet — silent ignore. Skip when already
+      // cached; ChecksPanel's status-driven refetch keeps it fresh
+      // once mounted.
+      if (getCachedMeta(wt)?.prSuggestion) return
+      try {
+        const r = await fetch(`/api/projects/${projectId}/worktrees/${wt}/pr-suggestion`)
+        if (cancelled || !r.ok) return
+        const d = await r.json()
+        if (d?.title || d?.body) {
+          setCachedMeta(wt, { prSuggestion: { title: d.title ?? '', body: d.body ?? '' } })
+        }
+      } catch {}
+    }
+
+    function prefetchHunks() {
+      // First-entry race: when the worktree opens, the FileTree's mount
+      // fetch hasn't landed yet so filesCache for `wt` is empty and the
+      // initial pass below has nothing to iterate. The subscribe below
+      // catches the cache populating shortly after, re-runs this fn,
+      // and the prefetch fires for real. Same path covers fs-change
+      // refreshes — when a file is edited, the cache update triggers
+      // a re-run that picks up the newly-modified file.
+      const files = getCachedFiles(wt) ?? []
+      const targets = files.filter((f) => f.isModified && f.sizeBytes <= PREFETCH_FILE_SIZE_LIMIT)
+      // Concurrent fan-out — each is a separate route handler, the
+      // Next.js dev server handles them in parallel up to its
+      // configured worker count. Skip files already in hunksCache;
+      // markPathsDirty will have invalidated any whose on-disk content
+      // changed via fs-change, so a hot entry here is genuinely fresh.
+      for (const f of targets) {
+        if (cancelled) return
+        if (getCachedHunk(wt, f.path)) continue
+        void fetch(`/api/projects/${projectId}/repository/files/${encodeURIComponent(f.path)}?worktree=${wt}`)
+          .then((r) => r.ok ? r.json() : null)
+          .then((d) => {
+            if (cancelled || !d) return
+            setCachedHunk(wt, f.path, {
+              content: d.content ?? '',
+              originalContent: d.originalContent ?? '',
+            })
+          })
+          .catch(() => {})
+      }
+    }
+
+    // Fire the meta/todos/suggestion fetches once — they don't depend
+    // on filesCache being warm.
+    prefetchMeta()
+    prefetchTodos()
+    prefetchSuggestion()
+
+    // Hunks: run once now (covers re-entry to a worktree whose
+    // filesCache survived from a previous visit) AND subscribe so the
+    // initial population (from FileTree's mount fetch) plus any
+    // fs-change refresh both retrigger the prefetch.
+    prefetchHunks()
+    const unsubFiles = subscribeCachedFiles(wt, prefetchHunks)
+
+    return () => {
+      cancelled = true
+      unsubFiles()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, activeWorktreeId, worktrees])
 
   // Git status for the currently-active chat context (main or worktree).
   // Drives the colored badge next to the branch label in the right panel.
@@ -3085,6 +3218,13 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
             )}
             {rightPanelTab === 'checks' && (
               <ChecksPanel
+                // key forces a clean remount when the user moves between
+                // worktrees while the Checks tab is open — useState
+                // initializers re-run, so prTitle/prBody/todos seed from
+                // the new worktree's cache instead of carrying over the
+                // previous worktree's data for the brief window before
+                // the mount fetch lands.
+                key={activeWorktreeId ?? activeSessionId ?? 'main'}
                 projectId={projectId}
                 sessionId={activeSessionId}
                 worktreeId={activeWorktreeId}
@@ -3695,12 +3835,52 @@ function InlineDiffView({
   onAttachToNew: (filePath: string, fileStatus: 'M' | 'A' | 'D', hunk: DiffHunk) => void
   fileStatus: 'M' | 'A' | 'D'
 }) {
-  const [state, setState] = useState<{ content: string; originalContent: string } | null>(null)
-  const [loading, setLoading] = useState(true)
+  // Seed from hunksCache so a click on a file the WorkPanel prefetcher
+  // (or a previous open) already populated renders the diff in the
+  // current frame — no spinner, no network. Cold first-ever open
+  // returns null and the mount-time fetch below fills it in.
+  const [state, setState] = useState<{ content: string; originalContent: string } | null>(() => {
+    if (!worktreeId) return null
+    const cached = getCachedHunk(worktreeId, path)
+    return cached ?? null
+  })
+  const [loading, setLoading] = useState(() => {
+    if (!worktreeId) return true
+    return !getCachedHunk(worktreeId, path)
+  })
   const [error, setError] = useState<string | null>(null)
+
+  // Subscribe to the worktree's hunks slice so an external write —
+  // either the prefetch resolving in the background, or fs-change
+  // invalidating us so the next refetch repopulates — flips the view
+  // without the user having to navigate away and back.
+  useEffect(() => {
+    if (!worktreeId) return
+    return subscribeCachedHunks(worktreeId, () => {
+      const next = getCachedHunk(worktreeId, path)
+      if (next) {
+        setState(next)
+        setLoading(false)
+        setError(null)
+      } else {
+        // Cache invalidated for this path (fs-change after an edit).
+        // Drop our local copy so the refetch effect re-runs and the
+        // user sees the spinner only briefly, not the stale diff.
+        setState(null)
+        setLoading(true)
+      }
+    })
+  }, [worktreeId, path])
 
   useEffect(() => {
     let cancelled = false
+    // Skip the network fetch if we already have a cache hit; the
+    // subscription above keeps the view fresh. Re-fetch only when the
+    // cache is cold (first open of this file in this worktree).
+    if (worktreeId && getCachedHunk(worktreeId, path)) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setError(null)
     const qs = worktreeId ? `?worktree=${worktreeId}` : ''
@@ -3711,8 +3891,14 @@ function InlineDiffView({
       })
       .then((data) => {
         if (cancelled) return
-        setState({ content: data.content ?? '', originalContent: data.originalContent ?? '' })
+        const diff = { content: data.content ?? '', originalContent: data.originalContent ?? '' }
+        setState(diff)
         setLoading(false)
+        // Populate the cache so a re-open of this file (or the
+        // ChangesList rendering the same diff after a tab switch) is
+        // instant. Limited to worktree contexts — main-chat diffs
+        // aren't part of the worktree-keyed cache.
+        if (worktreeId) setCachedHunk(worktreeId, path, diff)
       })
       .catch((err) => {
         if (cancelled) return

@@ -23,6 +23,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MOCK_CONFLICTS, MOCK_GIT_STATUS } from '@/lib/mocks/checks-demo'
 import { SplitCreatePRButton } from './SplitCreatePRButton'
 import { deriveUnsupportedLabel, useGitStatus } from '@/lib/hooks/useGitStatus'
+import { getCachedMeta, setCachedMeta } from '@/lib/worktree-cache'
+import type { Todo } from '@/lib/worktree-types'
 
 interface PullRequest {
   number: number
@@ -36,14 +38,6 @@ interface PullRequest {
   base: { ref: string }
   derivedStatus: 'draft' | 'open' | 'changes_requested' | 'approved' | 'merged' | 'closed' | 'conflicts'
   mergeable_state: string | null
-}
-
-interface Todo {
-  id: string
-  content: string
-  done: boolean
-  position: number
-  createdAt: string
 }
 
 export interface ChecksPanelProps {
@@ -72,13 +66,26 @@ export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive, merge
   const [error, setError] = useState<string | null>(null)
 
   // PR draft state — worktree level. Null sessionId/worktreeId = no scope
-  // yet (happens briefly when the active chat is being set up).
-  const [prTitle, setPrTitle] = useState('')
-  const [prBody, setPrBody] = useState('')
+  // yet (happens briefly when the active chat is being set up). Initial
+  // value seeds from the worktree-meta cache so a re-mount (e.g. user
+  // tabbed away and came back) renders instantly with whatever the
+  // prefetch or a previous mount populated. Cold first-ever visit
+  // returns ''/'' and the mount-time fetch below fills both in.
+  const [prTitle, setPrTitle] = useState(() =>
+    worktreeId ? (getCachedMeta(worktreeId)?.prDraft?.title ?? '') : '',
+  )
+  const [prBody, setPrBody] = useState(() =>
+    worktreeId ? (getCachedMeta(worktreeId)?.prDraft?.body ?? '') : '',
+  )
   const prSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Todos state
-  const [todos, setTodos] = useState<Todo[]>([])
+  // Todos state — seeded the same way as PR draft. The mount fetch
+  // below will reconcile against fresh server data; mutations below
+  // (add / toggle / delete) update the cache so other consumers (and
+  // a later remount) see the effect without a round-trip.
+  const [todos, setTodos] = useState<Todo[]>(() =>
+    worktreeId ? (getCachedMeta(worktreeId)?.todos ?? []) : [],
+  )
   const [newTodoContent, setNewTodoContent] = useState('')
   const [addingTodo, setAddingTodo] = useState(false)
   // Inline "Add" input — only shows when the user clicks + Add. Mirrors
@@ -103,7 +110,11 @@ export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive, merge
   // Live "Current changes" summary — re-fetched alongside git status.
   // Renders below the PR body once a PR exists so the user can see what
   // the branch currently contains (including pushes after the PR opened).
-  const [currentChangesSummary, setCurrentChangesSummary] = useState('')
+  // Seed from the cache so a remount with an open PR doesn't flash
+  // empty before the next status-driven refetch.
+  const [currentChangesSummary, setCurrentChangesSummary] = useState(() =>
+    worktreeId ? (getCachedMeta(worktreeId)?.prSuggestion?.body ?? '') : '',
+  )
 
   const qs = useCallback(() => {
     const p = new URLSearchParams()
@@ -132,13 +143,22 @@ export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive, merge
     fetch(`/api/projects/${projectId}/worktrees/${worktreeId}/pr-draft`)
       .then((r) => r.ok ? r.json() : null)
       .then((d) => {
-        if (d) { setPrTitle(d.title ?? ''); setPrBody(d.body ?? '') }
+        if (!d) return
+        const title = d.title ?? ''
+        const body = d.body ?? ''
+        setPrTitle(title)
+        setPrBody(body)
+        setCachedMeta(worktreeId, { prDraft: { title, body } })
       })
       .catch(() => {})
   }, [projectId, worktreeId])
 
   const scheduleDraftSave = useCallback((title: string, body: string) => {
     if (!worktreeId) return
+    // Update the cache synchronously so a remount mid-typing seeds with
+    // the latest characters. The PATCH still goes out debounced — RAM
+    // doesn't care about the burst, the network does.
+    setCachedMeta(worktreeId, { prDraft: { title, body } })
     if (prSaveTimer.current) clearTimeout(prSaveTimer.current)
     prSaveTimer.current = setTimeout(() => {
       fetch(`/api/projects/${projectId}/worktrees/${worktreeId}/pr-draft`, {
@@ -158,12 +178,26 @@ export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive, merge
       const res = await fetch(`/api/projects/${projectId}/todos${qs()}`)
       if (res.ok) {
         const data = await res.json()
-        setTodos(data.todos ?? [])
+        const list: Todo[] = data.todos ?? []
+        setTodos(list)
+        // Mirror into the worktree-meta cache so a remount or another
+        // surface (none yet, but the contract is symmetric) reads the
+        // same array without a round-trip.
+        if (worktreeId) setCachedMeta(worktreeId, { todos: list })
       }
     } catch {}
   }, [projectId, qs, worktreeId, sessionId])
 
   useEffect(() => { refreshTodos() }, [refreshTodos])
+
+  // Mirror todos → cache. Fires after every mutation (optimistic insert,
+  // server reconcile, toggle, delete, rollback) so the cache always
+  // reflects what the user sees. Cheap (Map set + notify), and avoids
+  // sprinkling setCachedMeta calls across each mutation handler.
+  useEffect(() => {
+    if (!worktreeId) return
+    setCachedMeta(worktreeId, { todos })
+  }, [worktreeId, todos])
 
   // Pull the live "Current changes" summary while a PR is open — lets the
   // user see every push that landed after PR creation. Polled on the same
@@ -174,7 +208,11 @@ export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive, merge
     if (!worktreeId || !hasOpen) { setCurrentChangesSummary(''); return }
     fetch(`/api/projects/${projectId}/worktrees/${worktreeId}/pr-suggestion`)
       .then((r) => r.ok ? r.json() : null)
-      .then((d) => { if (d?.body) setCurrentChangesSummary(d.body) })
+      .then((d) => {
+        if (!d?.body) return
+        setCurrentChangesSummary(d.body)
+        setCachedMeta(worktreeId, { prSuggestion: { title: d.title ?? '', body: d.body } })
+      })
       .catch(() => {})
   }, [projectId, worktreeId, status])
 
