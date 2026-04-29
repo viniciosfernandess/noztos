@@ -29,6 +29,10 @@ export interface GitStatus {
     mergeable_state: string | null
   } | null
   githubConnected: boolean
+  // True when the project has no GitHub remote (filesystem-only).
+  // Drives "publish to GitHub" CTAs and skips the GitHub-side fetches
+  // when there's no repo to talk to.
+  isLocalProject?: boolean
   // Optional CI aggregate — backend can expose this later via the
   // GitHub check-runs endpoint. Used to flag "CI failing" as an
   // Unsupported case without needing in-app resolution.
@@ -57,7 +61,11 @@ export function useGitStatus(projectId: string, sessionId: string | null, worktr
   const mounted = useRef(true)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const fetchOnce = async () => {
+  // Fields the local-only probe returns. Used to type-narrow the merge
+  // path so we never accidentally clobber GitHub-side state with `undefined`.
+  type LocalGitStatus = Pick<GitStatus, 'branch' | 'uncommitted' | 'commitsAhead' | 'commitsBehind'>
+
+  const fetchOnce = async (mode: 'full' | 'localOnly' = 'full') => {
     if (MOCK_GIT_STATUS) {
       if (mounted.current) setStatus(MOCK_GIT_STATUS as GitStatus)
       return
@@ -66,11 +74,33 @@ export function useGitStatus(projectId: string, sessionId: string | null, worktr
       const p = new URLSearchParams()
       if (worktreeId) p.set('worktree', worktreeId)
       else if (sessionId) p.set('session', sessionId)
+      if (mode === 'localOnly') p.set('localOnly', 'true')
       const url = `/api/projects/${projectId}/git/status${p.toString() ? `?${p.toString()}` : ''}`
       const res = await fetch(url)
       if (!res.ok) return
-      const data = (await res.json()) as GitStatus
-      if (mounted.current) setStatus(data)
+      const data = await res.json()
+      if (!mounted.current) return
+      if (mode === 'localOnly') {
+        // Merge local fields into the existing snapshot — keeps the last-
+        // known PR / CI / mainProtected state intact between polls. First
+        // call after mount runs as 'full' so `prev` always has a base.
+        const local = data as LocalGitStatus
+        setStatus((prev) => prev
+          ? { ...prev, ...local }
+          // No prior state yet (first event landed before the initial
+          // poll resolved): synthesise a partial. The next poll lands
+          // ~30s later and fills in the GitHub-side fields.
+          : {
+              ...local,
+              mainProtected: false,
+              mainProtectionChecked: 0,
+              pr: null,
+              githubConnected: false,
+            },
+        )
+      } else {
+        setStatus(data as GitStatus)
+      }
     } catch {}
   }
 
@@ -83,14 +113,38 @@ export function useGitStatus(projectId: string, sessionId: string | null, worktr
     // round-trip per poll. The caller flips `enabled` true once the
     // worktree is real, and this effect re-runs to start polling.
     if (!enabled) return
-    fetchOnce()
-    pollRef.current = setInterval(fetchOnce, pollMs)
+    fetchOnce('full')
+    pollRef.current = setInterval(() => fetchOnce('full'), pollMs)
     return () => {
       mounted.current = false
       if (pollRef.current) clearInterval(pollRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, sessionId, worktreeId, pollMs, enabled])
+
+  // fs-change driven local refresh. Same `bornastar-fs-change` event the
+  // worktree-cache listens to — when files mutate on disk the daemon
+  // emits a batch and we kick a localOnly fetch so uncommitted /
+  // commitsAhead update in ~150ms (vs. waiting up to pollMs for the next
+  // full cycle). Debounced 200ms to coalesce save-format-lint bursts;
+  // git status itself is fast enough that we don't need a longer window.
+  useEffect(() => {
+    if (!enabled) return
+    let timer: ReturnType<typeof setTimeout> | null = null
+    function onFsChange() {
+      if (timer) return
+      timer = setTimeout(() => {
+        timer = null
+        if (mounted.current) fetchOnce('localOnly')
+      }, 200)
+    }
+    window.addEventListener('bornastar-fs-change', onFsChange)
+    return () => {
+      window.removeEventListener('bornastar-fs-change', onFsChange)
+      if (timer) clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, sessionId, worktreeId, enabled])
 
   // Optimistic override — after a commit+push on a changes-requested
   // PR, immediately flip the local state to "awaiting review" so the

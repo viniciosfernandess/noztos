@@ -22,19 +22,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MOCK_CONFLICTS, MOCK_GIT_STATUS } from '@/lib/mocks/checks-demo'
 import { SplitCreatePRButton } from './SplitCreatePRButton'
-import { deriveUnsupportedLabel } from '@/lib/hooks/useGitStatus'
-
-interface GitStatus {
-  branch: string
-  uncommitted: number
-  commitsAhead: number
-  commitsBehind: number
-  mainProtected: boolean
-  mainProtectionChecked: number
-  pr: PullRequest | null
-  githubConnected: boolean
-  isLocalProject: boolean
-}
+import { deriveUnsupportedLabel, useGitStatus } from '@/lib/hooks/useGitStatus'
 
 interface PullRequest {
   number: number
@@ -72,7 +60,14 @@ export interface ChecksPanelProps {
 }
 
 export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive, mergedBannerDismissed, closedBannerDismissed }: ChecksPanelProps) {
-  const [status, setStatus] = useState<GitStatus | null>(null)
+  // Source of truth for branch/uncommitted/PR/CI lives in the shared hook
+  // — same instance the worktree header badge uses, so optimistic events
+  // and fs-change driven refreshes happen once at the hook level and both
+  // surfaces re-render together. Polling cadence here matches the panel's
+  // historical 15s — tighter than the header's 30s because Checks shows
+  // PR review state, which is the user's primary trigger for next action.
+  const { status, refresh } = useGitStatus(projectId, sessionId, worktreeId, 15000, true)
+  const refreshStatus = refresh
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -117,46 +112,9 @@ export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive, merge
     return p.toString() ? `?${p.toString()}` : ''
   }, [worktreeId, sessionId])
 
-  // ── Git status polling ────────────────────────────────────────────────
-  const refreshStatus = useCallback(async () => {
-    if (MOCK_GIT_STATUS) {
-      setStatus(MOCK_GIT_STATUS as GitStatus)
-      return
-    }
-    try {
-      const res = await fetch(`/api/projects/${projectId}/git/status${qs()}`)
-      if (res.ok) setStatus(await res.json())
-    } catch {}
-  }, [projectId, qs])
-
-  useEffect(() => {
-    refreshStatus()
-    const t = setInterval(refreshStatus, 15000)
-    return () => clearInterval(t)
-  }, [refreshStatus])
-
-  // Sibling listeners to the hook's so the Checks panel's own rows
-  // flip before the next poll.
-  useEffect(() => {
-    const toAwaiting = () => {
-      setStatus((prev) => {
-        if (!prev?.pr || prev.pr.derivedStatus !== 'changes_requested') return prev
-        return { ...prev, pr: { ...prev.pr, derivedStatus: 'open', mergeable_state: 'blocked' } }
-      })
-    }
-    const toReady = () => {
-      setStatus((prev) => {
-        if (!prev?.pr || prev.pr.derivedStatus !== 'draft') return prev
-        return { ...prev, pr: { ...prev.pr, draft: false, derivedStatus: 'open', mergeable_state: 'clean' } }
-      })
-    }
-    window.addEventListener('bornastar-optimistic-awaiting', toAwaiting)
-    window.addEventListener('bornastar-optimistic-ready', toReady)
-    return () => {
-      window.removeEventListener('bornastar-optimistic-awaiting', toAwaiting)
-      window.removeEventListener('bornastar-optimistic-ready', toReady)
-    }
-  }, [])
+  // Git status polling, fs-change driven refresh, and optimistic
+  // awaiting/ready handlers all live inside `useGitStatus` (consumed
+  // above). No duplicate state to maintain here.
 
   // Top-bar's split button fires this event when the user picks either
   // "Create PR" or "Create as draft". Running the flow here (instead of
