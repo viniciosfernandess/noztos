@@ -1831,6 +1831,23 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
         : w,
       ))
       console.log(`[opt] worktree READY wt=${worktreeId.slice(0, 12)} branch=${worktree.branchName} totalMs=${Math.round(performance.now() - tStart)}`)
+      // Apply any pending auto-renames stashed by ChatPanel.sendMessage
+      // while the worktree was provisioning. We do this BEFORE the drain
+      // so the user sees the chat tab name (and worktree codename, when
+      // it's the first chat) flip to the first words of their prompt at
+      // the same moment the worktree finalises — same UX as the normal
+      // (post-ready) send path. PATCHes are safe now: the rows exist.
+      const queued = companionStore.peekSendQueueForWorktree(worktreeId)
+      const firstRename = queued.find((q) => q.pendingRename)
+      if (firstRename?.pendingRename) {
+        void handleRenameSession(firstRename.sessionId, firstRename.pendingRename)
+        // Worktree just finalised with its server-generated codename, and
+        // this is its first chat — mirror the onSessionRenamed branch
+        // that flips the tree name when the codename is still in place.
+        if (/^[A-Z][a-z]+ v\d+$/.test(worktree.name)) {
+          void handleRenameWorktree(worktreeId, firstRename.pendingRename)
+        }
+      }
       // Drain any prompts the user typed while the worktree was pending.
       void companionStore.drainSendsForWorktree(worktreeId)
       // Nudge components that fetched (and 404'd) while the worktree
@@ -6002,12 +6019,16 @@ function ChatPanel({
       ? `${hunkAttachments.map((h) => h.formattedContent).join('')}${userText}`
       : userText
 
-    // Auto-rename the chat using the first user message
+    // Auto-rename the chat using the first user message. We compute the
+    // title here, but defer firing it to the right branch below: the
+    // normal sendPrompt path fires immediately, while the worktree-
+    // pending queue path threads it through the queue so the rename
+    // PATCH only goes out AFTER the worktree/session rows exist on the
+    // server (otherwise we'd 404 mid-provisioning).
     const isFirstMessage = messages.filter(m => m.role === 'user').length === 0
-    if (isFirstMessage && userText) {
-      const title = userText.split(/\s+/).slice(0, 5).join(' ').slice(0, 40)
-      onSessionRenamed(title)
-    }
+    const autoTitle = isFirstMessage && userText
+      ? userText.split(/\s+/).slice(0, 5).join(' ').slice(0, 40)
+      : null
 
     setInput('')
     companionStore.clearDraft(sessionId)
@@ -6052,11 +6073,13 @@ function ChatPanel({
         projectId: companionProjectId,
         prompt: content,
         userMsgId,
+        pendingRename: autoTitle ?? undefined,
         opts,
       })
       return
     }
 
+    if (autoTitle) onSessionRenamed(autoTitle)
     await companionStore.sendPrompt(sessionId, companionProjectId, content, opts)
   }
 

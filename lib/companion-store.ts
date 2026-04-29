@@ -138,6 +138,12 @@ class CompanionStore {
     projectId: string
     prompt: string
     userMsgId?: string
+    // Auto-rename title computed by the caller (first words of the first
+    // user message). Threaded through the queue so handleNewWorktree's
+    // success path can apply the rename AFTER the row is created on the
+    // server — without this, a PATCH fired upfront 404s because the
+    // chat-session/worktree don't exist yet during provisioning.
+    pendingRename?: string
     opts?: { mode?: 'plan' | 'ask' | 'agent'; model?: string; thinking?: 'off' | 'low' | 'medium' | 'high' }
   }>> = new Map()
 
@@ -276,6 +282,8 @@ class CompanionStore {
       // Threaded through the queue so the eventual sendPrompt call can
       // reuse it instead of minting a fresh id (and double-inserting).
       userMsgId?: string
+      // Title to apply after the worktree finalises (server-confirmed).
+      pendingRename?: string
       opts?: { mode?: 'plan' | 'ask' | 'agent'; model?: string; thinking?: 'off' | 'low' | 'medium' | 'high' }
     },
   ): void {
@@ -287,6 +295,21 @@ class CompanionStore {
     // caller, this keeps the UI honest about the in-flight turn.
     this.markBusy(payload.sessionId)
     console.log(`[store] queueSendForWorktree wt=${worktreeId.slice(0, 8)} sid=${payload.sessionId.slice(0, 8)} queued=${list.length}`)
+  }
+
+  // Read-only view of the queue for a worktree. Used by the worktree-
+  // success path to apply pending renames before draining (PATCH against
+  // session/worktree rows that now exist on the server). Doesn't mutate
+  // the queue — drainSendsForWorktree is still the consumer.
+  peekSendQueueForWorktree(worktreeId: string): ReadonlyArray<{
+    sessionId: string
+    projectId: string
+    prompt: string
+    userMsgId?: string
+    pendingRename?: string
+    opts?: { mode?: 'plan' | 'ask' | 'agent'; model?: string; thinking?: 'off' | 'low' | 'medium' | 'high' }
+  }> {
+    return this.worktreeSendQueue.get(worktreeId) ?? []
   }
 
   // Worktree creation succeeded — drain its queue. Each entry replays
