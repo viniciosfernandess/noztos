@@ -28,6 +28,11 @@ export type User = Prisma.UserModel
  */
 export type CompanionToken = Prisma.CompanionTokenModel
 /**
+ * Model CompanionConfig
+ * 
+ */
+export type CompanionConfig = Prisma.CompanionConfigModel
+/**
  * Model Project
  * 
  */

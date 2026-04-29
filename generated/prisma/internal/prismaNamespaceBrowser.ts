@@ -53,6 +53,7 @@ export const AnyNull = runtime.AnyNull
 export const ModelName = {
   User: 'User',
   CompanionToken: 'CompanionToken',
+  CompanionConfig: 'CompanionConfig',
   Project: 'Project',
   Repository: 'Repository',
   RepoFile: 'RepoFile',
@@ -119,6 +120,18 @@ export const CompanionTokenScalarFieldEnum = {
 } as const
 
 export type CompanionTokenScalarFieldEnum = (typeof CompanionTokenScalarFieldEnum)[keyof typeof CompanionTokenScalarFieldEnum]
+
+
+export const CompanionConfigScalarFieldEnum = {
+  id: 'id',
+  modePrompts: 'modePrompts',
+  namingRule: 'namingRule',
+  disallowedTools: 'disallowedTools',
+  version: 'version',
+  updatedAt: 'updatedAt'
+} as const
+
+export type CompanionConfigScalarFieldEnum = (typeof CompanionConfigScalarFieldEnum)[keyof typeof CompanionConfigScalarFieldEnum]
 
 
 export const ProjectScalarFieldEnum = {

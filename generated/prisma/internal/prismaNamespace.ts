@@ -386,6 +386,7 @@ type FieldRefInputType<Model, FieldType> = Model extends never ? never : FieldRe
 export const ModelName = {
   User: 'User',
   CompanionToken: 'CompanionToken',
+  CompanionConfig: 'CompanionConfig',
   Project: 'Project',
   Repository: 'Repository',
   RepoFile: 'RepoFile',
@@ -419,7 +420,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "user" | "companionToken" | "project" | "repository" | "repoFile" | "collaborator" | "team" | "worktree" | "todo" | "chatSession" | "chatMessage" | "task" | "taskIteration" | "taskSkillLog" | "taskBuildLog" | "taskSuggestion" | "slackLog" | "resourceUsage" | "teamRun" | "buildSession"
+    modelProps: "user" | "companionToken" | "companionConfig" | "project" | "repository" | "repoFile" | "collaborator" | "team" | "worktree" | "todo" | "chatSession" | "chatMessage" | "task" | "taskIteration" | "taskSkillLog" | "taskBuildLog" | "taskSuggestion" | "slackLog" | "resourceUsage" | "teamRun" | "buildSession"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -568,6 +569,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.CompanionTokenCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.CompanionTokenCountAggregateOutputType> | number
+        }
+      }
+    }
+    CompanionConfig: {
+      payload: Prisma.$CompanionConfigPayload<ExtArgs>
+      fields: Prisma.CompanionConfigFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.CompanionConfigFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompanionConfigPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.CompanionConfigFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompanionConfigPayload>
+        }
+        findFirst: {
+          args: Prisma.CompanionConfigFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompanionConfigPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.CompanionConfigFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompanionConfigPayload>
+        }
+        findMany: {
+          args: Prisma.CompanionConfigFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompanionConfigPayload>[]
+        }
+        create: {
+          args: Prisma.CompanionConfigCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompanionConfigPayload>
+        }
+        createMany: {
+          args: Prisma.CompanionConfigCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.CompanionConfigCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompanionConfigPayload>[]
+        }
+        delete: {
+          args: Prisma.CompanionConfigDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompanionConfigPayload>
+        }
+        update: {
+          args: Prisma.CompanionConfigUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompanionConfigPayload>
+        }
+        deleteMany: {
+          args: Prisma.CompanionConfigDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.CompanionConfigUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.CompanionConfigUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompanionConfigPayload>[]
+        }
+        upsert: {
+          args: Prisma.CompanionConfigUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CompanionConfigPayload>
+        }
+        aggregate: {
+          args: Prisma.CompanionConfigAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateCompanionConfig>
+        }
+        groupBy: {
+          args: Prisma.CompanionConfigGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.CompanionConfigGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.CompanionConfigCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.CompanionConfigCountAggregateOutputType> | number
         }
       }
     }
@@ -1974,6 +2049,18 @@ export const CompanionTokenScalarFieldEnum = {
 export type CompanionTokenScalarFieldEnum = (typeof CompanionTokenScalarFieldEnum)[keyof typeof CompanionTokenScalarFieldEnum]
 
 
+export const CompanionConfigScalarFieldEnum = {
+  id: 'id',
+  modePrompts: 'modePrompts',
+  namingRule: 'namingRule',
+  disallowedTools: 'disallowedTools',
+  version: 'version',
+  updatedAt: 'updatedAt'
+} as const
+
+export type CompanionConfigScalarFieldEnum = (typeof CompanionConfigScalarFieldEnum)[keyof typeof CompanionConfigScalarFieldEnum]
+
+
 export const ProjectScalarFieldEnum = {
   id: 'id',
   userId: 'userId',
@@ -2389,6 +2476,20 @@ export type ListDateTimeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaM
 
 
 /**
+ * Reference to a field of type 'Json'
+ */
+export type JsonFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Json'>
+    
+
+
+/**
+ * Reference to a field of type 'QueryMode'
+ */
+export type EnumQueryModeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'QueryMode'>
+    
+
+
+/**
  * Reference to a field of type 'Int'
  */
 export type IntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int'>
@@ -2413,20 +2514,6 @@ export type EnumPhaseFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaMode
  * Reference to a field of type 'Phase[]'
  */
 export type ListEnumPhaseFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Phase[]'>
-    
-
-
-/**
- * Reference to a field of type 'Json'
- */
-export type JsonFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Json'>
-    
-
-
-/**
- * Reference to a field of type 'QueryMode'
- */
-export type EnumQueryModeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'QueryMode'>
     
 
 
@@ -2582,6 +2669,7 @@ export type PrismaClientOptions = ({
 export type GlobalOmitConfig = {
   user?: Prisma.UserOmit
   companionToken?: Prisma.CompanionTokenOmit
+  companionConfig?: Prisma.CompanionConfigOmit
   project?: Prisma.ProjectOmit
   repository?: Prisma.RepositoryOmit
   repoFile?: Prisma.RepoFileOmit

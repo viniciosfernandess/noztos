@@ -378,6 +378,27 @@ export function getChannel(userId: string): RelayChannel {
   return ch
 }
 
+// Fan-out a command to every companion currently connected. Used for
+// global, low-frequency events like prompt-config updates where the
+// only "address" we have is "every machine running our daemon right
+// now". Iterates the in-memory channels map and pushes the command
+// onto each connected channel's queue. Disconnected channels (no SSE
+// reader) get the command dropped harmlessly — they'll re-fetch via
+// the 5-min polling backup when they reconnect, or via the initial
+// /config fetch on startup.
+//
+// Returns the number of channels that received the command — useful
+// for the admin endpoint to log "broadcast to N companions".
+export function broadcastCommandToAllCompanions(cmd: unknown): number {
+  let n = 0
+  for (const ch of channels.values()) {
+    if (!ch.isCompanionConnected()) continue
+    ch.pushCommand(cmd)
+    n++
+  }
+  return n
+}
+
 export function getCompanionStatus(userId: string): {
   connected: boolean
   connectedAt?: number

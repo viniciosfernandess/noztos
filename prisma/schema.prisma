@@ -44,6 +44,33 @@ model CompanionToken {
   @@map("companion_tokens")
 }
 
+// Singleton row holding the system-prompt config every companion daemon
+// fetches at startup and refreshes via SSE push. Lives in the DB instead
+// of the daemon's source bundle so prompt iteration can ship without
+// asking users to update the local CLI. The companion mirrors this row
+// into RAM and uses it for every `claude` spawn (zero per-spawn
+// overhead). A bundled fallback in the daemon protects first-startup-
+// offline scenarios; the row in this table is always the source of truth
+// once reachable.
+//
+// Edited via SQL or admin UI; bumping `version` is what triggers the
+// SSE 'config_updated' broadcast that pushes new prompts to every
+// online companion in <1s.
+model CompanionConfig {
+  id               String   @id @default("singleton")
+  // JSON: { plan: "...", ask: "...", agent: "..." }
+  modePrompts      Json
+  // Naming-rule appended to every mode prompt
+  namingRule       String
+  // JSON: { plan: ["AskUserQuestion"], ask: ["Edit","Write",...], agent: [] }
+  disallowedTools  Json
+  // Bumped on every change; companion uses this for cheap version checks
+  version          String
+  updatedAt        DateTime @updatedAt
+
+  @@map("companion_config")
+}
+
 model Project {
   id             String          @id @default(cuid())
   userId         String
