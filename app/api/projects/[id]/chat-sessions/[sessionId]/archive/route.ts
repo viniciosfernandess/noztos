@@ -27,9 +27,9 @@ export async function POST(_request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   }
 
-  // Same invariant as /trash — an active worktree must keep at least one
-  // active chat. If the user wants to put everything away, they archive
-  // the worktree itself (which takes every chat inside with it).
+  // An active worktree must keep at least one active chat. If the user
+  // wants to put everything away, they archive the worktree itself
+  // (which takes every chat inside with it).
   if (session.worktreeId) {
     const activeSiblings = await prisma.chatSession.count({
       where: {
@@ -54,6 +54,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
   // Free the in-memory ring buffer — archived sessions must re-hydrate
   // from Supabase on next open (and typically stay cold after).
   dropSessionBuffer(sessionId)
+  console.log(`[chat-archive] sessionId=${sessionId.slice(0, 8)} worktreeId=${session.worktreeId?.slice(0, 8) ?? '-'}`)
 
   return NextResponse.json({ success: true })
 }

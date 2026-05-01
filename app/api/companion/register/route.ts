@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyAuth } from '@/lib/auth'
 import { getChannel } from '@/lib/companion-relay'
+import { prisma } from '@/lib/db'
 
 // POST — Companion daemon registers itself. Sends auth info (Claude
 // version, email, plan) and project list. Server marks the user's
@@ -10,10 +11,11 @@ export async function POST(request: NextRequest) {
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await request.json()
-  const { authInfo, projects, machineName } = body as {
+  const { authInfo, projects, machineName, homeDir } = body as {
     authInfo?: { email?: string; plan?: string; version?: string }
     projects?: Array<{ id: string; path: string; name: string }>
     machineName?: string
+    homeDir?: string
   }
 
   const channel = getChannel(auth.userId)
@@ -25,11 +27,28 @@ export async function POST(request: NextRequest) {
   // automatically participate in change detection. No more bugs from
   // "I added X to the payload but forgot to add X to the diff check".
   const priorFingerprint = wasConnected ? statusFingerprint(channel.companion) : null
-  channel.setCompanionConnected(authInfo, auth.tokenId, machineName ?? auth.tokenName)
+  channel.setCompanionConnected(authInfo, auth.tokenId, machineName ?? auth.tokenName, homeDir)
   if (projects) {
     if (channel.companion) channel.companion.projects = projects
   }
   const nextFingerprint = statusFingerprint(channel.companion)
+
+  // Reconcile daemon-side projects against DB state. Two cases:
+  //   1. Daemon's id is the legacy hex (24 char), DB has a Repository
+  //      whose localPath matches → enqueue `relabel_project` so the
+  //      daemon adopts the DB cuid. This makes fs-watcher path,
+  //      worktrees dir, and provisionWorktree all line up.
+  //   2. Daemon has a project the DB doesn't (deleted or never
+  //      created) → enqueue `unregister_project` + `cleanup_project`
+  //      so the daemon drops the local entry and rms the worktrees
+  //      dir. Recovers from "user deleted while daemon was offline".
+  //
+  // Both commands are async/queued — zero added ms in the register
+  // response. Idempotent: if daemon already adopted the cuid (or the
+  // project is already gone) the daemon's own handlers no-op.
+  if (projects && projects.length > 0) {
+    void reconcileProjects(auth.userId, projects, channel)
+  }
 
   // Only broadcast companion_status when the snapshot actually
   // changed. A heartbeat with identical state stays silent so we
@@ -55,6 +74,88 @@ export async function POST(request: NextRequest) {
     message: 'Companion registered',
     pendingCommands: channel.drainCommands().length,
   })
+}
+
+// Reconcile daemon's local project list against DB state. Runs in the
+// background after register; never blocks the response. Issues
+// relabel/unregister/cleanup commands as needed; daemon handlers are
+// idempotent so repeated reconciliations on heartbeats are safe.
+//
+// Looks up DB rows by the file path the daemon reported (matched to
+// `Repository.localPath`). Cuid format check (>=20 chars, starts with
+// 'c') identifies daemon ids that are already cuids — those are
+// trusted as-is. Hex (24 chars) means legacy → relabel.
+async function reconcileProjects(
+  userId: string,
+  daemonProjects: Array<{ id: string; path: string; name: string }>,
+  channel: ReturnType<typeof getChannel>,
+): Promise<void> {
+  const tStart = Date.now()
+  try {
+    const paths = daemonProjects.map((p) => p.path)
+    // Local-path projects store their disk root in `Repository.sandboxId`
+    // (legacy field name — predates the multi-flow picker). Cross-
+    // referencing daemon-reported paths against this column is what
+    // links the daemon's local registry to the DB cuid.
+    const repos = await prisma.repository.findMany({
+      where: {
+        sandboxId: { in: paths },
+        project: { userId },
+      },
+      select: {
+        sandboxId: true,
+        project: { select: { id: true, deletedAt: true } },
+      },
+    })
+    const byPath = new Map(
+      repos
+        .filter((r): r is typeof r & { sandboxId: string } => r.sandboxId !== null)
+        .map((r) => [r.sandboxId, r.project] as const),
+    )
+    let drops = 0, relabels = 0, untouched = 0
+    for (const dp of daemonProjects) {
+      const dbProj = dp.path ? byPath.get(dp.path) : undefined
+      if (!dbProj) {
+        // daemon-only project, leave alone (e.g., never registered with cloud)
+        untouched++
+        continue
+      }
+      if (dbProj.deletedAt) {
+        // Project was deleted while daemon was offline. Tell daemon to
+        // drop the local registration and rm the worktrees dir.
+        const homeDir = channel.companion?.homeDir
+        channel.pushCommand({ type: 'unregister_project', targetPath: dp.path, timestamp: Date.now() })
+        if (homeDir) {
+          channel.pushCommand({
+            type: 'cleanup_project',
+            worktreesPath: `${homeDir}/.bornastar/worktrees/${dbProj.id}`,
+            timestamp: Date.now(),
+          })
+        }
+        console.log(`[register] reconcile drop deleted project path=${dp.path} cuid=${dbProj.id.slice(0, 8)}`)
+        drops++
+      } else if (dp.id !== dbProj.id) {
+        // Daemon has the legacy hex id; tell it to adopt the DB cuid.
+        channel.pushCommand({
+          type: 'relabel_project',
+          oldProjectId: dp.id,
+          newProjectId: dbProj.id,
+          timestamp: Date.now(),
+        })
+        console.log(`[register] reconcile relabel ${dp.id.slice(0, 8)} → ${dbProj.id.slice(0, 8)} path=${dp.path}`)
+        relabels++
+      } else {
+        untouched++
+      }
+    }
+    if (drops > 0 || relabels > 0) {
+      console.log(`[register] reconcile SUMMARY user=${userId.slice(0, 8)} daemonProjects=${daemonProjects.length} drops=${drops} relabels=${relabels} untouched=${untouched} ms=${Date.now() - tStart}`)
+    } else {
+      console.log(`[register] reconcile in-sync user=${userId.slice(0, 8)} projects=${daemonProjects.length} ms=${Date.now() - tStart}`)
+    }
+  } catch (err) {
+    console.warn(`[register] reconcile failed user=${userId.slice(0, 8)}: ${(err as Error).message}`)
+  }
 }
 
 // Snapshot of the companion fields that go into the companion_status

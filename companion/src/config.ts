@@ -60,6 +60,22 @@ export function getProject(path: string): ProjectConfig | undefined {
   return loadConfig().projects.find((p) => p.path === path)
 }
 
+// Re-key a project's id without changing path/name/etc. Used by the
+// register-time reconciliation: when the server detects a daemon-side
+// hex id that doesn't match the DB cuid, it tells the daemon to
+// relabel — fs-watcher path and worktrees dir then converge on the
+// cuid. Returns true when the relabel landed (project found at the
+// old id), false when the project no longer exists.
+export function relabelProject(oldId: string, newId: string): boolean {
+  const cfg = loadConfig()
+  const idx = cfg.projects.findIndex((p) => p.id === oldId)
+  if (idx < 0) return false
+  if (cfg.projects[idx].id === newId) return true
+  cfg.projects[idx] = { ...cfg.projects[idx], id: newId }
+  saveConfig(cfg)
+  return true
+}
+
 export function setAuthToken(token: string): void {
   const cfg = loadConfig()
   cfg.authToken = token

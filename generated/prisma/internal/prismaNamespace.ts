@@ -2160,7 +2160,6 @@ export const WorktreeScalarFieldEnum = {
   portBase: 'portBase',
   prTitleDraft: 'prTitleDraft',
   prBodyDraft: 'prBodyDraft',
-  trashedAt: 'trashedAt',
   deletedAt: 'deletedAt',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
@@ -2192,7 +2191,6 @@ export const ChatSessionScalarFieldEnum = {
   permissionMode: 'permissionMode',
   worktreeId: 'worktreeId',
   touchedPaths: 'touchedPaths',
-  trashedAt: 'trashedAt',
   deletedAt: 'deletedAt',
   claudeSessionId: 'claudeSessionId',
   totalCostUsd: 'totalCostUsd',

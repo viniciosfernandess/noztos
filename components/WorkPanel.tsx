@@ -17,12 +17,12 @@ import {
   getCachedFiles, setCachedFiles, hasCachedFiles,
   subscribeCachedFiles, getCachedFilesKeys, parseAffectedCacheKeys,
   markPathsDirty,
-  getCachedTerminal, setCachedTerminal,
   getCachedMeta, setCachedMeta,
   getCachedHunk, setCachedHunk, subscribeCachedHunks,
+  isPtyActive,
   setCacheProtector,
-  type TerminalEntry, type TerminalSandboxStatus,
 } from '@/lib/worktree-cache'
+import { XTermPanel } from './Terminal/XTermPanel'
 import { type ChatMessage } from '@/lib/hooks/useCompanionStream'
 import { companionStore } from '@/lib/companion-store'
 import {
@@ -268,12 +268,11 @@ function ChatsSidebar({
   const [editValue, setEditValue] = useState('')
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
   const [showArchivedModal, setShowArchivedModal] = useState(false)
-  const [showTrashModal, setShowTrashModal] = useState(false)
   const [pendingAction, setPendingAction] = useState<{
     targetType: 'session' | 'worktree'
     targetId: string
     targetName: string
-    action: 'archive' | 'trash'
+    action: 'archive' | 'delete'
     // Present only when the target has uncommitted work that the confirmation
     // needs to surface (and that we'll discard if the user confirms).
     stats: { added: number; removed: number; files: number } | null
@@ -300,12 +299,13 @@ function ChatsSidebar({
     setEditingId(null)
   }
 
-  // Archive/trash a chat session. Main chats live on main and can't have
+  // Archive/delete a chat session. Main chats live on main and can't have
   // uncommitted worktree work, so:
   //   - archive → silent
-  //   - trash   → confirmation modal (no stats)
-  async function callSessionAction(s: SidebarChat, action: 'archive' | 'trash') {
+  //   - delete  → strong confirmation modal (no undo)
+  async function callSessionAction(s: SidebarChat, action: 'archive' | 'delete') {
     if (action === 'archive') {
+      console.log(`[sidebar] action=archive target=session id=${s.id.slice(0, 8)}`)
       try {
         const res = await fetch(`/api/projects/${projectId}/chat-sessions/${s.id}/archive`, { method: 'POST' })
         if (res.ok) onChanged()
@@ -314,27 +314,28 @@ function ChatsSidebar({
       }
       return
     }
-    // trash → always confirm (with the 7-day notice)
+    console.log(`[sidebar] action=delete target=session id=${s.id.slice(0, 8)} (awaiting confirmation)`)
     setPendingAction({
       targetType: 'session',
       targetId: s.id,
       targetName: s.name,
-      action: 'trash',
+      action: 'delete',
       stats: null,
     })
   }
 
-  // Archive/trash a worktree. Pending-changes status comes from the live
+  // Archive/delete a worktree. Pending-changes status comes from the live
   // poll (worktreeStats):
   //   - archive clean → silent
   //   - archive dirty → modal with discard warning
-  //   - trash  clean → modal with 7-day notice
-  //   - trash  dirty → modal with 7-day + discard warning
-  async function callWorktreeAction(w: SidebarWorktree, action: 'archive' | 'trash') {
+  //   - delete  clean → modal with permanent-delete warning
+  //   - delete  dirty → modal with permanent-delete + discard warning
+  async function callWorktreeAction(w: SidebarWorktree, action: 'archive' | 'delete') {
     const stat = worktreeStats[w.id]
     const hasChanges = !!stat && (stat.added > 0 || stat.removed > 0)
 
     if (action === 'archive' && !hasChanges) {
+      console.log(`[sidebar] action=archive target=worktree id=${w.id.slice(0, 8)} clean (no modal)`)
       try {
         const res = await fetch(`/api/projects/${projectId}/worktrees/${w.id}/archive`, { method: 'POST' })
         if (res.ok) onChanged()
@@ -343,6 +344,7 @@ function ChatsSidebar({
       }
       return
     }
+    console.log(`[sidebar] action=${action} target=worktree id=${w.id.slice(0, 8)} hasChanges=${hasChanges} (awaiting confirmation)`)
 
     setPendingAction({
       targetType: 'worktree',
@@ -353,18 +355,26 @@ function ChatsSidebar({
     })
   }
 
-  // Confirm callback from the action modal: discard pending work first if
-  // any, then perform archive/trash. Used by every flow that opens the modal.
+  // Confirm callback from the action modal: discard pending work first
+  // if any, then perform archive/delete. Delete maps to the
+  // `delete-forever` endpoint — disk + branch removed AGORA, chats kept
+  // in the DB with `deletedAt` for ML/audit but no longer reachable
+  // from the user's UI.
   async function confirmPendingAction() {
     if (!pendingAction) return
+    const tStart = Date.now()
     try {
       const base = pendingAction.targetType === 'worktree'
         ? `/api/projects/${projectId}/worktrees/${pendingAction.targetId}`
         : `/api/projects/${projectId}/chat-sessions/${pendingAction.targetId}`
       if (pendingAction.stats) {
+        console.log(`[sidebar] action=discard target=${pendingAction.targetType} id=${pendingAction.targetId.slice(0, 8)} (pre-${pendingAction.action})`)
         await fetch(`${base}/discard`, { method: 'POST' })
       }
-      await fetch(`${base}/${pendingAction.action}`, { method: 'POST' })
+      const endpoint = pendingAction.action === 'delete' ? 'delete-forever' : 'archive'
+      console.log(`[sidebar] confirm action=${pendingAction.action} target=${pendingAction.targetType} id=${pendingAction.targetId.slice(0, 8)} → POST ${endpoint}`)
+      await fetch(`${base}/${endpoint}`, { method: 'POST' })
+      console.log(`[sidebar] confirm DONE action=${pendingAction.action} id=${pendingAction.targetId.slice(0, 8)} ms=${Date.now() - tStart}`)
       setPendingAction(null)
       onChanged()
     } catch (err) {
@@ -435,7 +445,7 @@ function ChatsSidebar({
                     setMenuOpen={(v) => setMenuOpenId(v ? s.id : null)}
                     onToggleUnread={() => onToggleUnread(s.id, !unread)}
                     onArchive={() => callSessionAction(s, 'archive')}
-                    onTrash={() => callSessionAction(s, 'trash')}
+                    onDelete={() => callSessionAction(s, 'delete')}
                   />
                 )
               })}
@@ -565,7 +575,7 @@ function ChatsSidebar({
                           </button>
                           <div className="my-1 h-px bg-white/5" />
                           <button
-                            onClick={() => { setMenuOpenId(null); callWorktreeAction(w, 'trash') }}
+                            onClick={() => { setMenuOpenId(null); callWorktreeAction(w, 'delete') }}
                             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-red-400 hover:bg-red-500/10"
                           >
                             Delete worktree
@@ -579,7 +589,8 @@ function ChatsSidebar({
         </div>
       </div>
 
-      {/* Footer — archive + trash (fixed at bottom) */}
+      {/* Footer — archive (fixed at bottom). No trash bin: deletes are
+          permanent and immediate via the 3-dot menu's "Delete" option. */}
       <div className="shrink-0 border-t border-white/10">
         <button
           onClick={() => setShowArchivedModal(true)}
@@ -590,15 +601,6 @@ function ChatsSidebar({
           </svg>
           <span className="text-[11px]">Archived</span>
         </button>
-        <button
-          onClick={() => setShowTrashModal(true)}
-          className="flex w-full items-center gap-2.5 px-4 py-1.5 text-left text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300"
-        >
-          <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-          </svg>
-          <span className="text-[11px]">Trash</span>
-        </button>
       </div>
 
       {/* Modals */}
@@ -606,13 +608,6 @@ function ChatsSidebar({
         <ArchivedModal
           projectId={projectId}
           onClose={() => setShowArchivedModal(false)}
-          onRestored={() => { setShowArchivedModal(false); onChanged() }}
-        />
-      )}
-      {showTrashModal && (
-        <TrashModal
-          projectId={projectId}
-          onClose={() => setShowTrashModal(false)}
           onChanged={() => onChanged()}
         />
       )}
@@ -660,7 +655,7 @@ function ChatRow({
   setMenuOpen,
   onToggleUnread,
   onArchive,
-  onTrash,
+  onDelete,
 }: {
   chat: SidebarChat
   active: boolean
@@ -678,7 +673,7 @@ function ChatRow({
   setMenuOpen: (open: boolean) => void
   onToggleUnread: () => void
   onArchive: () => void
-  onTrash: () => void
+  onDelete: () => void
 }) {
   return (
     <div
@@ -775,7 +770,7 @@ function ChatRow({
             </button>
             <div className="my-1 h-px bg-white/5" />
             <button
-              onClick={() => { setMenuOpen(false); onTrash() }}
+              onClick={() => { setMenuOpen(false); onDelete() }}
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12px] text-red-400 hover:bg-red-500/10"
             >
               Delete chat
@@ -792,11 +787,13 @@ function ChatRow({
 function ArchivedModal({
   projectId,
   onClose,
-  onRestored,
+  onChanged,
 }: {
   projectId: string
   onClose: () => void
-  onRestored: () => void
+  // Fires whenever a row is restored OR deleted forever — the parent
+  // refetches the sidebar so the open list / archived count are in sync.
+  onChanged: () => void
 }) {
   type ArchivedChat = { id: string; name: string; updatedAt: string }
   type ArchivedWorktree = {
@@ -806,6 +803,12 @@ function ArchivedModal({
   const [chats, setChats] = useState<ArchivedChat[]>([])
   const [worktrees, setWorktrees] = useState<ArchivedWorktree[]>([])
   const [loading, setLoading] = useState(true)
+  // Pending hard-delete confirmation. The archived list lets you skip
+  // the restore step and delete forever directly — but we always
+  // require a confirmation for the irreversible op.
+  const [confirmDelete, setConfirmDelete] = useState<
+    { kind: 'worktree' | 'chat'; id: string; name: string } | null
+  >(null)
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow
@@ -830,15 +833,35 @@ function ArchivedModal({
   }, [projectId])
 
   async function restoreChat(id: string) {
+    console.log(`[archived-modal] restore target=chat id=${id.slice(0, 8)}`)
     await fetch(`/api/projects/${projectId}/chat-sessions/${id}/restore`, { method: 'POST' })
     setChats((prev) => prev.filter((s) => s.id !== id))
-    onRestored()
+    onChanged()
   }
 
   async function restoreWorktree(id: string) {
+    console.log(`[archived-modal] restore target=worktree id=${id.slice(0, 8)}`)
     await fetch(`/api/projects/${projectId}/worktrees/${id}/restore`, { method: 'POST' })
     setWorktrees((prev) => prev.filter((w) => w.id !== id))
-    onRestored()
+    onChanged()
+  }
+
+  async function deleteForever() {
+    if (!confirmDelete) return
+    const tStart = Date.now()
+    const path = confirmDelete.kind === 'worktree'
+      ? `/api/projects/${projectId}/worktrees/${confirmDelete.id}/delete-forever`
+      : `/api/projects/${projectId}/chat-sessions/${confirmDelete.id}/delete-forever`
+    console.log(`[archived-modal] delete-forever target=${confirmDelete.kind} id=${confirmDelete.id.slice(0, 8)}`)
+    await fetch(path, { method: 'POST' })
+    if (confirmDelete.kind === 'worktree') {
+      setWorktrees((prev) => prev.filter((w) => w.id !== confirmDelete.id))
+    } else {
+      setChats((prev) => prev.filter((s) => s.id !== confirmDelete.id))
+    }
+    console.log(`[archived-modal] delete-forever DONE target=${confirmDelete.kind} id=${confirmDelete.id.slice(0, 8)} ms=${Date.now() - tStart}`)
+    setConfirmDelete(null)
+    onChanged()
   }
 
   const empty = !loading && chats.length === 0 && worktrees.length === 0
@@ -878,12 +901,20 @@ function ArchivedModal({
                     Archived {new Date(w.updatedAt).toLocaleDateString()} · {w.sessions.length} {w.sessions.length === 1 ? 'chat' : 'chats'} inside
                   </p>
                 </div>
-                <button
-                  onClick={() => restoreWorktree(w.id)}
-                  className="rounded-md border border-[#3C3C3C] px-2.5 py-1 text-[11px] text-zinc-300 hover:border-white/30 hover:bg-white/5"
-                >
-                  Restore
-                </button>
+                <div className="flex shrink-0 gap-1.5">
+                  <button
+                    onClick={() => restoreWorktree(w.id)}
+                    className="rounded-md border border-[#3C3C3C] px-2.5 py-1 text-[11px] text-zinc-300 hover:border-white/30 hover:bg-white/5"
+                  >
+                    Restore
+                  </button>
+                  <button
+                    onClick={() => setConfirmDelete({ kind: 'worktree', id: w.id, name: w.name })}
+                    className="rounded-md border border-red-900/50 px-2.5 py-1 text-[11px] text-red-400 hover:border-red-700 hover:bg-red-500/10"
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
               {w.sessions.length > 0 && (
                 <ul className="mt-2 ml-5 border-l border-[#2B2B2B] pl-3">
@@ -904,177 +935,89 @@ function ArchivedModal({
                   Archived {new Date(s.updatedAt).toLocaleDateString()}
                 </p>
               </div>
-              <button
-                onClick={() => restoreChat(s.id)}
-                className="ml-3 rounded-md border border-[#3C3C3C] px-2.5 py-1 text-[11px] text-zinc-300 hover:border-white/30 hover:bg-white/5"
-              >
-                Restore
-              </button>
+              <div className="ml-3 flex shrink-0 gap-1.5">
+                <button
+                  onClick={() => restoreChat(s.id)}
+                  className="rounded-md border border-[#3C3C3C] px-2.5 py-1 text-[11px] text-zinc-300 hover:border-white/30 hover:bg-white/5"
+                >
+                  Restore
+                </button>
+                <button
+                  onClick={() => setConfirmDelete({ kind: 'chat', id: s.id, name: s.name })}
+                  className="rounded-md border border-red-900/50 px-2.5 py-1 text-[11px] text-red-400 hover:border-red-700 hover:bg-red-500/10"
+                >
+                  Delete
+                </button>
+              </div>
             </div>
           ))}
         </div>
       </div>
+      {confirmDelete && (
+        <ConfirmDeleteForeverModal
+          targetName={confirmDelete.name}
+          targetKind={confirmDelete.kind}
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={deleteForever}
+        />
+      )}
     </div>
   )
 }
 
-// ── Trash modal ───────────────────────────────────────────────────────────
-
-function TrashModal({
-  projectId,
-  onClose,
-  onChanged,
+// Strong-confirmation modal for the irreversible delete-forever action
+// invoked from the Archived list. Used INSIDE ArchivedModal (renders on
+// top via the same fixed overlay pattern) so the user doesn't have to
+// restore-then-delete in two steps.
+function ConfirmDeleteForeverModal({
+  targetName,
+  targetKind,
+  onCancel,
+  onConfirm,
 }: {
-  projectId: string
-  onClose: () => void
-  onChanged: () => void
+  targetName: string
+  targetKind: 'worktree' | 'chat'
+  onCancel: () => void
+  onConfirm: () => void
 }) {
-  type TrashedChat = { id: string; name: string; trashedAt: string; daysLeft: number }
-  type TrashedWorktree = {
-    id: string; name: string; branchName: string; trashedAt: string; daysLeft: number
-    sessions: { id: string; name: string }[]
-  }
-  const [chats, setChats] = useState<TrashedChat[]>([])
-  const [worktrees, setWorktrees] = useState<TrashedWorktree[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => { document.body.style.overflow = previousOverflow }
-  }, [])
-
-  function reload() {
-    setLoading(true)
-    // Fetch both trash buckets in parallel. Worktree card bundles its
-    // child chats; the chats endpoint returns only items whose parent
-    // worktree is still active (standalone entries).
-    Promise.all([
-      fetch(`/api/projects/${projectId}/chat-sessions/trash`).then((r) => r.ok ? r.json() : { sessions: [] }),
-      fetch(`/api/projects/${projectId}/worktrees/trash`).then((r) => r.ok ? r.json() : { worktrees: [] }),
-    ])
-      .then(([s, w]) => {
-        setChats(s.sessions ?? [])
-        setWorktrees(w.worktrees ?? [])
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false))
-  }
-
-  useEffect(() => {
-    reload()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId])
-
-  async function restoreChat(id: string) {
-    await fetch(`/api/projects/${projectId}/chat-sessions/${id}/restore`, { method: 'POST' })
-    setChats((prev) => prev.filter((s) => s.id !== id))
-    onChanged()
-  }
-
-  async function deleteChatForever(id: string) {
-    await fetch(`/api/projects/${projectId}/chat-sessions/${id}/delete-forever`, { method: 'POST' })
-    setChats((prev) => prev.filter((s) => s.id !== id))
-    onChanged()
-  }
-
-  async function restoreWorktree(id: string) {
-    await fetch(`/api/projects/${projectId}/worktrees/${id}/restore`, { method: 'POST' })
-    setWorktrees((prev) => prev.filter((w) => w.id !== id))
-    onChanged()
-  }
-
-  async function deleteWorktreeForever(id: string) {
-    await fetch(`/api/projects/${projectId}/worktrees/${id}/delete-forever`, { method: 'POST' })
-    setWorktrees((prev) => prev.filter((w) => w.id !== id))
-    onChanged()
-  }
-
-  const empty = !loading && chats.length === 0 && worktrees.length === 0
-
+  const noun = targetKind === 'worktree' ? 'worktree' : 'chat'
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70" onClick={onCancel}>
       <div
-        className="flex h-[600px] max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-white/10 shadow-2xl"
+        className="w-full max-w-sm overflow-hidden rounded-xl border border-white/10 shadow-2xl"
         style={{ backgroundColor: '#181818' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex shrink-0 items-center justify-between border-b border-[#2B2B2B] px-5 py-3">
-          <h3 className="text-[13px] font-semibold text-zinc-100">Trash</h3>
-          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300">
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+        <div className="border-b border-[#2B2B2B] px-5 py-3">
+          <h3 className="text-[13px] font-semibold text-zinc-100">Delete {noun} forever</h3>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {loading && <p className="px-5 py-6 text-center text-[11px] text-zinc-500">Loading…</p>}
-          {empty && <p className="px-5 py-6 text-center text-[11px] text-zinc-500">Trash is empty.</p>}
-
-          {/* Trashed worktrees — bundled with the chats they carried in */}
-          {worktrees.map((w) => (
-            <div key={w.id} className="border-b border-[#2B2B2B] px-5 py-3 last:border-b-0">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <svg className="h-3.5 w-3.5 text-zinc-500" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7h18M5 7v13a2 2 0 002 2h10a2 2 0 002-2V7M9 7V5a2 2 0 012-2h2a2 2 0 012 2v2" />
-                    </svg>
-                    <p className="truncate text-[12px] font-medium text-zinc-100">{w.name}</p>
-                    <span className="rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-zinc-500">{w.branchName}</span>
-                  </div>
-                  <p className="mt-0.5 text-[10px] text-zinc-600">
-                    Expires in {w.daysLeft} {w.daysLeft === 1 ? 'day' : 'days'} · {w.sessions.length} {w.sessions.length === 1 ? 'chat' : 'chats'} inside
-                  </p>
-                </div>
-                <div className="flex gap-1.5">
-                  <button
-                    onClick={() => restoreWorktree(w.id)}
-                    className="rounded-md border border-[#3C3C3C] px-2.5 py-1 text-[11px] text-zinc-300 hover:border-white/30 hover:bg-white/5"
-                  >
-                    Restore
-                  </button>
-                  <button
-                    onClick={() => deleteWorktreeForever(w.id)}
-                    className="rounded-md border border-red-500/30 px-2.5 py-1 text-[11px] text-red-400 hover:border-red-500/60 hover:bg-red-500/10"
-                  >
-                    Delete forever
-                  </button>
-                </div>
-              </div>
-              {w.sessions.length > 0 && (
-                <ul className="mt-2 ml-5 border-l border-[#2B2B2B] pl-3">
-                  {w.sessions.map((s) => (
-                    <li key={s.id} className="py-0.5 text-[11px] text-zinc-500 truncate">↳ {s.name}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          ))}
-
-          {/* Standalone trashed chats — parent worktree is still active */}
-          {chats.map((s) => (
-            <div key={s.id} className="flex items-center justify-between gap-2 border-b border-[#2B2B2B] px-5 py-3 last:border-b-0">
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[12px] text-zinc-200">{s.name}</p>
-                <p className="mt-0.5 text-[10px] text-zinc-600">
-                  Expires in {s.daysLeft} {s.daysLeft === 1 ? 'day' : 'days'}
-                </p>
-              </div>
-              <button
-                onClick={() => restoreChat(s.id)}
-                className="rounded-md border border-[#3C3C3C] px-2.5 py-1 text-[11px] text-zinc-300 hover:border-white/30 hover:bg-white/5"
-              >
-                Restore
-              </button>
-              <button
-                onClick={() => deleteChatForever(s.id)}
-                className="rounded-md border border-red-500/30 px-2.5 py-1 text-[11px] text-red-400 hover:border-red-500/60 hover:bg-red-500/10"
-              >
-                Delete forever
-              </button>
-            </div>
-          ))}
+        <div className="px-5 py-4">
+          <p className="text-[12px] text-zinc-300">
+            <span className="font-medium text-zinc-100">{targetName}</span>
+          </p>
+          {targetKind === 'worktree' ? (
+            <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">
+              This will <span className="text-zinc-200">permanently delete</span> the local worktree folder and the git branch. Chat history stays in our records but won&apos;t be visible to you. <span className="text-red-400">Cannot be undone.</span>
+            </p>
+          ) : (
+            <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">
+              This will <span className="text-zinc-200">permanently delete</span> this chat from your view. The transcript stays in our records. <span className="text-red-400">Cannot be undone.</span>
+            </p>
+          )}
+        </div>
+        <div className="flex border-t border-[#2B2B2B]">
+          <button
+            onClick={onCancel}
+            className="flex-1 border-r border-[#2B2B2B] px-4 py-2.5 text-[12px] text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 px-4 py-2.5 text-[12px] text-red-400 hover:bg-red-500/10"
+          >
+            Delete forever
+          </button>
         </div>
       </div>
     </div>
@@ -1085,12 +1028,15 @@ function TrashModal({
 
 // Adaptive confirmation modal for archive/delete actions on chats and
 // worktrees. Behavior:
-//   - action=trash → always shows the "stays in trash 7 days" line
+//   - action=delete → strong "permanent, cannot be undone" warning
 //   - pendingStats present → also shows the +/- file diff and warns work
 //                            will be lost (caller is expected to discard
 //                            the worktree before performing the action)
 //
-// Cancel keeps everything as-is. Confirm runs the caller's onConfirm.
+// Cancel keeps everything as-is. Confirm runs the caller's onConfirm,
+// which routes archive → /archive and delete → /delete-forever (chats
+// stay in our DB with `deletedAt` for ML/audit but disappear from the
+// user's UI; the local worktree folder + git branch are removed AGORA).
 function ConfirmActionModal({
   targetName,
   targetType,
@@ -1101,21 +1047,21 @@ function ConfirmActionModal({
 }: {
   targetName: string
   targetType: 'session' | 'worktree'
-  action: 'archive' | 'trash'
+  action: 'archive' | 'delete'
   pendingStats: { added: number; removed: number; files: number } | null
   onCancel: () => void
   onConfirm: () => void
 }) {
-  const isTrash = action === 'trash'
+  const isDelete = action === 'delete'
   const isWorktree = targetType === 'worktree'
   const noun = isWorktree ? 'worktree' : 'chat'
-  const verbCap = isTrash ? 'Delete' : 'Archive'
-  const verbLow = isTrash ? 'delete' : 'archive'
+  const verbCap = isDelete ? 'Delete forever' : 'Archive'
+  const verbLow = isDelete ? 'delete' : 'archive'
   const confirmLabel = pendingStats ? `Discard & ${verbLow}` : verbCap
 
   let title: string
-  if (isTrash && pendingStats) title = `Delete ${noun} with pending changes`
-  else if (isTrash) title = `Delete ${noun}`
+  if (isDelete && pendingStats) title = `Delete ${noun} with pending changes`
+  else if (isDelete) title = `Delete ${noun} forever`
   else title = `Archive ${noun} with pending changes`
 
   return (
@@ -1133,9 +1079,13 @@ function ConfirmActionModal({
             <span className="font-medium text-zinc-100">{targetName}</span>
           </p>
 
-          {isTrash && (
+          {isDelete && (
             <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">
-              Stays in your trash for <span className="text-zinc-300">7 days</span>, then it&apos;s gone for good. You can restore it before that.
+              {isWorktree ? (
+                <>This will <span className="text-zinc-200">permanently delete</span> the local worktree folder and the git branch. Chat history stays in our records but won&apos;t be visible to you. <span className="text-red-400">Cannot be undone.</span></>
+              ) : (
+                <>This will <span className="text-zinc-200">permanently delete</span> this chat from your view. The transcript stays in our records. <span className="text-red-400">Cannot be undone.</span></>
+              )}
             </p>
           )}
 
@@ -1340,12 +1290,12 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
   // Subscribers (FileTree / ChangesList) get the new snapshot via
   // `subscribeCachedFiles` without needing their own fs-change listener.
   //
-  // Paths NOT matching the `.bornastar-worktrees/<id>/` prefix map to
-  // the synthetic 'main' key. Worktrees not yet in cache are skipped —
-  // first visit will fetch fresh anyway.
+  // Each daemon batch carries `source` ('project' | 'worktrees') so the
+  // cache layer maps paths → cache keys without parsing string prefixes.
+  // Worktrees not yet in cache are skipped — first visit fetches fresh.
   useEffect(() => {
     let debounce: ReturnType<typeof setTimeout> | null = null
-    let pendingPaths: string[] = []
+    let pendingBatches: Array<{ source: 'project' | 'worktrees'; paths: string[] }> = []
 
     async function refreshKey(cacheKey: string) {
       const wtqs = cacheKey === 'main' ? '' : `?worktree=${cacheKey}`
@@ -1361,11 +1311,17 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
     }
 
     function flush() {
-      const paths = pendingPaths
-      pendingPaths = []
+      const batches = pendingBatches
+      pendingBatches = []
       debounce = null
-      if (paths.length === 0) return
-      const affected = parseAffectedCacheKeys(paths)
+      if (batches.length === 0) return
+      // Resolve affected keys across every batch in this debounce
+      // window. Multiple batches can land in the same flush when both
+      // roots (project + worktrees) emitted within the 50ms window.
+      const affected = new Set<string>()
+      for (const b of batches) {
+        for (const k of parseAffectedCacheKeys(b)) affected.add(k)
+      }
       const cached = new Set(getCachedFilesKeys())
       // Intersection: keys that are both cached AND touched.
       const refreshing: string[] = []
@@ -1375,8 +1331,9 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
           void refreshKey(key)
         }
       }
+      const totalPaths = batches.reduce((n, b) => n + b.paths.length, 0)
       console.log(
-        `[wt-cache] fs-change paths=${paths.length} `
+        `[wt-cache] fs-change batches=${batches.length} paths=${totalPaths} `
         + `affected=[${Array.from(affected).map((k) => k.slice(0, 8)).join(',') || '-'}] `
         + `cached=[${Array.from(cached).map((k) => k.slice(0, 8)).join(',') || '-'}] `
         + `refreshing=[${refreshing.map((k) => k.slice(0, 8)).join(',') || '-'}]`,
@@ -1384,16 +1341,17 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
     }
 
     function onFsChange(e: Event) {
-      const detail = (e as CustomEvent<{ paths?: string[] }>).detail
-      const paths = detail?.paths ?? []
+      const detail = (e as CustomEvent<{ source?: 'project' | 'worktrees'; paths?: string[] }>).detail
+      const batch = { source: detail?.source ?? 'project', paths: detail?.paths ?? [] }
+      if (batch.paths.length === 0) return
       // Instant local guess: flip every cached path's isModified to true
       // so the FileTree yellow badge + Changes-list inclusion appear in
       // the current frame, before any network round-trip. The debounced
       // refetch below reconciles added/removed counts and resolves
       // adds/deletes the local guess can't determine. Same trick VSCode
       // uses to make the SCM badge feel instant.
-      markPathsDirty(paths)
-      pendingPaths.push(...paths)
+      markPathsDirty(batch)
+      pendingBatches.push(batch)
       // Coalesce burst events from editor save-format-lint cycles. 50ms
       // matches the daemon-side debounce — anything bigger is human-
       // perceptible delay between editing and the explorer/changes badge
@@ -1439,9 +1397,22 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
       protect.add(projectId)
       if (activeWorktreeId) protect.add(activeWorktreeId)
       if (activeSessionId) protect.add(activeSessionId)
+      const reasons: string[] = []
       for (const wt of worktrees) {
-        if (wt.sessions.some((s) => busySessions.has(s.id))) protect.add(wt.id)
+        const busy = wt.sessions.some((s) => busySessions.has(s.id))
+        // Worktrees with a live PTY (running build, vim, ssh, anything)
+        // are still "in use" even if the user moved focus elsewhere or
+        // closed the right panel. Keep their files / hunks / meta /
+        // git-status caches warm so when the user comes back the
+        // panel paints from RAM. Daemon-side TTL bounds how long a
+        // truly idle PTY survives; the protector tracks that lifecycle.
+        const pty = isPtyActive(wt.id)
+        if (busy || pty) {
+          protect.add(wt.id)
+          reasons.push(`${wt.id.slice(0, 8)}=${busy ? 'busy' : ''}${busy && pty ? '+' : ''}${pty ? 'pty' : ''}`)
+        }
       }
+      console.log(`[wt-cache] protector size=${protect.size} active=${activeWorktreeId?.slice(0, 8) ?? '-'} ${reasons.length > 0 ? `extras=${reasons.join(',')}` : ''}`)
       return protect
     })
   }, [projectId, activeWorktreeId, activeSessionId, worktrees, busySessions])
@@ -1659,7 +1630,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
   }, [activeSessionId])
 
   // Load (or reload) main chats AND worktrees together. Used after any
-  // mutation in the sidebar (create, archive, trash, restore).
+  // mutation in the sidebar (create, archive, delete, restore).
   const reloadAll = useCallback(async (preserveActive: boolean = true) => {
     try {
       const [chatsRes, worktreesRes] = await Promise.all([
@@ -3247,7 +3218,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                   </svg>
                 </button>
               </div>
-              <TerminalBody projectId={projectId} sessionId={activeSessionId} worktreeId={activeWorktreeId} />
+              <TerminalBody projectId={projectId} worktreeId={activeWorktreeId} worktreePending={activeWorktreePending} />
             </div>
           ) : hasOpenChat ? (
             <button
@@ -5680,7 +5651,7 @@ function ChatPanel({
   //      that comes back instantly and we skip Supabase entirely.
   //   2. Cold path — paginated /messages, which reads from Supabase.
   //      Triggers when the buffer is empty (evicted / cold boot / never
-  //      streamed) or the session is archived/trashed.
+  //      streamed) or the session is archived/deleted.
   // Idempotent (fuzzyMatch) so re-running on visibility restore never
   // duplicates or reorders.
   const hydrateFromServer = useCallback(async () => {
@@ -6801,11 +6772,12 @@ function ChatPanel({
                   // — Enter inserts a newline normally and the draft
                   // sits in the box until the turn ends (or they hit
                   // Stop), at which point the Send button comes back.
-                  // Also gate on companion connectivity: if the daemon
-                  // is offline, Enter must NOT fire a send (the request
-                  // would queue with nowhere to run). sendMessage has
-                  // its own defensive check too.
-                  if (e.key === 'Enter' && !e.shiftKey && !isRunning && canSendToLLM) {
+                  // Gate on the SAME conditions as the Send button's
+                  // `disabled` prop so Enter never bypasses what the
+                  // button blocks. sendMessage has its own defensive
+                  // check too — that fires only if a future caller
+                  // forgets to gate.
+                  if (e.key === 'Enter' && !e.shiftKey && !isRunning && canSendToLLM && companionProjectId) {
                     e.preventDefault()
                     sendMessage(e)
                   }
@@ -6939,20 +6911,26 @@ function ChatPanel({
                 onClick={() => {
                   if (!companionProjectId) return
                   // Pause is a user action — respond visually right
-                  // now, never wait on the network. The pattern is
-                  // local-first: stop the spinner, return the prompt
-                  // to the input, fire the interrupt fetch in the
-                  // background (still useful if the daemon is alive).
-                  // If the daemon is offline, the next Send attempt
-                  // surfaces it (or the sweeper does within 60s) —
-                  // keeping the spinner spinning after a Pause click
-                  // would look broken regardless of why it failed.
-                  const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user')
+                  // now, never wait on the network. Local-first:
+                  // stop the spinner, then fire the interrupt fetch
+                  // in the background (still useful if the daemon
+                  // is alive). If the daemon is offline, the next
+                  // Send attempt surfaces it (or the sweeper does
+                  // within 60s) — keeping the spinner spinning
+                  // after a Pause click would look broken regardless
+                  // of why it failed.
+                  //
+                  // No auto-restore of the previous prompt into the
+                  // input: the morphing Stop→Submit button shares
+                  // pixels, so a user clicking pause once with the
+                  // intent to stop would often double-click and
+                  // accidentally re-submit. Pause is binary now
+                  // (matches ChatGPT / Claude.ai / Cursor). The
+                  // separate auto-restore for daemon-disconnect-
+                  // mid-turn (above) still runs because in that
+                  // path the Submit button is disabled by
+                  // canSendToLLM=false, so no double-click trap.
                   companionStore.markIdle(sessionId)
-                  if (lastUserMsg && !input.trim()) {
-                    setInput(lastUserMsg.content)
-                    companionStore.setDraft(sessionId, lastUserMsg.content)
-                  }
                   // Fire-and-forget; result drives logs only. If it
                   // succeeds the daemon stops Claude (and any late
                   // events that already streamed slot into history
@@ -7528,272 +7506,43 @@ function ReminderModal({ projectId, onClose }: { projectId: string; onClose: () 
 
 // ── Terminal Body ──────────────────────────────────────────────────────────
 
-function TerminalBody({ projectId, sessionId, worktreeId }: { projectId: string; sessionId?: string | null; worktreeId?: string | null }) {
-  // Cache key per (worktree | session | project). Same convention as
-  // `worktree-cache.ts` so switching back to a previously-visited
-  // context restores the terminal exactly as the user left it —
-  // history, half-typed input, command-up-arrow recall, all of it.
-  const contextKey = worktreeId ?? sessionId ?? projectId
+function TerminalBody({ projectId, worktreeId, worktreePending }: {
+  projectId: string
+  worktreeId: string | null
+  worktreePending: boolean
+}) {
+  // Terminal exists ONLY inside worktrees (chats live inside worktrees,
+  // main view is read-only browse-from-GitHub). If somehow rendered
+  // without a worktreeId, render nothing — the parent gates this on
+  // `activeWorktreeId` so this is just defensive.
+  if (!worktreeId) return null
 
-  const [sandboxStatus, setSandboxStatus] = useState<TerminalSandboxStatus>(() => {
-    const seed = getCachedTerminal(contextKey)
-    console.log(`[wt-cache] terminal mount key=${contextKey.slice(0, 8)} ${seed ? `HIT lines=${seed.history.length} status=${seed.sandboxStatus}` : 'MISS'}`)
-    return seed?.sandboxStatus ?? 'disconnected'
-  })
-  const [history, setHistory] = useState<TerminalEntry[]>(() => getCachedTerminal(contextKey)?.history ?? [])
-  const [input, setInput] = useState(() => getCachedTerminal(contextKey)?.input ?? '')
-  const [commandHistory, setCommandHistory] = useState<string[]>(() => getCachedTerminal(contextKey)?.commandHistory ?? [])
-  // historyIndex is transient navigation state for the up-arrow recall.
-  // Always starts at -1 — persisting it would make returning to a
-  // worktree feel like the cursor is in the middle of a recall stack.
-  const [historyIndex, setHistoryIndex] = useState(-1)
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-  // Tracks the contextKey we're currently "settled into". When the prop
-  // changes, the reload effect below copies cached state into useState,
-  // and only then do we mark the new key as settled — that gates the
-  // persist effect from clobbering the cache with stale state during
-  // the in-between render.
-  const settledKey = useRef(contextKey)
-
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-  }, [history.length])
-
-  // ── Cache reload on context switch ──────────────────────────────
-  // Switching worktree / session / project → useState's lazy initialiser
-  // doesn't re-run, so we manually pull the new context's snapshot and
-  // overwrite all four state slots. After the reload commits, mark the
-  // new key as settled so the persist effect can resume.
-  useEffect(() => {
-    const next = getCachedTerminal(contextKey)
-    setHistory(next?.history ?? [])
-    setInput(next?.input ?? '')
-    setCommandHistory(next?.commandHistory ?? [])
-    setSandboxStatus(next?.sandboxStatus ?? 'disconnected')
-    setHistoryIndex(-1)
-    settledKey.current = contextKey
-  }, [contextKey])
-
-  // ── Cache write-through ─────────────────────────────────────────
-  // Persist on every state change so a future remount (or a sibling
-  // TerminalBody mounted briefly during a transition) picks up the
-  // freshest snapshot. Skipped on the first render after a key change
-  // because state hasn't been reloaded yet — the reload effect above
-  // marks `settledKey` once that's done.
-  useEffect(() => {
-    if (settledKey.current !== contextKey) return
-    setCachedTerminal(contextKey, { history, input, commandHistory, sandboxStatus })
-  }, [contextKey, history, input, commandHistory, sandboxStatus])
-
-  // ── Auto-start on mount / context change ────────────────────────
-  // Cache hit with a previously-running sandbox: skip the verbose
-  // "Connecting..." banner and verify silently. The sandbox-manager
-  // keeps the underlying Conductor process alive across UI mounts, so
-  // 99% of the time the silent check returns running and the user
-  // never sees a transition state. If the silent check fails (idle
-  // timer reaped, daemon restarted), we fall through to the cold path.
-  useEffect(() => {
-    let mounted = true
-    const cachedNow = getCachedTerminal(contextKey)
-    const silentVerify = cachedNow?.sandboxStatus === 'running'
-
-    async function autoStart() {
-      if (!silentVerify) {
-        setSandboxStatus('starting')
-        setHistory([{ type: 'system', text: 'Connecting to sandbox...' }])
-      }
-      try {
-        const checkRes = await fetch(`/api/projects/${projectId}/terminal`)
-        const checkData = await checkRes.json()
-
-        if (checkData.status === 'running' && checkData.sandboxId) {
-          if (!mounted) return
-          setSandboxStatus('running')
-          if (!silentVerify) {
-            setHistory([{ type: 'system', text: `Connected to sandbox ${checkData.sandboxId.slice(0, 8)}... (${checkData.repo})` }])
-            inputRef.current?.focus()
-          }
-          return
-        }
-
-        // Cold path — sandbox not running, ask the server to start it.
-        if (mounted) setHistory((prev) => [...prev, { type: 'system', text: 'Starting sandbox...' }])
-        const res = await fetch(`/api/projects/${projectId}/terminal`, { method: 'POST' })
-        const data = await res.json()
-
-        if (mounted) {
-          if (data.sandboxId) {
-            setSandboxStatus('running')
-            setHistory((prev) => [...prev, { type: 'system', text: `Sandbox ready. ID: ${data.sandboxId.slice(0, 8)}...` }])
-            inputRef.current?.focus()
-          } else {
-            setSandboxStatus('disconnected')
-            setHistory((prev) => [...prev, { type: 'stderr', text: data.error || 'Failed to start' }])
-          }
-        }
-      } catch {
-        if (mounted) {
-          setSandboxStatus('disconnected')
-          setHistory((prev) => [...prev, { type: 'stderr', text: 'Failed to connect' }])
-        }
-      }
-    }
-
-    autoStart()
-
-    return () => {
-      mounted = false
-      // Don't stop sandbox on terminal close — the idle timer (15 min)
-      // handles it. Tasks running in the sandbox keep going.
-    }
-  }, [projectId, contextKey])
-
-  async function handleStart() {
-    setSandboxStatus('starting')
-    setHistory([{ type: 'system', text: 'Starting sandbox...' }])
-    try {
-      const res = await fetch(`/api/projects/${projectId}/terminal`, { method: 'POST' })
-      const data = await res.json()
-      if (data.sandboxId) {
-        setSandboxStatus('running')
-        setHistory((prev) => [...prev, { type: 'system', text: `Sandbox ready. ID: ${data.sandboxId.slice(0, 8)}...` }])
-        inputRef.current?.focus()
-      } else {
-        setSandboxStatus('disconnected')
-        setHistory((prev) => [...prev, { type: 'stderr', text: data.error || 'Failed to start sandbox' }])
-      }
-    } catch {
-      setSandboxStatus('disconnected')
-      setHistory((prev) => [...prev, { type: 'stderr', text: 'Failed to connect' }])
-    }
-  }
-
-  async function handleExec(cmd: string) {
-    if (!cmd.trim()) return
-    setHistory((prev) => [...prev, { type: 'input', text: cmd }])
-    setCommandHistory((prev) => [cmd, ...prev])
-    setHistoryIndex(-1)
-    setInput('')
-
-    try {
-      const execParams = new URLSearchParams()
-      if (worktreeId) execParams.set('worktree', worktreeId)
-      else if (sessionId) execParams.set('session', sessionId)
-      const execUrl = `/api/projects/${projectId}/terminal/exec${execParams.toString() ? `?${execParams}` : ''}`
-      const res = await fetch(execUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: cmd }),
-      })
-      const data = await res.json()
-
-      if (data.error) {
-        setHistory((prev) => [...prev, { type: 'stderr', text: data.error }])
-      } else {
-        if (data.stdout) setHistory((prev) => [...prev, { type: 'stdout', text: data.stdout }])
-        if (data.stderr) setHistory((prev) => [...prev, { type: 'stderr', text: data.stderr }])
-        if (!data.stdout && !data.stderr) setHistory((prev) => [...prev, { type: 'system', text: `(exit code: ${data.exitCode})` }])
-      }
-    } catch (err) {
-      setHistory((prev) => [...prev, { type: 'stderr', text: `Error: ${err instanceof Error ? err.message : 'Request failed'}` }])
-    }
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') {
-      handleExec(input)
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      if (commandHistory.length > 0) {
-        const newIndex = Math.min(historyIndex + 1, commandHistory.length - 1)
-        setHistoryIndex(newIndex)
-        setInput(commandHistory[newIndex])
-      }
-    } else if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      if (historyIndex > 0) {
-        const newIndex = historyIndex - 1
-        setHistoryIndex(newIndex)
-        setInput(commandHistory[newIndex])
-      } else {
-        setHistoryIndex(-1)
-        setInput('')
-      }
-    }
-  }
-
-  if (sandboxStatus === 'disconnected') {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6">
-        <p className="text-[11px] text-zinc-500">No sandbox running</p>
-        <button
-          onClick={handleStart}
-          className="flex h-8 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-[11px] font-medium text-white transition-colors hover:bg-emerald-500"
-        >
-          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
-          </svg>
-          Start Sandbox
-        </button>
-      </div>
-    )
-  }
-
-  if (sandboxStatus === 'starting') {
+  // Wait until the worktree has been provisioned on the server
+  // (worktreePath populated). Mounting xterm with a not-yet-ready
+  // worktreeId would race resolveContext into a 400 OR (if the
+  // server-side gate failed) a wrong-cwd spawn. Same gate ChatPanel /
+  // FileTree / useGitStatus already use elsewhere — we're just plugging
+  // the terminal into the existing pattern.
+  if (worktreePending) {
     return (
       <div className="flex flex-1 items-center justify-center gap-2 p-6">
         <svg className="h-4 w-4 animate-spin text-emerald-400" fill="none" viewBox="0 0 24 24">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
         </svg>
-        <span className="text-[11px] text-zinc-400">Starting sandbox...</span>
+        <span className="text-[11px] text-zinc-400">Loading worktree...</span>
       </div>
     )
   }
 
+  // Once the worktree is real, hand off to xterm. ContextKey = worktreeId
+  // so all chats inside the same worktree share one bash session.
   return (
-    <div className="flex flex-1 flex-col overflow-hidden" onClick={() => inputRef.current?.focus()}>
-      <div ref={scrollRef} className="flex-1 overflow-auto p-3 font-mono text-[12px] leading-5">
-        {history.map((entry, i) => (
-          <div key={i}>
-            {entry.type === 'input' && (
-              <div className="text-zinc-400">
-                <span className="text-emerald-400">bornastar</span>
-                <span className="text-zinc-600">:</span>
-                <span className="text-sky-400">~/project</span>
-                <span className="text-zinc-600">$ </span>
-                <span className="text-zinc-200">{entry.text}</span>
-              </div>
-            )}
-            {entry.type === 'stdout' && (
-              <pre className="whitespace-pre-wrap text-zinc-300">{entry.text}</pre>
-            )}
-            {entry.type === 'stderr' && (
-              <pre className="whitespace-pre-wrap text-red-400">{entry.text}</pre>
-            )}
-            {entry.type === 'system' && (
-              <div className="text-zinc-600 italic">{entry.text}</div>
-            )}
-          </div>
-        ))}
-        {/* Active prompt */}
-        <div className="flex items-center text-zinc-400">
-          <span className="text-emerald-400">bornastar</span>
-          <span className="text-zinc-600">:</span>
-          <span className="text-sky-400">~/project</span>
-          <span className="text-zinc-600">$ </span>
-          <input
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            className="flex-1 bg-transparent text-zinc-200 outline-none caret-emerald-400"
-            spellCheck={false}
-          />
-        </div>
-      </div>
-    </div>
+    <XTermPanel
+      projectId={projectId}
+      contextKey={worktreeId}
+      worktreeId={worktreeId}
+    />
   )
 }
 

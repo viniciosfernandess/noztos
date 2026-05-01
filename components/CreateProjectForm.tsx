@@ -5,6 +5,23 @@ import { useRouter } from 'next/navigation'
 import { useGitHubModal } from './GitHubModal'
 import { useCompanionStatus } from '@/lib/hooks/useCompanionStore'
 
+// Mint a project id client-side BEFORE the network round-trip. Lets
+// `POST /api/projects` be idempotent on retry: a re-clicked Create
+// after a network blip resends the same id, the server upserts and
+// returns the existing row instead of creating a duplicate.
+//
+// Format matches the regex POST /api/projects validates against
+// (`^c[a-z0-9]{19,31}$`): a `c` prefix + 24 chars from base36 of 16
+// crypto-random bytes. Same shape as Prisma's default cuid; we don't
+// pull in the cuid lib for this single call site.
+function mintCuid(): string {
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  let s = 'c'
+  for (const b of bytes) s += b.toString(36).padStart(2, '0')
+  return s.slice(0, 25)
+}
+
 export function CreateProjectButton({ label }: { label?: string } = {}) {
   const [showPicker, setShowPicker] = useState(false)
   // Adding a project requires the local companion to be reachable so
@@ -111,19 +128,30 @@ function ProjectPickerModal({ onClose }: { onClose: () => void }) {
     return () => { controller.abort(); clearTimeout(timeout) }
   }, [mode])
 
-  // From GitHub — reuses existing flow
+  // From GitHub — clone + register. DB project created FIRST with a
+  // client-minted cuid, so a network retry hits the same id and the
+  // server upserts (no duplicate row). Daemon receives the cuid as
+  // its own project id, keeping fs-watcher path and worktrees dir
+  // aligned with the DB from the start.
   function handleGitHub() {
     onClose()
     openGitHub({
       onRepoSelected: async (repo) => {
+        const tStart = Date.now()
         try {
+          const projectId = mintCuid()
+          console.log(`[create-form] github mint cuid=${projectId.slice(0, 8)} repo=${repo.owner}/${repo.name}`)
           const res = await fetch('/api/projects', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: repo.name }),
+            body: JSON.stringify({ id: projectId, name: repo.name }),
           })
-          if (!res.ok) return
+          if (!res.ok) {
+            console.warn(`[create-form] github POST /api/projects failed status=${res.status}`)
+            return
+          }
           const { id } = await res.json()
+          console.log(`[create-form] github DB row created id=${id.slice(0, 8)} ms=${Date.now() - tStart}`)
           await fetch(`/api/projects/${id}/repository`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -133,72 +161,117 @@ function ProjectPickerModal({ onClose }: { onClose: () => void }) {
               branch: repo.defaultBranch,
             }),
           })
+          console.log(`[create-form] github DONE id=${id.slice(0, 8)} totalMs=${Date.now() - tStart}`)
           router.push(`/projects/${id}`)
           router.refresh()
-        } catch {}
+        } catch (err) {
+          console.warn(`[create-form] github threw: ${(err as Error).message}`)
+        }
       },
     })
   }
 
-  // From local folder — creates project + repository in DB with local path
+  // From local folder — DB row first (with our minted cuid), then we
+  // pass that cuid to the daemon's init_project so both sides share
+  // the same id. Repository row links DB project to disk path.
   async function handleLocal() {
     if (!localPath.trim()) return
     setLoading(true)
     setError(null)
+    const tStart = Date.now()
     try {
       const path = localPath.trim()
       const folderName = path.split('/').pop() ?? 'project'
+      const projectId = mintCuid()
+      console.log(`[create-form] local mint cuid=${projectId.slice(0, 8)} path=${path}`)
 
-      // Register with the companion daemon FIRST so the chat flow can
-      // resolve companionProjectId from this sandboxId when sending prompts.
-      // Idempotent — safe to call even if already registered.
-      await fetch('/api/companion/command', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'init_project', targetPath: path }),
-      }).catch(() => {})
-
-      // Create project in DB
+      // 1. Create DB project with our minted cuid (idempotent on retry).
+      const tDb = Date.now()
       const res = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: folderName }),
+        body: JSON.stringify({ id: projectId, name: folderName }),
       })
       if (!res.ok) {
+        console.warn(`[create-form] local POST /api/projects failed status=${res.status} ms=${Date.now() - tDb}`)
         setError('Failed to create project')
         setLoading(false)
         return
       }
       const { id } = await res.json()
+      console.log(`[create-form] local step1 DB row id=${id.slice(0, 8)} ms=${Date.now() - tDb}`)
 
-      // Create repository record with local path as sandboxId
+      // 2. Register with the companion daemon, passing the SAME cuid so
+      // the daemon's local config row uses it as the project id —
+      // fs-watcher path, worktrees dir, and provisionWorktree all
+      // converge. Idempotent — re-running on the same path just
+      // refreshes the entry.
+      const tDaemon = Date.now()
+      await fetch('/api/companion/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'init_project', targetPath: path, projectId: id }),
+      }).catch(() => {})
+      console.log(`[create-form] local step2 daemon init_project ms=${Date.now() - tDaemon}`)
+
+      // 3. Repository record links DB project to local path.
+      const tRepo = Date.now()
       await fetch(`/api/projects/${id}/repository`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ localPath: path }),
       })
+      console.log(`[create-form] local step3 /repository ms=${Date.now() - tRepo}`)
+      console.log(`[create-form] local DONE id=${id.slice(0, 8)} totalMs=${Date.now() - tStart}`)
 
       router.push(`/projects/${id}`)
       router.refresh()
-    } catch {
+    } catch (err) {
+      console.warn(`[create-form] local threw: ${(err as Error).message}`)
       setError('Something went wrong')
     }
     setLoading(false)
   }
 
-  // Create new — companion scaffolds it on user's machine
+  // Create new — DB row first (with our minted cuid), then daemon
+  // scaffolds the directory + git init. Same cuid flows through both
+  // sides — same alignment guarantee as handleLocal.
   async function handleCreate() {
     if (!projectName.trim()) return
     setLoading(true)
     setError(null)
+    const tStart = Date.now()
     try {
       // ~/projects/ is resolved by the companion on the user's machine
       const targetPath = `~/projects/${projectName.trim()}`
+      const projectId = mintCuid()
+      console.log(`[create-form] scratch mint cuid=${projectId.slice(0, 8)} name=${projectName.trim()} template=${template}`)
+
+      // 1. Create DB project (idempotent on retry).
+      const tDb = Date.now()
+      const res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: projectId, name: projectName.trim() }),
+      })
+      if (!res.ok) {
+        console.warn(`[create-form] scratch POST /api/projects failed status=${res.status}`)
+        setError('Failed to create project')
+        setLoading(false)
+        return
+      }
+      const { id } = await res.json()
+      console.log(`[create-form] scratch step1 DB row id=${id.slice(0, 8)} ms=${Date.now() - tDb}`)
+
+      // 2. Tell the daemon to scaffold + register, passing the cuid so
+      // the daemon's project id matches the DB.
+      const tDaemon = Date.now()
       const cmdRes = await fetch('/api/companion/command', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'create_project',
+          projectId: id,
           targetPath,
           template,
           projectName: projectName.trim(),
@@ -206,29 +279,27 @@ function ProjectPickerModal({ onClose }: { onClose: () => void }) {
       })
       if (!cmdRes.ok) {
         const data = await cmdRes.json()
+        console.warn(`[create-form] scratch step2 daemon create_project failed status=${cmdRes.status}`)
         setError(data.error ?? data.message ?? 'Failed')
         setLoading(false)
         return
       }
+      console.log(`[create-form] scratch step2 daemon create_project queued ms=${Date.now() - tDaemon}`)
 
-      const res = await fetch('/api/projects', {
+      // 3. Register the local path so the file tree and git ops work.
+      // Server resolves ~ via homedir() on the daemon's machine.
+      const tRepo = Date.now()
+      await fetch(`/api/projects/${id}/repository`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: projectName.trim() }),
+        body: JSON.stringify({ localPath: targetPath }),
       })
-      if (res.ok) {
-        const { id } = await res.json()
-        // Register the local path so the file tree and git ops work
-        // Server resolves ~ via homedir() on the same machine
-        await fetch(`/api/projects/${id}/repository`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ localPath: targetPath }),
-        })
-        router.push(`/projects/${id}`)
-        router.refresh()
-      }
-    } catch {
+      console.log(`[create-form] scratch step3 /repository ms=${Date.now() - tRepo}`)
+      console.log(`[create-form] scratch DONE id=${id.slice(0, 8)} totalMs=${Date.now() - tStart}`)
+      router.push(`/projects/${id}`)
+      router.refresh()
+    } catch (err) {
+      console.warn(`[create-form] scratch threw: ${(err as Error).message}`)
       setError('Something went wrong')
     }
     setLoading(false)

@@ -29,13 +29,13 @@ export async function POST(_request: NextRequest, context: RouteContext) {
   if (!session || session.projectId !== id) {
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })
   }
-  // Don't allow deleting an individual chat that lives under a trashed
-  // worktree — that chat is bundled in the worktree's trash group, and
-  // killing it here would split the atomic restore. The UI surfaces
-  // "Delete forever" only on the worktree in that case.
+  // Don't allow deleting an individual chat that lives under an archived
+  // worktree — that chat is bundled with the worktree, and killing it
+  // here would split the atomic restore. The UI surfaces "Delete" only
+  // on the worktree in that case.
   if (session.worktree && session.worktree.status !== 'open') {
     return NextResponse.json(
-      { error: 'Cannot delete chat individually — worktree is archived/trashed. Delete the worktree instead.' },
+      { error: 'Cannot delete chat individually — worktree is archived. Delete the worktree instead.' },
       { status: 409 },
     )
   }
@@ -44,7 +44,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
   // as gone. Messages inside this session soft-delete too so the audit
   // trail stays consistent (same timestamp = same "delete event").
   const now = new Date()
-  await prisma.$transaction([
+  const [, msgsRes] = await prisma.$transaction([
     prisma.chatSession.update({
       where: { id: sessionId },
       data: { status: 'deleted', deletedAt: now },
@@ -56,6 +56,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
   ])
 
   dropSessionBuffer(sessionId)
+  console.log(`[chat-delete-forever] sessionId=${sessionId.slice(0, 8)} messages=${msgsRes.count}`)
 
   return NextResponse.json({ success: true })
 }

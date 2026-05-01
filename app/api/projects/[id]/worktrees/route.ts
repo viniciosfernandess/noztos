@@ -168,7 +168,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     baseCommit = placeholder.baseCommit
     portBase = placeholder.portBase
   } else {
-    const info = await provisionWorktree(id, placeholder.id, placeholder.branchName)
+    const info = await provisionWorktree(id, placeholder.id, placeholder.branchName, access.userId)
     if (!info) {
       // Delete the placeholder row right away rather than waiting for
       // the orphan sweep — keeping it around just confuses the user

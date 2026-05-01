@@ -55,10 +55,48 @@ export interface ClaudeStreamEvent {
 
 // Commands sent FROM the web to the companion
 export interface CompanionCommand {
-  type: 'prompt' | 'interrupt' | 'resume' | 'status' | 'clone' | 'create_project' | 'init_project' | 'setup_claude' | 'claude_status' | 'scan_repos' | 'query_running' | 'config_updated'
+  // Lifecycle commands:
+  //   • init_project       — register a local path as a daemon project. When
+  //                          `projectId` is provided (the DB cuid), it becomes
+  //                          the daemon-side id too — keeps both sides aligned
+  //                          (fs-watcher path, worktrees dir, etc).
+  //   • relabel_project    — server tells daemon "the project at <oldId> is
+  //                          actually known as <newId> in the DB". Used by the
+  //                          register-time reconciliation loop to migrate
+  //                          legacy hex ids to DB cuids.
+  //   • unregister_project — drop a project from the daemon's local config.
+  //                          Server enqueues this when a project is deleted.
+  //   • cleanup_project    — best-effort `rm -rf` on the project's worktrees
+  //                          dir. Enqueued by DELETE /api/projects when the
+  //                          daemon was offline at delete time.
+  type: 'prompt' | 'interrupt' | 'resume' | 'status' | 'clone' | 'create_project' | 'init_project' | 'setup_claude' | 'claude_status' | 'scan_repos' | 'query_running' | 'config_updated' | 'pty_attach' | 'pty_input' | 'pty_resize' | 'pty_detach' | 'relabel_project' | 'unregister_project' | 'cleanup_project'
   sessionId?: string
   projectId?: string
+  // For relabel_project: id the daemon currently uses for this project (the
+  // legacy hex), and the new DB cuid it should adopt.
+  oldProjectId?: string
+  newProjectId?: string
+  // For unregister_project / cleanup_project — the path on disk to act on.
+  worktreesPath?: string
   prompt?: string
+  // PTY commands — see pty-manager.ts for lifecycle. `contextKey` is
+  // the worktreeId (terminal exists only inside worktrees); matches
+  // the cache key in worktree-cache.ts so the browser snapshot, the
+  // daemon ring buffer, and every protector check converge on the
+  // same identifier.
+  contextKey?: string
+  cwd?: string
+  cols?: number
+  rows?: number
+  // Raw bytes (UTF-8) for keystrokes / paste. PTY data is binary in
+  // theory but every modern terminal app emits valid UTF-8; encoding
+  // gymnastics aren't worth the bytes.
+  data?: string
+  // Friendly name for the prompt's PS1 — we use the worktree's
+  // `branchName` (e.g. "belgrade-v1"), NOT the worktree's display
+  // name. Branch name is stable across the auto-rename feature that
+  // updates the display name when the user sends a chat message.
+  displayName?: string
   // Bornastar UI mode. See claude-bridge.ts MODE_MAP, BUNDLED_DISALLOWED_TOOLS_BY_MODE
   // and BUNDLED_MODE_PROMPT for the full mapping to CLI primitives. The
   // bundled values are overridden at runtime by setActiveConfig() once
@@ -93,6 +131,6 @@ export interface CompanionCommand {
 
 // Messages sent FROM companion TO the server
 export interface CompanionMessage {
-  type: 'auth_status' | 'project_list' | 'claude_event' | 'status' | 'error' | 'project_added' | 'running_sessions' | 'fs_change'
+  type: 'auth_status' | 'project_list' | 'claude_event' | 'status' | 'error' | 'project_added' | 'running_sessions' | 'fs_change' | 'pty_data' | 'pty_exit'
   payload: unknown
 }

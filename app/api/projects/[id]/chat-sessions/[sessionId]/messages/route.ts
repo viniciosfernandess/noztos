@@ -42,9 +42,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
     },
   })
   // Block access when the session is anywhere other than 'open' — an
-  // archived, trashed, or deleted chat must be restored before its
-  // messages become readable again. Covers both the `status` flag and
-  // the hard-deleted-at timestamp.
+  // archived chat must be restored before its messages become readable
+  // again, and a deleted chat is gone for good. Covers both the
+  // `status` flag and the soft-deleted-at timestamp.
   if (!session || session.projectId !== id || session.userId !== auth.userId
     || session.deletedAt || session.status !== 'open') {
     return NextResponse.json({ error: 'Session not found' }, { status: 404 })

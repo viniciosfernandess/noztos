@@ -50,6 +50,10 @@ interface CompanionConnection {
   lastHeartbeat: number
   tokenId?: string
   machineName?: string
+  // Daemon's `os.homedir()` — used by the worktree provisioner to
+  // compute `<homeDir>/.bornastar/worktrees/<projectId>/` server-side
+  // without assuming web and daemon share the same home (cloud-ready).
+  homeDir?: string
   authInfo?: { email?: string; plan?: string; version?: string }
   projects?: Array<{ id: string; path: string; name: string }>
 }
@@ -115,12 +119,13 @@ class RelayChannel {
     return evts
   }
 
-  setCompanionConnected(info?: CompanionConnection['authInfo'], tokenId?: string, machineName?: string): void {
+  setCompanionConnected(info?: CompanionConnection['authInfo'], tokenId?: string, machineName?: string, homeDir?: string): void {
     this.companion = {
       connectedAt: Date.now(),
       lastHeartbeat: Date.now(),
       tokenId,
       machineName,
+      homeDir,
       authInfo: info,
     }
   }
@@ -420,5 +425,14 @@ export function getCompanionStatus(userId: string): {
     projects: ch.companion.projects,
     machineName: ch.companion.machineName,
   }
+}
+
+// Daemon-reported home dir for this user. Used by the worktree
+// provisioner to compute the external worktrees root. Returns null when
+// the daemon hasn't registered yet — caller should bail with a clear
+// error rather than fall back to assumptions.
+export function getCompanionHomeDir(userId: string): string | null {
+  const ch = channels.get(userId)
+  return ch?.companion?.homeDir ?? null
 }
 

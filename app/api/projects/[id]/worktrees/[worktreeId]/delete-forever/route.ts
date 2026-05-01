@@ -42,8 +42,9 @@ export async function POST(_request: NextRequest, context: RouteContext) {
   // so every query layer agrees "this worktree is gone". Stamping both
   // `status` and `deletedAt` keeps text-based and null-based checks
   // consistent across the codebase.
+  const tStart = Date.now()
   const now = new Date()
-  await prisma.$transaction([
+  const [msgsRes] = await prisma.$transaction([
     prisma.chatMessage.updateMany({
       where: { sessionId: { in: sessionIds }, deletedAt: null },
       data: { deletedAt: now },
@@ -71,6 +72,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
   // and the user saw the UI react; if cleanup fails we log a warn so an
   // investigator can find the orphan, but we don't surface an error.
   await cleanupWorktreeOnDisk(id, wt.worktreePath, wt.branchName, 'delete-forever')
+  console.log(`[wt-delete-forever] worktreeId=${worktreeId.slice(0, 8)} branch=${wt.branchName} sessions=${sessionIds.length} messages=${msgsRes.count} ms=${Date.now() - tStart}`)
 
   return NextResponse.json({ success: true })
 }

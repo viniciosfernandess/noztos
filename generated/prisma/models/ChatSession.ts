@@ -46,7 +46,6 @@ export type ChatSessionMinAggregateOutputType = {
   status: string | null
   permissionMode: $Enums.PermissionMode | null
   worktreeId: string | null
-  trashedAt: Date | null
   deletedAt: Date | null
   claudeSessionId: string | null
   totalCostUsd: number | null
@@ -66,7 +65,6 @@ export type ChatSessionMaxAggregateOutputType = {
   status: string | null
   permissionMode: $Enums.PermissionMode | null
   worktreeId: string | null
-  trashedAt: Date | null
   deletedAt: Date | null
   claudeSessionId: string | null
   totalCostUsd: number | null
@@ -87,7 +85,6 @@ export type ChatSessionCountAggregateOutputType = {
   permissionMode: number
   worktreeId: number
   touchedPaths: number
-  trashedAt: number
   deletedAt: number
   claudeSessionId: number
   totalCostUsd: number
@@ -121,7 +118,6 @@ export type ChatSessionMinAggregateInputType = {
   status?: true
   permissionMode?: true
   worktreeId?: true
-  trashedAt?: true
   deletedAt?: true
   claudeSessionId?: true
   totalCostUsd?: true
@@ -141,7 +137,6 @@ export type ChatSessionMaxAggregateInputType = {
   status?: true
   permissionMode?: true
   worktreeId?: true
-  trashedAt?: true
   deletedAt?: true
   claudeSessionId?: true
   totalCostUsd?: true
@@ -162,7 +157,6 @@ export type ChatSessionCountAggregateInputType = {
   permissionMode?: true
   worktreeId?: true
   touchedPaths?: true
-  trashedAt?: true
   deletedAt?: true
   claudeSessionId?: true
   totalCostUsd?: true
@@ -270,7 +264,6 @@ export type ChatSessionGroupByOutputType = {
   permissionMode: $Enums.PermissionMode
   worktreeId: string | null
   touchedPaths: string[]
-  trashedAt: Date | null
   deletedAt: Date | null
   claudeSessionId: string | null
   totalCostUsd: number
@@ -314,7 +307,6 @@ export type ChatSessionWhereInput = {
   permissionMode?: Prisma.EnumPermissionModeFilter<"ChatSession"> | $Enums.PermissionMode
   worktreeId?: Prisma.StringNullableFilter<"ChatSession"> | string | null
   touchedPaths?: Prisma.StringNullableListFilter<"ChatSession">
-  trashedAt?: Prisma.DateTimeNullableFilter<"ChatSession"> | Date | string | null
   deletedAt?: Prisma.DateTimeNullableFilter<"ChatSession"> | Date | string | null
   claudeSessionId?: Prisma.StringNullableFilter<"ChatSession"> | string | null
   totalCostUsd?: Prisma.FloatFilter<"ChatSession"> | number
@@ -339,7 +331,6 @@ export type ChatSessionOrderByWithRelationInput = {
   permissionMode?: Prisma.SortOrder
   worktreeId?: Prisma.SortOrderInput | Prisma.SortOrder
   touchedPaths?: Prisma.SortOrder
-  trashedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   deletedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   claudeSessionId?: Prisma.SortOrderInput | Prisma.SortOrder
   totalCostUsd?: Prisma.SortOrder
@@ -367,7 +358,6 @@ export type ChatSessionWhereUniqueInput = Prisma.AtLeast<{
   permissionMode?: Prisma.EnumPermissionModeFilter<"ChatSession"> | $Enums.PermissionMode
   worktreeId?: Prisma.StringNullableFilter<"ChatSession"> | string | null
   touchedPaths?: Prisma.StringNullableListFilter<"ChatSession">
-  trashedAt?: Prisma.DateTimeNullableFilter<"ChatSession"> | Date | string | null
   deletedAt?: Prisma.DateTimeNullableFilter<"ChatSession"> | Date | string | null
   claudeSessionId?: Prisma.StringNullableFilter<"ChatSession"> | string | null
   totalCostUsd?: Prisma.FloatFilter<"ChatSession"> | number
@@ -392,7 +382,6 @@ export type ChatSessionOrderByWithAggregationInput = {
   permissionMode?: Prisma.SortOrder
   worktreeId?: Prisma.SortOrderInput | Prisma.SortOrder
   touchedPaths?: Prisma.SortOrder
-  trashedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   deletedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   claudeSessionId?: Prisma.SortOrderInput | Prisma.SortOrder
   totalCostUsd?: Prisma.SortOrder
@@ -421,7 +410,6 @@ export type ChatSessionScalarWhereWithAggregatesInput = {
   permissionMode?: Prisma.EnumPermissionModeWithAggregatesFilter<"ChatSession"> | $Enums.PermissionMode
   worktreeId?: Prisma.StringNullableWithAggregatesFilter<"ChatSession"> | string | null
   touchedPaths?: Prisma.StringNullableListFilter<"ChatSession">
-  trashedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"ChatSession"> | Date | string | null
   deletedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"ChatSession"> | Date | string | null
   claudeSessionId?: Prisma.StringNullableWithAggregatesFilter<"ChatSession"> | string | null
   totalCostUsd?: Prisma.FloatWithAggregatesFilter<"ChatSession"> | number
@@ -440,7 +428,6 @@ export type ChatSessionCreateInput = {
   status?: string
   permissionMode?: $Enums.PermissionMode
   touchedPaths?: Prisma.ChatSessionCreatetouchedPathsInput | string[]
-  trashedAt?: Date | string | null
   deletedAt?: Date | string | null
   claudeSessionId?: string | null
   totalCostUsd?: number
@@ -465,7 +452,6 @@ export type ChatSessionUncheckedCreateInput = {
   permissionMode?: $Enums.PermissionMode
   worktreeId?: string | null
   touchedPaths?: Prisma.ChatSessionCreatetouchedPathsInput | string[]
-  trashedAt?: Date | string | null
   deletedAt?: Date | string | null
   claudeSessionId?: string | null
   totalCostUsd?: number
@@ -486,7 +472,6 @@ export type ChatSessionUpdateInput = {
   status?: Prisma.StringFieldUpdateOperationsInput | string
   permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
   touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
-  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   claudeSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   totalCostUsd?: Prisma.FloatFieldUpdateOperationsInput | number
@@ -511,7 +496,6 @@ export type ChatSessionUncheckedUpdateInput = {
   permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
   worktreeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
-  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   claudeSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   totalCostUsd?: Prisma.FloatFieldUpdateOperationsInput | number
@@ -534,7 +518,6 @@ export type ChatSessionCreateManyInput = {
   permissionMode?: $Enums.PermissionMode
   worktreeId?: string | null
   touchedPaths?: Prisma.ChatSessionCreatetouchedPathsInput | string[]
-  trashedAt?: Date | string | null
   deletedAt?: Date | string | null
   claudeSessionId?: string | null
   totalCostUsd?: number
@@ -553,7 +536,6 @@ export type ChatSessionUpdateManyMutationInput = {
   status?: Prisma.StringFieldUpdateOperationsInput | string
   permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
   touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
-  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   claudeSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   totalCostUsd?: Prisma.FloatFieldUpdateOperationsInput | number
@@ -574,7 +556,6 @@ export type ChatSessionUncheckedUpdateManyInput = {
   permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
   worktreeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
-  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   claudeSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   totalCostUsd?: Prisma.FloatFieldUpdateOperationsInput | number
@@ -618,7 +599,6 @@ export type ChatSessionCountOrderByAggregateInput = {
   permissionMode?: Prisma.SortOrder
   worktreeId?: Prisma.SortOrder
   touchedPaths?: Prisma.SortOrder
-  trashedAt?: Prisma.SortOrder
   deletedAt?: Prisma.SortOrder
   claudeSessionId?: Prisma.SortOrder
   totalCostUsd?: Prisma.SortOrder
@@ -644,7 +624,6 @@ export type ChatSessionMaxOrderByAggregateInput = {
   status?: Prisma.SortOrder
   permissionMode?: Prisma.SortOrder
   worktreeId?: Prisma.SortOrder
-  trashedAt?: Prisma.SortOrder
   deletedAt?: Prisma.SortOrder
   claudeSessionId?: Prisma.SortOrder
   totalCostUsd?: Prisma.SortOrder
@@ -664,7 +643,6 @@ export type ChatSessionMinOrderByAggregateInput = {
   status?: Prisma.SortOrder
   permissionMode?: Prisma.SortOrder
   worktreeId?: Prisma.SortOrder
-  trashedAt?: Prisma.SortOrder
   deletedAt?: Prisma.SortOrder
   claudeSessionId?: Prisma.SortOrder
   totalCostUsd?: Prisma.SortOrder
@@ -829,7 +807,6 @@ export type ChatSessionCreateWithoutProjectInput = {
   status?: string
   permissionMode?: $Enums.PermissionMode
   touchedPaths?: Prisma.ChatSessionCreatetouchedPathsInput | string[]
-  trashedAt?: Date | string | null
   deletedAt?: Date | string | null
   claudeSessionId?: string | null
   totalCostUsd?: number
@@ -852,7 +829,6 @@ export type ChatSessionUncheckedCreateWithoutProjectInput = {
   permissionMode?: $Enums.PermissionMode
   worktreeId?: string | null
   touchedPaths?: Prisma.ChatSessionCreatetouchedPathsInput | string[]
-  trashedAt?: Date | string | null
   deletedAt?: Date | string | null
   claudeSessionId?: string | null
   totalCostUsd?: number
@@ -904,7 +880,6 @@ export type ChatSessionScalarWhereInput = {
   permissionMode?: Prisma.EnumPermissionModeFilter<"ChatSession"> | $Enums.PermissionMode
   worktreeId?: Prisma.StringNullableFilter<"ChatSession"> | string | null
   touchedPaths?: Prisma.StringNullableListFilter<"ChatSession">
-  trashedAt?: Prisma.DateTimeNullableFilter<"ChatSession"> | Date | string | null
   deletedAt?: Prisma.DateTimeNullableFilter<"ChatSession"> | Date | string | null
   claudeSessionId?: Prisma.StringNullableFilter<"ChatSession"> | string | null
   totalCostUsd?: Prisma.FloatFilter<"ChatSession"> | number
@@ -923,7 +898,6 @@ export type ChatSessionCreateWithoutWorktreeInput = {
   status?: string
   permissionMode?: $Enums.PermissionMode
   touchedPaths?: Prisma.ChatSessionCreatetouchedPathsInput | string[]
-  trashedAt?: Date | string | null
   deletedAt?: Date | string | null
   claudeSessionId?: string | null
   totalCostUsd?: number
@@ -946,7 +920,6 @@ export type ChatSessionUncheckedCreateWithoutWorktreeInput = {
   status?: string
   permissionMode?: $Enums.PermissionMode
   touchedPaths?: Prisma.ChatSessionCreatetouchedPathsInput | string[]
-  trashedAt?: Date | string | null
   deletedAt?: Date | string | null
   claudeSessionId?: string | null
   totalCostUsd?: number
@@ -993,7 +966,6 @@ export type ChatSessionCreateWithoutTodosInput = {
   status?: string
   permissionMode?: $Enums.PermissionMode
   touchedPaths?: Prisma.ChatSessionCreatetouchedPathsInput | string[]
-  trashedAt?: Date | string | null
   deletedAt?: Date | string | null
   claudeSessionId?: string | null
   totalCostUsd?: number
@@ -1017,7 +989,6 @@ export type ChatSessionUncheckedCreateWithoutTodosInput = {
   permissionMode?: $Enums.PermissionMode
   worktreeId?: string | null
   touchedPaths?: Prisma.ChatSessionCreatetouchedPathsInput | string[]
-  trashedAt?: Date | string | null
   deletedAt?: Date | string | null
   claudeSessionId?: string | null
   totalCostUsd?: number
@@ -1053,7 +1024,6 @@ export type ChatSessionUpdateWithoutTodosInput = {
   status?: Prisma.StringFieldUpdateOperationsInput | string
   permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
   touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
-  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   claudeSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   totalCostUsd?: Prisma.FloatFieldUpdateOperationsInput | number
@@ -1077,7 +1047,6 @@ export type ChatSessionUncheckedUpdateWithoutTodosInput = {
   permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
   worktreeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
-  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   claudeSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   totalCostUsd?: Prisma.FloatFieldUpdateOperationsInput | number
@@ -1097,7 +1066,6 @@ export type ChatSessionCreateWithoutMessagesInput = {
   status?: string
   permissionMode?: $Enums.PermissionMode
   touchedPaths?: Prisma.ChatSessionCreatetouchedPathsInput | string[]
-  trashedAt?: Date | string | null
   deletedAt?: Date | string | null
   claudeSessionId?: string | null
   totalCostUsd?: number
@@ -1121,7 +1089,6 @@ export type ChatSessionUncheckedCreateWithoutMessagesInput = {
   permissionMode?: $Enums.PermissionMode
   worktreeId?: string | null
   touchedPaths?: Prisma.ChatSessionCreatetouchedPathsInput | string[]
-  trashedAt?: Date | string | null
   deletedAt?: Date | string | null
   claudeSessionId?: string | null
   totalCostUsd?: number
@@ -1157,7 +1124,6 @@ export type ChatSessionUpdateWithoutMessagesInput = {
   status?: Prisma.StringFieldUpdateOperationsInput | string
   permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
   touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
-  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   claudeSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   totalCostUsd?: Prisma.FloatFieldUpdateOperationsInput | number
@@ -1181,7 +1147,6 @@ export type ChatSessionUncheckedUpdateWithoutMessagesInput = {
   permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
   worktreeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
-  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   claudeSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   totalCostUsd?: Prisma.FloatFieldUpdateOperationsInput | number
@@ -1202,7 +1167,6 @@ export type ChatSessionCreateManyProjectInput = {
   permissionMode?: $Enums.PermissionMode
   worktreeId?: string | null
   touchedPaths?: Prisma.ChatSessionCreatetouchedPathsInput | string[]
-  trashedAt?: Date | string | null
   deletedAt?: Date | string | null
   claudeSessionId?: string | null
   totalCostUsd?: number
@@ -1221,7 +1185,6 @@ export type ChatSessionUpdateWithoutProjectInput = {
   status?: Prisma.StringFieldUpdateOperationsInput | string
   permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
   touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
-  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   claudeSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   totalCostUsd?: Prisma.FloatFieldUpdateOperationsInput | number
@@ -1244,7 +1207,6 @@ export type ChatSessionUncheckedUpdateWithoutProjectInput = {
   permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
   worktreeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
-  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   claudeSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   totalCostUsd?: Prisma.FloatFieldUpdateOperationsInput | number
@@ -1266,7 +1228,6 @@ export type ChatSessionUncheckedUpdateManyWithoutProjectInput = {
   permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
   worktreeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
-  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   claudeSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   totalCostUsd?: Prisma.FloatFieldUpdateOperationsInput | number
@@ -1286,7 +1247,6 @@ export type ChatSessionCreateManyWorktreeInput = {
   status?: string
   permissionMode?: $Enums.PermissionMode
   touchedPaths?: Prisma.ChatSessionCreatetouchedPathsInput | string[]
-  trashedAt?: Date | string | null
   deletedAt?: Date | string | null
   claudeSessionId?: string | null
   totalCostUsd?: number
@@ -1305,7 +1265,6 @@ export type ChatSessionUpdateWithoutWorktreeInput = {
   status?: Prisma.StringFieldUpdateOperationsInput | string
   permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
   touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
-  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   claudeSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   totalCostUsd?: Prisma.FloatFieldUpdateOperationsInput | number
@@ -1328,7 +1287,6 @@ export type ChatSessionUncheckedUpdateWithoutWorktreeInput = {
   status?: Prisma.StringFieldUpdateOperationsInput | string
   permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
   touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
-  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   claudeSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   totalCostUsd?: Prisma.FloatFieldUpdateOperationsInput | number
@@ -1350,7 +1308,6 @@ export type ChatSessionUncheckedUpdateManyWithoutWorktreeInput = {
   status?: Prisma.StringFieldUpdateOperationsInput | string
   permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
   touchedPaths?: Prisma.ChatSessionUpdatetouchedPathsInput | string[]
-  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   claudeSessionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   totalCostUsd?: Prisma.FloatFieldUpdateOperationsInput | number
@@ -1411,7 +1368,6 @@ export type ChatSessionSelect<ExtArgs extends runtime.Types.Extensions.InternalA
   permissionMode?: boolean
   worktreeId?: boolean
   touchedPaths?: boolean
-  trashedAt?: boolean
   deletedAt?: boolean
   claudeSessionId?: boolean
   totalCostUsd?: boolean
@@ -1437,7 +1393,6 @@ export type ChatSessionSelectCreateManyAndReturn<ExtArgs extends runtime.Types.E
   permissionMode?: boolean
   worktreeId?: boolean
   touchedPaths?: boolean
-  trashedAt?: boolean
   deletedAt?: boolean
   claudeSessionId?: boolean
   totalCostUsd?: boolean
@@ -1460,7 +1415,6 @@ export type ChatSessionSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.E
   permissionMode?: boolean
   worktreeId?: boolean
   touchedPaths?: boolean
-  trashedAt?: boolean
   deletedAt?: boolean
   claudeSessionId?: boolean
   totalCostUsd?: boolean
@@ -1483,7 +1437,6 @@ export type ChatSessionSelectScalar = {
   permissionMode?: boolean
   worktreeId?: boolean
   touchedPaths?: boolean
-  trashedAt?: boolean
   deletedAt?: boolean
   claudeSessionId?: boolean
   totalCostUsd?: boolean
@@ -1495,7 +1448,7 @@ export type ChatSessionSelectScalar = {
   updatedAt?: boolean
 }
 
-export type ChatSessionOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "projectId" | "userId" | "name" | "status" | "permissionMode" | "worktreeId" | "touchedPaths" | "trashedAt" | "deletedAt" | "claudeSessionId" | "totalCostUsd" | "totalTokens" | "numTurns" | "lastMessageAt" | "lastReadAt" | "createdAt" | "updatedAt", ExtArgs["result"]["chatSession"]>
+export type ChatSessionOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "projectId" | "userId" | "name" | "status" | "permissionMode" | "worktreeId" | "touchedPaths" | "deletedAt" | "claudeSessionId" | "totalCostUsd" | "totalTokens" | "numTurns" | "lastMessageAt" | "lastReadAt" | "createdAt" | "updatedAt", ExtArgs["result"]["chatSession"]>
 export type ChatSessionInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   messages?: boolean | Prisma.ChatSession$messagesArgs<ExtArgs>
   todos?: boolean | Prisma.ChatSession$todosArgs<ExtArgs>
@@ -1529,7 +1482,6 @@ export type $ChatSessionPayload<ExtArgs extends runtime.Types.Extensions.Interna
     permissionMode: $Enums.PermissionMode
     worktreeId: string | null
     touchedPaths: string[]
-    trashedAt: Date | null
     deletedAt: Date | null
     claudeSessionId: string | null
     totalCostUsd: number
@@ -1974,7 +1926,6 @@ export interface ChatSessionFieldRefs {
   readonly permissionMode: Prisma.FieldRef<"ChatSession", 'PermissionMode'>
   readonly worktreeId: Prisma.FieldRef<"ChatSession", 'String'>
   readonly touchedPaths: Prisma.FieldRef<"ChatSession", 'String[]'>
-  readonly trashedAt: Prisma.FieldRef<"ChatSession", 'DateTime'>
   readonly deletedAt: Prisma.FieldRef<"ChatSession", 'DateTime'>
   readonly claudeSessionId: Prisma.FieldRef<"ChatSession", 'String'>
   readonly totalCostUsd: Prisma.FieldRef<"ChatSession", 'Float'>

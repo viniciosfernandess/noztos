@@ -197,7 +197,7 @@ model Worktree {
   projectId    String
   userId       String
   name         String        @default("New Worktree")
-  status       String        @default("open") // open, archived, trashed, deleted, merged
+  status       String        @default("open") // open, archived, deleted, merged
   branchName   String
   worktreePath String
   baseCommit   String
@@ -208,7 +208,6 @@ model Worktree {
   // created. Null until someone starts writing.
   prTitleDraft String?
   prBodyDraft  String?
-  trashedAt    DateTime?
   // Stamped alongside status='deleted' so every layer (status-based or
   // timestamp-based) agrees on the unlinked state. Preserves the audit
   // trail — the row never leaves the DB.
@@ -300,8 +299,6 @@ model ChatSession {
   // attribute diff stats per chat on main, where multiple chats share the
   // same working tree. Always relative paths from the project root.
   touchedPaths   String[]       @default([])
-  // Lifecycle helper for the trash flow
-  trashedAt      DateTime?
   // Soft delete — user-facing DELETE sets this timestamp instead of
   // dropping the row. Authoritative audit log of conversations is
   // preserved (important for training + compliance). Hard delete only

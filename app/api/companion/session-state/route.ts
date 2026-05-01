@@ -20,7 +20,7 @@ import type { PersistRow } from '@/lib/chat-persist'
 // Response:
 //   { source: 'buffer', messages, claudeSessionId, … }
 //   { source: 'empty' }                       — no buffer, client fetches /messages
-//   { source: 'stale', session: { status } }  — archived / trashed; fetch /messages
+//   { source: 'stale', session: { status } }  — archived / deleted; fetch /messages
 export async function GET(request: NextRequest) {
   const tStart = Date.now()
   const url = request.nextUrl

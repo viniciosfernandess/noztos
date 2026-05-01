@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db'
 import { ensureSandboxRunning } from '@/lib/sandbox-manager'
 import { loadProjectGitContext } from '@/lib/git'
 import { LocalProvider } from '@/lib/compute-local'
+import { getCompanionHomeDir } from '@/lib/companion-relay'
 
 // ── Worktree Manager ──────────────────────────────────────────────────────
 //
@@ -51,13 +52,12 @@ const WORKTREE_CODENAMES = [
  * about: rerunning when the dir / branch no longer exists is harmless,
  * we just log a warn so an investigator can find it.
  *
- * Used on the destructive paths only:
+ * Used on the destructive path only:
  *   - delete-forever (user explicitly asks for permanent removal)
- *   - lazy expiration of the 7-day trash window
  *
- * Soft removal (trash, archive) intentionally does NOT call this — the
- * disk + branch must stay intact so restore brings the worktree back
- * with all its uncommitted changes and commits.
+ * Soft removal (archive) intentionally does NOT call this — the disk +
+ * branch must stay intact so restore brings the worktree back with all
+ * its uncommitted changes and commits.
  *
  * Never throws. The DB row is the source of truth; if the on-disk side
  * goes wrong we surface a warn-level log and move on.
@@ -98,9 +98,48 @@ export async function cleanupWorktreeOnDisk(
 }
 
 /**
+ * Project-level cleanup. Used by DELETE /api/projects/[id] when the
+ * user permanently removes a project: every worktree row that still
+ * has a real on-disk path gets its `git worktree remove` + `git branch
+ * -D`, then the whole `<homeDir>/.bornastar/worktrees/<projectId>/`
+ * directory is rm -rf'd in one shot. Best-effort throughout — any
+ * failure is logged but the DB cascade has already completed by the
+ * time this runs, so disk inconsistency is recoverable on the next
+ * register reconciliation.
+ *
+ * homeDir is read from the daemon's registered state (the daemon
+ * publishes it at register time, see companion-relay.ts). Without it
+ * we skip the directory rm-rf — the per-worktree git cleanup still
+ * runs, just leaves an empty parent dir behind.
+ */
+export async function cleanupAllProjectWorktrees(
+  projectId: string,
+  worktrees: Array<{ worktreePath: string | null; branchName: string }>,
+  homeDir: string | null,
+): Promise<void> {
+  for (const wt of worktrees) {
+    if (!wt.worktreePath || wt.worktreePath === '_pending_') continue
+    await cleanupWorktreeOnDisk(projectId, wt.worktreePath, wt.branchName, 'project-delete')
+  }
+  if (!homeDir) return
+  // rm -rf the parent dir so we don't leave the empty `<projectId>/`
+  // directory behind. The worktree dirs were already removed above —
+  // this catches stragglers like .git/worktrees/<id> metadata files
+  // and any orphan files git didn't track.
+  const sandboxId = await ensureSandboxRunning(projectId)
+  if (!sandboxId) return
+  const worktreesDir = `${homeDir}/.bornastar/worktrees/${projectId}`
+  try {
+    await compute.exec(sandboxId, `rm -rf ${worktreesDir}`)
+  } catch (err) {
+    console.warn(`[project-delete] rm -rf ${worktreesDir} failed: ${(err as Error).message}`)
+  }
+}
+
+/**
  * Pick a fresh `<city>-v<N>` codename that hasn't been used by any worktree
- * (open, archived, trashed, or deleted) in this project — so we never create
- * a duplicate git branch ref. Returns a pretty `name` and a `branchName`.
+ * (open, archived, or deleted) in this project — so we never create a
+ * duplicate git branch ref. Returns a pretty `name` and a `branchName`.
  */
 export async function generateWorktreeCodename(
   projectId: string,
@@ -168,11 +207,19 @@ async function allocatePortBase(projectId: string): Promise<number | null> {
  * reuses an existing physical worktree directory if it already exists. The
  * caller is responsible for picking the branch name (use
  * `generateWorktreeCodename`).
+ *
+ * Worktrees live OUTSIDE the project repo, in
+ * `<homeDir>/.bornastar/worktrees/<projectId>/<worktreeId>/`, where
+ * `homeDir` is reported by the daemon at register time. Keeps the
+ * project tree clean (no `.bornastar-worktrees/` showing in `git
+ * status` / Explorer) and lets cleanup be a single `rm -rf` of the
+ * project's worktree subdir.
  */
 export async function provisionWorktree(
   projectId: string,
   worktreeId: string,
   branchName: string,
+  userId: string,
 ): Promise<WorktreeInfo | null> {
   const sandboxId = await ensureSandboxRunning(projectId)
   if (!sandboxId) {
@@ -180,7 +227,12 @@ export async function provisionWorktree(
     return null
   }
 
-  const worktreesDir = `${sandboxId}/.bornastar-worktrees`
+  const homeDir = getCompanionHomeDir(userId)
+  if (!homeDir) {
+    console.warn(`[worktree] No homeDir registered for user ${userId.slice(0, 8)} — daemon must register first`)
+    return null
+  }
+  const worktreesDir = `${homeDir}/.bornastar/worktrees/${projectId}`
 
   try {
     await compute.exec(sandboxId, `mkdir -p ${worktreesDir}`)

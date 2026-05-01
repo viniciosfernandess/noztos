@@ -48,6 +48,7 @@ export async function POST(_request: NextRequest, context: RouteContext) {
   })
 
   for (const s of openSessions) dropSessionBuffer(s.id)
+  console.log(`[wt-archive] worktreeId=${worktreeId.slice(0, 8)} sessions=${openSessions.length}`)
 
   return NextResponse.json({ success: true })
 }

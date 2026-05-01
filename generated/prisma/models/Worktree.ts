@@ -46,7 +46,6 @@ export type WorktreeMinAggregateOutputType = {
   portBase: number | null
   prTitleDraft: string | null
   prBodyDraft: string | null
-  trashedAt: Date | null
   deletedAt: Date | null
   createdAt: Date | null
   updatedAt: Date | null
@@ -64,7 +63,6 @@ export type WorktreeMaxAggregateOutputType = {
   portBase: number | null
   prTitleDraft: string | null
   prBodyDraft: string | null
-  trashedAt: Date | null
   deletedAt: Date | null
   createdAt: Date | null
   updatedAt: Date | null
@@ -82,7 +80,6 @@ export type WorktreeCountAggregateOutputType = {
   portBase: number
   prTitleDraft: number
   prBodyDraft: number
-  trashedAt: number
   deletedAt: number
   createdAt: number
   updatedAt: number
@@ -110,7 +107,6 @@ export type WorktreeMinAggregateInputType = {
   portBase?: true
   prTitleDraft?: true
   prBodyDraft?: true
-  trashedAt?: true
   deletedAt?: true
   createdAt?: true
   updatedAt?: true
@@ -128,7 +124,6 @@ export type WorktreeMaxAggregateInputType = {
   portBase?: true
   prTitleDraft?: true
   prBodyDraft?: true
-  trashedAt?: true
   deletedAt?: true
   createdAt?: true
   updatedAt?: true
@@ -146,7 +141,6 @@ export type WorktreeCountAggregateInputType = {
   portBase?: true
   prTitleDraft?: true
   prBodyDraft?: true
-  trashedAt?: true
   deletedAt?: true
   createdAt?: true
   updatedAt?: true
@@ -251,7 +245,6 @@ export type WorktreeGroupByOutputType = {
   portBase: number | null
   prTitleDraft: string | null
   prBodyDraft: string | null
-  trashedAt: Date | null
   deletedAt: Date | null
   createdAt: Date
   updatedAt: Date
@@ -292,7 +285,6 @@ export type WorktreeWhereInput = {
   portBase?: Prisma.IntNullableFilter<"Worktree"> | number | null
   prTitleDraft?: Prisma.StringNullableFilter<"Worktree"> | string | null
   prBodyDraft?: Prisma.StringNullableFilter<"Worktree"> | string | null
-  trashedAt?: Prisma.DateTimeNullableFilter<"Worktree"> | Date | string | null
   deletedAt?: Prisma.DateTimeNullableFilter<"Worktree"> | Date | string | null
   createdAt?: Prisma.DateTimeFilter<"Worktree"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Worktree"> | Date | string
@@ -313,7 +305,6 @@ export type WorktreeOrderByWithRelationInput = {
   portBase?: Prisma.SortOrderInput | Prisma.SortOrder
   prTitleDraft?: Prisma.SortOrderInput | Prisma.SortOrder
   prBodyDraft?: Prisma.SortOrderInput | Prisma.SortOrder
-  trashedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   deletedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -337,7 +328,6 @@ export type WorktreeWhereUniqueInput = Prisma.AtLeast<{
   portBase?: Prisma.IntNullableFilter<"Worktree"> | number | null
   prTitleDraft?: Prisma.StringNullableFilter<"Worktree"> | string | null
   prBodyDraft?: Prisma.StringNullableFilter<"Worktree"> | string | null
-  trashedAt?: Prisma.DateTimeNullableFilter<"Worktree"> | Date | string | null
   deletedAt?: Prisma.DateTimeNullableFilter<"Worktree"> | Date | string | null
   createdAt?: Prisma.DateTimeFilter<"Worktree"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Worktree"> | Date | string
@@ -358,7 +348,6 @@ export type WorktreeOrderByWithAggregationInput = {
   portBase?: Prisma.SortOrderInput | Prisma.SortOrder
   prTitleDraft?: Prisma.SortOrderInput | Prisma.SortOrder
   prBodyDraft?: Prisma.SortOrderInput | Prisma.SortOrder
-  trashedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   deletedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -384,7 +373,6 @@ export type WorktreeScalarWhereWithAggregatesInput = {
   portBase?: Prisma.IntNullableWithAggregatesFilter<"Worktree"> | number | null
   prTitleDraft?: Prisma.StringNullableWithAggregatesFilter<"Worktree"> | string | null
   prBodyDraft?: Prisma.StringNullableWithAggregatesFilter<"Worktree"> | string | null
-  trashedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Worktree"> | Date | string | null
   deletedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Worktree"> | Date | string | null
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"Worktree"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"Worktree"> | Date | string
@@ -401,7 +389,6 @@ export type WorktreeCreateInput = {
   portBase?: number | null
   prTitleDraft?: string | null
   prBodyDraft?: string | null
-  trashedAt?: Date | string | null
   deletedAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -422,7 +409,6 @@ export type WorktreeUncheckedCreateInput = {
   portBase?: number | null
   prTitleDraft?: string | null
   prBodyDraft?: string | null
-  trashedAt?: Date | string | null
   deletedAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -441,7 +427,6 @@ export type WorktreeUpdateInput = {
   portBase?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   prTitleDraft?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   prBodyDraft?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -462,7 +447,6 @@ export type WorktreeUncheckedUpdateInput = {
   portBase?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   prTitleDraft?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   prBodyDraft?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -482,7 +466,6 @@ export type WorktreeCreateManyInput = {
   portBase?: number | null
   prTitleDraft?: string | null
   prBodyDraft?: string | null
-  trashedAt?: Date | string | null
   deletedAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -499,7 +482,6 @@ export type WorktreeUpdateManyMutationInput = {
   portBase?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   prTitleDraft?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   prBodyDraft?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -517,7 +499,6 @@ export type WorktreeUncheckedUpdateManyInput = {
   portBase?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   prTitleDraft?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   prBodyDraft?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -545,7 +526,6 @@ export type WorktreeCountOrderByAggregateInput = {
   portBase?: Prisma.SortOrder
   prTitleDraft?: Prisma.SortOrder
   prBodyDraft?: Prisma.SortOrder
-  trashedAt?: Prisma.SortOrder
   deletedAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -567,7 +547,6 @@ export type WorktreeMaxOrderByAggregateInput = {
   portBase?: Prisma.SortOrder
   prTitleDraft?: Prisma.SortOrder
   prBodyDraft?: Prisma.SortOrder
-  trashedAt?: Prisma.SortOrder
   deletedAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -585,7 +564,6 @@ export type WorktreeMinOrderByAggregateInput = {
   portBase?: Prisma.SortOrder
   prTitleDraft?: Prisma.SortOrder
   prBodyDraft?: Prisma.SortOrder
-  trashedAt?: Prisma.SortOrder
   deletedAt?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
@@ -685,7 +663,6 @@ export type WorktreeCreateWithoutProjectInput = {
   portBase?: number | null
   prTitleDraft?: string | null
   prBodyDraft?: string | null
-  trashedAt?: Date | string | null
   deletedAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -704,7 +681,6 @@ export type WorktreeUncheckedCreateWithoutProjectInput = {
   portBase?: number | null
   prTitleDraft?: string | null
   prBodyDraft?: string | null
-  trashedAt?: Date | string | null
   deletedAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -753,7 +729,6 @@ export type WorktreeScalarWhereInput = {
   portBase?: Prisma.IntNullableFilter<"Worktree"> | number | null
   prTitleDraft?: Prisma.StringNullableFilter<"Worktree"> | string | null
   prBodyDraft?: Prisma.StringNullableFilter<"Worktree"> | string | null
-  trashedAt?: Prisma.DateTimeNullableFilter<"Worktree"> | Date | string | null
   deletedAt?: Prisma.DateTimeNullableFilter<"Worktree"> | Date | string | null
   createdAt?: Prisma.DateTimeFilter<"Worktree"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Worktree"> | Date | string
@@ -770,7 +745,6 @@ export type WorktreeCreateWithoutTodosInput = {
   portBase?: number | null
   prTitleDraft?: string | null
   prBodyDraft?: string | null
-  trashedAt?: Date | string | null
   deletedAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -790,7 +764,6 @@ export type WorktreeUncheckedCreateWithoutTodosInput = {
   portBase?: number | null
   prTitleDraft?: string | null
   prBodyDraft?: string | null
-  trashedAt?: Date | string | null
   deletedAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -824,7 +797,6 @@ export type WorktreeUpdateWithoutTodosInput = {
   portBase?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   prTitleDraft?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   prBodyDraft?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -844,7 +816,6 @@ export type WorktreeUncheckedUpdateWithoutTodosInput = {
   portBase?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   prTitleDraft?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   prBodyDraft?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -862,7 +833,6 @@ export type WorktreeCreateWithoutSessionsInput = {
   portBase?: number | null
   prTitleDraft?: string | null
   prBodyDraft?: string | null
-  trashedAt?: Date | string | null
   deletedAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -882,7 +852,6 @@ export type WorktreeUncheckedCreateWithoutSessionsInput = {
   portBase?: number | null
   prTitleDraft?: string | null
   prBodyDraft?: string | null
-  trashedAt?: Date | string | null
   deletedAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -916,7 +885,6 @@ export type WorktreeUpdateWithoutSessionsInput = {
   portBase?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   prTitleDraft?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   prBodyDraft?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -936,7 +904,6 @@ export type WorktreeUncheckedUpdateWithoutSessionsInput = {
   portBase?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   prTitleDraft?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   prBodyDraft?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -954,7 +921,6 @@ export type WorktreeCreateManyProjectInput = {
   portBase?: number | null
   prTitleDraft?: string | null
   prBodyDraft?: string | null
-  trashedAt?: Date | string | null
   deletedAt?: Date | string | null
   createdAt?: Date | string
   updatedAt?: Date | string
@@ -971,7 +937,6 @@ export type WorktreeUpdateWithoutProjectInput = {
   portBase?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   prTitleDraft?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   prBodyDraft?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -990,7 +955,6 @@ export type WorktreeUncheckedUpdateWithoutProjectInput = {
   portBase?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   prTitleDraft?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   prBodyDraft?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -1009,7 +973,6 @@ export type WorktreeUncheckedUpdateManyWithoutProjectInput = {
   portBase?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   prTitleDraft?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   prBodyDraft?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  trashedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   deletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
@@ -1067,7 +1030,6 @@ export type WorktreeSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs
   portBase?: boolean
   prTitleDraft?: boolean
   prBodyDraft?: boolean
-  trashedAt?: boolean
   deletedAt?: boolean
   createdAt?: boolean
   updatedAt?: boolean
@@ -1089,7 +1051,6 @@ export type WorktreeSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exte
   portBase?: boolean
   prTitleDraft?: boolean
   prBodyDraft?: boolean
-  trashedAt?: boolean
   deletedAt?: boolean
   createdAt?: boolean
   updatedAt?: boolean
@@ -1108,7 +1069,6 @@ export type WorktreeSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exte
   portBase?: boolean
   prTitleDraft?: boolean
   prBodyDraft?: boolean
-  trashedAt?: boolean
   deletedAt?: boolean
   createdAt?: boolean
   updatedAt?: boolean
@@ -1127,13 +1087,12 @@ export type WorktreeSelectScalar = {
   portBase?: boolean
   prTitleDraft?: boolean
   prBodyDraft?: boolean
-  trashedAt?: boolean
   deletedAt?: boolean
   createdAt?: boolean
   updatedAt?: boolean
 }
 
-export type WorktreeOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "projectId" | "userId" | "name" | "status" | "branchName" | "worktreePath" | "baseCommit" | "portBase" | "prTitleDraft" | "prBodyDraft" | "trashedAt" | "deletedAt" | "createdAt" | "updatedAt", ExtArgs["result"]["worktree"]>
+export type WorktreeOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "projectId" | "userId" | "name" | "status" | "branchName" | "worktreePath" | "baseCommit" | "portBase" | "prTitleDraft" | "prBodyDraft" | "deletedAt" | "createdAt" | "updatedAt", ExtArgs["result"]["worktree"]>
 export type WorktreeInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   sessions?: boolean | Prisma.Worktree$sessionsArgs<ExtArgs>
   todos?: boolean | Prisma.Worktree$todosArgs<ExtArgs>
@@ -1166,7 +1125,6 @@ export type $WorktreePayload<ExtArgs extends runtime.Types.Extensions.InternalAr
     portBase: number | null
     prTitleDraft: string | null
     prBodyDraft: string | null
-    trashedAt: Date | null
     deletedAt: Date | null
     createdAt: Date
     updatedAt: Date
@@ -1607,7 +1565,6 @@ export interface WorktreeFieldRefs {
   readonly portBase: Prisma.FieldRef<"Worktree", 'Int'>
   readonly prTitleDraft: Prisma.FieldRef<"Worktree", 'String'>
   readonly prBodyDraft: Prisma.FieldRef<"Worktree", 'String'>
-  readonly trashedAt: Prisma.FieldRef<"Worktree", 'DateTime'>
   readonly deletedAt: Prisma.FieldRef<"Worktree", 'DateTime'>
   readonly createdAt: Prisma.FieldRef<"Worktree", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"Worktree", 'DateTime'>

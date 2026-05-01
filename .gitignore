@@ -43,4 +43,3 @@ next-env.d.ts
 /app/generated/prisma
 companion/node_modules/
 companion/dist/
-.bornastar-worktrees/

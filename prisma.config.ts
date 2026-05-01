@@ -3,12 +3,17 @@
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
 
+// Migrations need session-mode (port 5432) — transaction-mode pooler
+// (port 6543, used by the app via DATABASE_URL) doesn't support
+// prepared statements / long-running transactions Prisma uses for
+// schema changes. App runtime uses DATABASE_URL via the PrismaPg
+// adapter in lib/db.ts; this datasource setting is CLI-only.
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    url: process.env["DIRECT_URL"] ?? process.env["DATABASE_URL"],
   },
 });

@@ -137,23 +137,26 @@ class LruCache<T> {
 const filesCache = new LruCache<FileEntry[]>()
 
 // ── Terminal state ────────────────────────────────────────────────────────
-// Snapshot of everything the terminal needs to redraw without flashing
-// "Connecting to sandbox..." or losing what the user already saw. Limited
-// to TERMINAL_HISTORY_LIMIT lines per context — anything older drops off
-// the top, preserving the UX of "you can scroll up to recent commands"
-// without unbounded memory growth across many worktrees.
-
-export type TerminalEntry = { type: 'input' | 'stdout' | 'stderr' | 'system'; text: string }
-export type TerminalSandboxStatus = 'disconnected' | 'starting' | 'running'
+// Browser-side snapshot of the terminal panel for a given context. The
+// authoritative live state lives in the daemon-side PTY (see
+// companion/src/pty-manager.ts) — this slice only exists to give the
+// remount path something to paint before the daemon's ring-buffer
+// replay catches up. xterm owns scrollback, the shell owns its own
+// command history, and PTY status is binary (attached or not, and
+// that's the daemon's concern).
+//
+// `snapshot` is plain text trimmed to the last
+// TERMINAL_SNAPSHOT_CAP_BYTES of buffer content. `cols`/`rows` let
+// us initialise xterm to the user's last-known size on a fresh
+// mount, reducing the visual jump FitAddon would otherwise cause.
 
 export interface TerminalState {
-  history: TerminalEntry[]
-  input: string
-  commandHistory: string[]
-  sandboxStatus: TerminalSandboxStatus
+  snapshot: string
+  cols: number
+  rows: number
 }
 
-const TERMINAL_HISTORY_LIMIT = 500
+const TERMINAL_SNAPSHOT_CAP_BYTES = 64 * 1024  // ~500 lines of typical output
 
 const terminalCache = new LruCache<TerminalState>()
 
@@ -162,13 +165,42 @@ export function getCachedTerminal(key: string): TerminalState | undefined {
 }
 
 export function setCachedTerminal(key: string, state: TerminalState): void {
-  // Trim history at write time so the cap is enforced regardless of how
-  // the caller built the array. Keeping the most recent N preserves the
-  // useful tail (what just ran) and drops the cold prefix.
-  const trimmed = state.history.length > TERMINAL_HISTORY_LIMIT
-    ? state.history.slice(-TERMINAL_HISTORY_LIMIT)
-    : state.history
-  terminalCache.set(key, { ...state, history: trimmed })
+  // Cap the snapshot at the byte limit. Keeping the tail preserves
+  // "what the user just saw"; the head drops because the daemon-side
+  // PTY ring buffer holds the longer scrollback for live reattach
+  // within the TTL window.
+  const trimmed = state.snapshot.length > TERMINAL_SNAPSHOT_CAP_BYTES
+    ? state.snapshot.slice(-TERMINAL_SNAPSHOT_CAP_BYTES)
+    : state.snapshot
+  terminalCache.set(key, { ...state, snapshot: trimmed })
+}
+
+// ── PTY active contexts ──────────────────────────────────────────────────
+// Browser-side mirror of which contexts have a live PTY in the
+// daemon. XTermPanel.attach flips a key on; the SSE pty_exit event
+// (handled in CompanionProvider) flips it off. cacheProtector reads
+// this set so a worktree with a long-running build keeps its files /
+// hunks / meta / git-status caches warm even if the user moved focus
+// to another worktree or closed the right panel. Same pattern as
+// `runningSessionIds` in companionStore — a Set that drives the
+// uniform "this worktree is still in use" signal across all 5 pontas.
+
+const ptyActiveContexts = new Set<string>()
+
+export function markPtyAttached(contextKey: string): void {
+  if (ptyActiveContexts.has(contextKey)) return
+  ptyActiveContexts.add(contextKey)
+  console.log(`[pty] markPtyAttached ctx=${contextKey.slice(0, 8)} activeCount=${ptyActiveContexts.size}`)
+}
+
+export function markPtyExited(contextKey: string): void {
+  if (!ptyActiveContexts.has(contextKey)) return
+  ptyActiveContexts.delete(contextKey)
+  console.log(`[pty] markPtyExited ctx=${contextKey.slice(0, 8)} activeCount=${ptyActiveContexts.size}`)
+}
+
+export function isPtyActive(contextKey: string): boolean {
+  return ptyActiveContexts.has(contextKey)
 }
 
 // ── Per-worktree right-panel metadata ─────────────────────────────────────
@@ -254,17 +286,19 @@ export function subscribeCachedHunks(worktreeId: string, listener: Listener): ()
 // stale. Invoked from `markPathsDirty` so a single fs-change event
 // invalidates the file-list flag AND the diff cache in one pass. Empty
 // slice: leave it (it'll be repopulated by the next prefetch).
-function invalidateHunksOnPaths(paths: string[]): void {
-  if (paths.length === 0) return
-  // Group affected paths by worktree (re-using the same parsing as the
-  // file list). For each worktree slice that exists in the cache, drop
-  // any matching filePath entries. Worktrees with no slice are no-ops.
+//
+// Only worktree batches matter here — main has no per-file diff cache
+// (it's the read-only base view). For 'project' batches the function
+// returns immediately.
+function invalidateHunksFromBatch(batch: FsChangeBatch): void {
+  if (batch.source !== 'worktrees' || batch.paths.length === 0) return
+  // Group affected paths by worktreeId. Each path is `<wtId>/<rel>`.
   const byKey = new Map<string, Set<string>>()
-  for (const p of paths) {
-    const m = WORKTREE_PATH_RE.exec(p)
-    if (!m) continue  // 'main' has no per-file diff cache (no worktree id)
-    const key = m[1]
-    const rel = p.slice(m[0].length)
+  for (const p of batch.paths) {
+    const slash = p.indexOf('/')
+    if (slash <= 0) continue
+    const key = p.slice(0, slash)
+    const rel = p.slice(slash + 1)
     let set = byKey.get(key)
     if (!set) { set = new Set(); byKey.set(key, set) }
     set.add(rel)
@@ -303,24 +337,32 @@ export function getCachedFilesKeys(): string[] {
 }
 
 /**
- * Map a daemon-emitted fs-change path list to the set of cache keys it
- * touches. Paths look like:
+ * Shape of a daemon fs-change batch as it lands on the browser. Mirrors
+ * the daemon-side `FsChangeBatch` (see `companion/src/fs-watcher.ts`).
  *
- *   .bornastar-worktrees/<id>/src/foo.tsx   → cache key '<id>'
- *   README.md                                → cache key 'main'
- *
- * The `<id>` matches the Worktree row's primary key (cuid) — the same
- * value FileTree and ChangesList use as their cacheKey, so the mapping
- * is exact, not approximate. Used by the global fs-change refresher to
- * keep cached but unviewed worktrees in sync with the disk.
+ *   source='project'   → paths are relative to project root
+ *                          ex: ['src/foo.tsx', 'README.md']  → cache key 'main'
+ *   source='worktrees' → paths are `<worktreeId>/<rel>` (worktrees live
+ *                          in `~/.bornastar/worktrees/<projectId>/`)
+ *                          ex: ['<wtId>/src/bar.tsx']  → cache key '<wtId>'
  */
-const WORKTREE_PATH_RE = /^\.bornastar-worktrees\/([^/]+)\//
+export interface FsChangeBatch {
+  source: 'project' | 'worktrees'
+  paths: string[]
+}
 
-export function parseAffectedCacheKeys(paths: string[]): Set<string> {
+/**
+ * Map a daemon-emitted batch to the set of cache keys it touches. Used
+ * by the global fs-change refresher to keep cached but unviewed
+ * worktrees in sync with the disk.
+ */
+export function parseAffectedCacheKeys(batch: FsChangeBatch): Set<string> {
+  if (batch.paths.length === 0) return new Set()
+  if (batch.source === 'project') return new Set(['main'])
   const keys = new Set<string>()
-  for (const p of paths) {
-    const m = WORKTREE_PATH_RE.exec(p)
-    keys.add(m ? m[1] : 'main')
+  for (const p of batch.paths) {
+    const slash = p.indexOf('/')
+    if (slash > 0) keys.add(p.slice(0, slash))
   }
   return keys
 }
@@ -340,20 +382,26 @@ export function parseAffectedCacheKeys(paths: string[]): Set<string> {
  *
  * Returns the cache keys that actually changed (caller logs / metrics).
  */
-export function markPathsDirty(paths: string[]): Set<string> {
-  if (paths.length === 0) return new Set()
+export function markPathsDirty(batch: FsChangeBatch): Set<string> {
+  if (batch.paths.length === 0) return new Set()
 
-  // Group input paths by the cache slice they belong to. Worktree paths
-  // get their `.bornastar-worktrees/<id>/` prefix stripped so the
-  // remainder lines up with FileEntry.path inside that slice's listing.
+  // Group input paths by the cache slice they belong to. For 'project'
+  // every path lands under 'main'. For 'worktrees' the first segment of
+  // each path is the worktreeId; the rest is the path inside that
+  // slice's file listing.
   const byKey = new Map<string, Set<string>>()
-  for (const p of paths) {
-    const m = WORKTREE_PATH_RE.exec(p)
-    const key = m ? m[1] : 'main'
-    const rel = m ? p.slice(m[0].length) : p
-    let set = byKey.get(key)
-    if (!set) { set = new Set(); byKey.set(key, set) }
-    set.add(rel)
+  if (batch.source === 'project') {
+    byKey.set('main', new Set(batch.paths))
+  } else {
+    for (const p of batch.paths) {
+      const slash = p.indexOf('/')
+      if (slash <= 0) continue
+      const key = p.slice(0, slash)
+      const rel = p.slice(slash + 1)
+      let set = byKey.get(key)
+      if (!set) { set = new Set(); byKey.set(key, set) }
+      set.add(rel)
+    }
   }
 
   const changed = new Set<string>()
@@ -376,7 +424,7 @@ export function markPathsDirty(paths: string[]): Set<string> {
   // Same fs-change batch that flips file-list dirty flags also stales
   // any cached per-file diff — drop them so the next view refetches
   // from disk. Cheap: most batches affect <10 paths.
-  invalidateHunksOnPaths(paths)
+  invalidateHunksFromBatch(batch)
   return changed
 }
 

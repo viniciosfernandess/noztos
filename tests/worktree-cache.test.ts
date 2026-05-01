@@ -8,7 +8,7 @@
 //   3. Touch bumps: reading a key keeps it from being kicked next.
 //   4. Subscribers: notified on set, silent after unsubscribe.
 //   5. parseAffectedCacheKeys: daemon path → cache key mapping.
-//   6. Terminal trim: history capped at TERMINAL_HISTORY_LIMIT (500).
+//   6. Terminal trim: snapshot capped at TERMINAL_SNAPSHOT_CAP_BYTES (64KB).
 //   7. Idle eviction (fake timers): drops keys past TTL.
 //   8. Protector: keys returned by the protector survive idle sweeps.
 //
@@ -32,13 +32,12 @@ function mkFile(path: string): FileEntry {
   return { id: path, path, isModified: false, isNew: false, sizeBytes: 0 }
 }
 
-function mkTerminalState(historyLines: number): TerminalState {
-  const history = Array.from({ length: historyLines }, (_, i) => ({
-    type: 'stdout' as const,
-    text: `line-${i}`,
-  }))
-  return { history, input: '', commandHistory: [], sandboxStatus: 'running' }
+function mkTerminalState(snapshotBytes: number): TerminalState {
+  // Repeat 'a' to reach exactly snapshotBytes of content.
+  return { snapshot: 'a'.repeat(snapshotBytes), cols: 80, rows: 24 }
 }
+
+const SNAPSHOT_CAP_BYTES = 64 * 1024
 
 // Each test owns a unique key prefix so parallel test runs don't trip
 // over each other's cached entries inside the singleton.
@@ -99,35 +98,47 @@ describe('worktree-cache — invariants', () => {
     expect(calls).toHaveLength(2)  // listener gone, no new call
   })
 
-  it('5) parseAffectedCacheKeys — worktree paths map to id, others to main', () => {
-    const out = parseAffectedCacheKeys([
-      '.bornastar-worktrees/abc123/src/foo.tsx',
-      '.bornastar-worktrees/abc123/src/bar.tsx',  // same wt, deduped
-      '.bornastar-worktrees/xyz789/lib/baz.ts',
-      'README.md',                                  // main
-      'app/page.tsx',                                // main
-    ])
-    expect(out).toEqual(new Set(['abc123', 'xyz789', 'main']))
+  it('5) parseAffectedCacheKeys — worktrees source extracts wtId, project source maps to main', () => {
+    // Worktrees batch: paths are `<wtId>/<rel>` (worktrees live in
+    // `~/.bornastar/worktrees/<projectId>/`, daemon emits paths
+    // relative to that root).
+    const wtOut = parseAffectedCacheKeys({
+      source: 'worktrees',
+      paths: [
+        'abc123/src/foo.tsx',
+        'abc123/src/bar.tsx',  // same wt, deduped via Set
+        'xyz789/lib/baz.ts',
+      ],
+    })
+    expect(wtOut).toEqual(new Set(['abc123', 'xyz789']))
+
+    // Project batch: any path collapses to the synthetic 'main' key.
+    const projOut = parseAffectedCacheKeys({
+      source: 'project',
+      paths: ['README.md', 'app/page.tsx'],
+    })
+    expect(projOut).toEqual(new Set(['main']))
   })
 
   it('5b) parseAffectedCacheKeys — empty paths returns empty set', () => {
-    expect(parseAffectedCacheKeys([])).toEqual(new Set())
+    expect(parseAffectedCacheKeys({ source: 'project', paths: [] })).toEqual(new Set())
+    expect(parseAffectedCacheKeys({ source: 'worktrees', paths: [] })).toEqual(new Set())
   })
 
-  it('6) terminal trim — history > 500 gets sliced to last 500 on set', () => {
+  it('6) terminal trim — snapshot > cap gets sliced to the cap on set', () => {
     const key = k('term-trim')
-    setCachedTerminal(key, mkTerminalState(750))
+    // 1.5× the cap so we can confirm the trim points at the tail.
+    setCachedTerminal(key, mkTerminalState(SNAPSHOT_CAP_BYTES + 32_000))
     const cached = getCachedTerminal(key)
-    expect(cached?.history).toHaveLength(500)
-    // Trim keeps the TAIL (most recent), so first cached line is line-250.
-    expect(cached?.history[0].text).toBe('line-250')
-    expect(cached?.history[499].text).toBe('line-749')
+    expect(cached?.snapshot.length).toBe(SNAPSHOT_CAP_BYTES)
+    // We filled with `a`, so the trimmed slice is still all `a`.
+    expect(cached?.snapshot[0]).toBe('a')
   })
 
-  it('6b) terminal trim — history ≤ 500 is preserved verbatim', () => {
+  it('6b) terminal trim — snapshot ≤ cap is preserved verbatim', () => {
     const key = k('term-no-trim')
-    setCachedTerminal(key, mkTerminalState(100))
-    expect(getCachedTerminal(key)?.history).toHaveLength(100)
+    setCachedTerminal(key, mkTerminalState(1024))
+    expect(getCachedTerminal(key)?.snapshot.length).toBe(1024)
   })
 })
 

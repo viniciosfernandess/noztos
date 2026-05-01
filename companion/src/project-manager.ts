@@ -1,9 +1,9 @@
 import { execSync, execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { randomBytes } from 'node:crypto'
-import { addProject, removeProject, loadConfig } from './config.js'
+import { addProject, removeProject, loadConfig, relabelProject } from './config.js'
 import type { ProjectConfig } from './types.js'
 
 export function isGitRepo(dir: string): boolean {
@@ -38,7 +38,12 @@ export function getRepoName(dir: string): string {
   return basename(dir)
 }
 
-export function initProject(dirPath: string): ProjectConfig {
+// `providedId` lets the web pass the DB cuid through, so the daemon's
+// project id matches the DB id from the start (fs-watcher path,
+// worktrees dir, etc. all line up). When omitted, the daemon mints its
+// own legacy hex id; the register-time reconciliation will relabel it
+// later when the DB pairing is discovered.
+export function initProject(dirPath: string, providedId?: string): ProjectConfig {
   const absPath = resolve(dirPath)
   if (!existsSync(absPath)) {
     throw new Error(`Directory does not exist: ${absPath}`)
@@ -48,7 +53,7 @@ export function initProject(dirPath: string): ProjectConfig {
   }
 
   const project: ProjectConfig = {
-    id: randomBytes(12).toString('hex'),
+    id: providedId ?? randomBytes(12).toString('hex'),
     path: absPath,
     name: getRepoName(absPath),
     registeredAt: new Date().toISOString(),
@@ -59,6 +64,13 @@ export function initProject(dirPath: string): ProjectConfig {
   return project
 }
 
+// Re-export for daemon command handlers. Same idempotency semantics
+// as relabelProject in config.ts — true if applied, false when the
+// old id is unknown.
+export function relabelProjectId(oldId: string, newId: string): boolean {
+  return relabelProject(oldId, newId)
+}
+
 export function listProjects(): ProjectConfig[] {
   return loadConfig().projects
 }
@@ -66,6 +78,19 @@ export function listProjects(): ProjectConfig[] {
 export function unregisterProject(dirPath: string): void {
   const absPath = resolve(dirPath)
   removeProject(absPath)
+}
+
+// Recursively remove the worktrees directory of a project. Best-effort:
+// errors (permission, in-use) are swallowed because the DB row is
+// already in 'deleted' state by the time this runs — disk inconsistency
+// is recoverable on the next reconciliation pass; a thrown error here
+// would break the daemon command pipeline for unrelated commands.
+export function cleanupProjectWorktreesDir(worktreesPath: string): void {
+  try {
+    rmSync(worktreesPath, { recursive: true, force: true })
+  } catch (err) {
+    console.warn(`[project] cleanup ${worktreesPath} failed: ${(err as Error).message}`)
+  }
 }
 
 export function cloneRepo(repoUrl: string, targetDir: string): ProjectConfig {
@@ -90,7 +115,7 @@ export function cloneRepo(repoUrl: string, targetDir: string): ProjectConfig {
 
 export function createProject(
   targetDir: string,
-  options?: { template?: string },
+  options?: { template?: string; providedId?: string },
 ): ProjectConfig {
   // Resolve ~ to home directory
   const resolvedDir = targetDir.startsWith('~')
@@ -118,7 +143,7 @@ export function createProject(
     }
   }
 
-  return initProject(resolvedDir)
+  return initProject(resolvedDir, options?.providedId)
 }
 
 function getScaffoldCommand(template: string, _dir: string): string | null {

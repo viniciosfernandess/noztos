@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import { companionStore } from '@/lib/companion-store'
+import { markPtyExited } from '@/lib/worktree-cache'
 import type { ClaudeEvent } from '@/lib/hooks/useCompanionStream'
 
 // ── CompanionProvider ───────────────────────────────────────────────
@@ -88,10 +89,53 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
               // loose string compare.
               const rawType = (event as { type?: string }).type
               if (rawType === 'fs_change') {
-                const payload = event.payload as unknown as { projectPath?: string; paths?: string[] } | undefined
+                // Daemon batches carry `source` so the cache layer knows
+                // which root (`project` = main view, `worktrees` =
+                // `~/.bornastar/worktrees/<projectId>/`) the paths are
+                // relative to. See lib/worktree-cache.ts FsChangeBatch.
+                const payload = event.payload as unknown as { projectPath?: string; source?: 'project' | 'worktrees'; paths?: string[] } | undefined
                 window.dispatchEvent(new CustomEvent('bornastar-fs-change', {
-                  detail: { projectPath: payload?.projectPath, paths: payload?.paths ?? [] },
+                  detail: {
+                    projectPath: payload?.projectPath,
+                    source: payload?.source ?? 'project',
+                    paths: payload?.paths ?? [],
+                  },
                 }))
+                continue
+              }
+              // PTY data/exit go to the XTermPanel for the matching
+              // contextKey via window CustomEvents — same dispatch
+              // pattern as fs_change. The store has nothing to do with
+              // terminal bytes (no slice, no DB persistence), so
+              // routing through companionStore.ingestClaudeEvent
+              // would just burn a no-op switch case.
+              if (rawType === 'pty_data') {
+                const payload = event.payload as unknown as { contextKey?: string; data?: string; reattached?: boolean } | undefined
+                if (payload?.contextKey && payload.data != null) {
+                  console.log(`[pty] SSE pty_data ctx=${payload.contextKey.slice(0, 8)} bytes=${payload.data.length}${payload.reattached ? ' (reattach replay)' : ''}`)
+                  window.dispatchEvent(new CustomEvent('bornastar-pty-data', {
+                    detail: { contextKey: payload.contextKey, data: payload.data, reattached: !!payload.reattached },
+                  }))
+                }
+                continue
+              }
+              if (rawType === 'pty_exit') {
+                const payload = event.payload as unknown as { contextKey?: string; exitCode?: number } | undefined
+                if (payload?.contextKey) {
+                  console.log(`[pty] SSE pty_exit ctx=${payload.contextKey.slice(0, 8)} code=${payload.exitCode ?? 0}`)
+                  // Clear the global PTY-active flag here — NOT inside
+                  // XTermPanel's listener. If the user navigated away
+                  // from this worktree's terminal (panel unmounted),
+                  // the panel-scoped listener is gone but the daemon
+                  // still emits pty_exit when its TTL fires. Without
+                  // this global hook, ptyActiveContexts would leak
+                  // forever and cacheProtector would protect a dead
+                  // worktree's slices indefinitely.
+                  markPtyExited(payload.contextKey)
+                  window.dispatchEvent(new CustomEvent('bornastar-pty-exit', {
+                    detail: { contextKey: payload.contextKey, exitCode: payload.exitCode ?? 0 },
+                  }))
+                }
                 continue
               }
               // Unread tagging: a claude_event for a chat that isn't

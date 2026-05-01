@@ -1,6 +1,8 @@
 import { EventEmitter } from 'node:events'
-import { hostname } from 'node:os'
+import { hostname, homedir } from 'node:os'
 import { spawn } from 'node:child_process'
+import { mkdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { loadConfig } from './config.js'
 import { detectClaudeAuth, detectClaudeInstallation, getClaudeVersion } from './auth-detect.js'
 import { ClaudeBridge, getActiveConfig } from './claude-bridge.js'
@@ -8,7 +10,8 @@ import { refreshPromptConfig, startPromptConfigPolling } from './prompt-config.j
 import { ProjectWatcher, type FsChangeBatch } from './fs-watcher.js'
 import { SyncQueue, type QueuedEvent } from './sync-queue.js'
 import { SyncWorker } from './sync-worker.js'
-import { listProjects } from './project-manager.js'
+import { listProjects, relabelProjectId, unregisterProject, cleanupProjectWorktreesDir } from './project-manager.js'
+import { PtyManager } from './pty-manager.js'
 import type { CompanionCommand, CompanionMessage, ClaudeStreamEvent } from './types.js'
 
 // A ChatMessage-shaped row ready to persist. Every row carries a
@@ -62,6 +65,11 @@ export class Daemon extends EventEmitter {
   // One filesystem watcher per registered project — replaces the
   // Explorer / Changes / stats polling on the browser. Keyed by abs path.
   private watchers: Map<string, ProjectWatcher> = new Map()
+  // One persistent shell PTY per terminal context (worktreeId).
+  // Lifecycle in pty-manager.ts: spawn on first attach, survive
+  // browser disconnects within the activity TTL (1h) or post-detach
+  // TTL (10 min) with child-process extension, kill on shutdown.
+  private ptyManager: PtyManager = new PtyManager()
   // Persistent sync queue that mirrors every chat event to Supabase in
   // the background. Browser only renders — durability lives here.
   private syncQueue: SyncQueue = new SyncQueue()
@@ -79,6 +87,22 @@ export class Daemon extends EventEmitter {
     super()
     this.serverUrl = serverUrl
     this.authToken = authToken
+    // Wire PTY events through the existing SSE pipeline. Every byte
+    // the shell emits → pty_data → server → browser xterm.write().
+    // Exit tells the browser to drop its "PTY active" flag so the
+    // worktree's cache slices can age normally.
+    this.ptyManager.on('data', (contextKey: string, data: string) => {
+      void this.send({
+        type: 'pty_data',
+        payload: { contextKey, data },
+      })
+    })
+    this.ptyManager.on('exit', (contextKey: string, exitCode: number) => {
+      void this.send({
+        type: 'pty_exit',
+        payload: { contextKey, exitCode },
+      })
+    })
   }
 
   async start(): Promise<void> {
@@ -111,6 +135,11 @@ export class Daemon extends EventEmitter {
       watcher.stop()
     }
     this.watchers.clear()
+    // Hard-kill every live PTY. SIGHUP propagates to children (build,
+    // test, vim, etc.), so a daemon shutdown cleanly stops anything
+    // the user had running. The browser will see `pty_exit` events
+    // (if SSE still alive) and let cacheProtector age normally.
+    this.ptyManager.killAll()
     // Give the sync worker one last chance to flush whatever it was
     // holding — fire-and-forget, stop() can't be async.
     this.syncWorker.flushNow().catch(() => {})
@@ -145,6 +174,11 @@ export class Daemon extends EventEmitter {
       authInfo: { ...auth, version },
       projects,
       machineName: hostname(),
+      // The web side stores this and uses it to compute the worktrees
+      // directory (`<homeDir>/.bornastar/worktrees/<projectId>/`) when
+      // provisioning. Web never assumes its own `os.homedir()` matches
+      // the daemon's — important for the day web runs cloud-side.
+      homeDir: homedir(),
     })
     if (res?.ok) {
       this.emit('registered')
@@ -274,7 +308,123 @@ export class Daemon extends EventEmitter {
       case 'query_running':
         this.broadcastRunning()
         break
+      case 'pty_attach':
+        this.handlePtyAttach(cmd)
+        break
+      case 'pty_input':
+        this.handlePtyInput(cmd)
+        break
+      case 'pty_resize':
+        this.handlePtyResize(cmd)
+        break
+      case 'pty_detach':
+        this.handlePtyDetach(cmd)
+        break
+      case 'relabel_project':
+        this.handleRelabelProject(cmd)
+        break
+      case 'unregister_project':
+        this.handleUnregisterProject(cmd)
+        break
+      case 'cleanup_project':
+        this.handleCleanupProject(cmd)
+        break
     }
+  }
+
+  // ── Project lifecycle commands (server-driven) ──────────────────────
+  //
+  // The server enqueues these to keep the daemon's local config and disk
+  // converged with the DB after lifecycle events:
+  //   • relabel_project    — register-time reconciliation found a daemon
+  //                          project whose id is the legacy hex; rewrite
+  //                          it to the DB cuid so future fs-watcher paths
+  //                          and provisionWorktree paths line up.
+  //   • unregister_project — DB project was deleted; drop the local row
+  //                          (the watcher tear-down happens via
+  //                          syncWatchers on the next config tick).
+  //   • cleanup_project    — DB project was deleted; rm -rf the worktrees
+  //                          dir on disk. Best-effort, non-fatal on error.
+
+  private handleRelabelProject(cmd: CompanionCommand): void {
+    if (!cmd.oldProjectId || !cmd.newProjectId) {
+      console.warn('[project] relabel missing oldProjectId/newProjectId', cmd)
+      return
+    }
+    const ok = relabelProjectId(cmd.oldProjectId, cmd.newProjectId)
+    console.log(`[project] relabel ${cmd.oldProjectId.slice(0, 8)} → ${cmd.newProjectId.slice(0, 8)} ${ok ? 'OK' : 'no-op (project not found)'}`)
+    if (ok) {
+      // Force watchers to re-evaluate so the worktrees-path watcher
+      // moves from the old hex dir to the new cuid dir on next tick.
+      this.syncWatchers()
+    }
+  }
+
+  private handleUnregisterProject(cmd: CompanionCommand): void {
+    if (!cmd.targetPath) {
+      console.warn('[project] unregister missing targetPath', cmd)
+      return
+    }
+    unregisterProject(cmd.targetPath)
+    console.log(`[project] unregistered path=${cmd.targetPath}`)
+    // Tear down the project's watchers right away.
+    this.syncWatchers()
+  }
+
+  private handleCleanupProject(cmd: CompanionCommand): void {
+    if (!cmd.worktreesPath) {
+      console.warn('[project] cleanup missing worktreesPath', cmd)
+      return
+    }
+    cleanupProjectWorktreesDir(cmd.worktreesPath)
+    console.log(`[project] cleanup ${cmd.worktreesPath}`)
+  }
+
+  // ── PTY command handlers ──────────────────────────────────────────
+  //
+  // Each PTY command carries a `contextKey` (worktreeId) matching the
+  // browser-side cache key. PtyManager owns lifecycle; we relay events
+  // back via `send` so the existing SSE pipeline carries them to the
+  // browser. Reattach also synthesises a one-shot `pty_data` with the
+  // ring buffer + `reattached: true` so the browser knows to wipe its
+  // cached snapshot before painting.
+
+  private handlePtyAttach(cmd: CompanionCommand): void {
+    if (!cmd.contextKey || !cmd.cwd || cmd.cols == null || cmd.rows == null) {
+      console.warn('[pty] attach missing fields', cmd)
+      return
+    }
+    const { snapshot, reattached } = this.ptyManager.attach(cmd.contextKey, {
+      cwd: cmd.cwd,
+      cols: cmd.cols,
+      rows: cmd.rows,
+      displayName: cmd.displayName,
+    })
+    // If we reattached an existing PTY, the snapshot is non-empty and
+    // we ship it to the browser so it can repaint scrollback before
+    // any new live data arrives. Cold spawn: snapshot is '' — browser
+    // sees the prompt come through the regular `data` event.
+    if (snapshot) {
+      void this.send({
+        type: 'pty_data',
+        payload: { contextKey: cmd.contextKey, data: snapshot, reattached },
+      })
+    }
+  }
+
+  private handlePtyInput(cmd: CompanionCommand): void {
+    if (!cmd.contextKey || cmd.data == null) return
+    this.ptyManager.input(cmd.contextKey, cmd.data)
+  }
+
+  private handlePtyResize(cmd: CompanionCommand): void {
+    if (!cmd.contextKey || cmd.cols == null || cmd.rows == null) return
+    this.ptyManager.resize(cmd.contextKey, cmd.cols, cmd.rows)
+  }
+
+  private handlePtyDetach(cmd: CompanionCommand): void {
+    if (!cmd.contextKey) return
+    this.ptyManager.detach(cmd.contextKey)
   }
 
   private async sendStatus(): Promise<void> {
@@ -669,10 +819,16 @@ export class Daemon extends EventEmitter {
     if (!cmd.targetPath) return
     try {
       const { createProject } = await import('./project-manager.js')
-      const project = createProject(cmd.targetPath, { template: cmd.template })
+      // `cmd.projectId` (the DB cuid) flows into createProject so the
+      // scaffolded project is registered with that id from the start —
+      // same alignment guarantee as init_project.
+      const project = createProject(cmd.targetPath, { template: cmd.template, providedId: cmd.projectId })
+      console.log(`[isolation] project scaffolded path=${project.path} id=${project.id.slice(0, 8)} template=${cmd.template ?? '(none)'}${cmd.projectId ? ' (from DB cuid)' : ' (hex, awaiting reconcile)'}`)
       await this.send({ type: 'project_added', payload: project })
       await this.sendStatus()
+      this.syncWatchers()
     } catch (err) {
+      console.warn(`[isolation] project scaffold FAILED path=${cmd.targetPath}: ${(err as Error).message}`)
       await this.send({
         type: 'error',
         payload: { message: `Create failed: ${(err as Error).message}` },
@@ -683,12 +839,18 @@ export class Daemon extends EventEmitter {
   // Register an existing local directory as a project (used by the web
   // "Open local project" flow). Idempotent — addProject deduplicates by
   // path, so repeated calls just refresh the config entry.
+  //
+  // When `cmd.projectId` is provided (the DB cuid, sent by the picker
+  // after creating the DB row first), it becomes the daemon-side id —
+  // keeps fs-watcher path, worktrees dir and provisionWorktree all in
+  // sync with the DB from the start. Without it, a legacy hex id is
+  // minted and reconciliation fixes it on the next register tick.
   private async handleInitProject(cmd: CompanionCommand): Promise<void> {
     if (!cmd.targetPath) return
     try {
       const { initProject } = await import('./project-manager.js')
-      const project = initProject(cmd.targetPath)
-      console.log(`[isolation] project registered path=${project.path} id=${project.id.slice(0, 8)}`)
+      const project = initProject(cmd.targetPath, cmd.projectId)
+      console.log(`[isolation] project registered path=${project.path} id=${project.id.slice(0, 8)}${cmd.projectId ? ' (from DB cuid)' : ' (hex, awaiting reconcile)'}`)
       await this.send({ type: 'project_added', payload: project })
       await this.sendStatus()
       // A freshly-registered project needs its own filesystem watcher
@@ -713,12 +875,20 @@ export class Daemon extends EventEmitter {
     const projects = loadConfig().projects
     const activePaths = new Set(projects.map((p) => p.path))
 
-    // Spin up watchers for any project that doesn't have one yet.
+    // Spin up watchers for any project that doesn't have one yet. Each
+    // project gets ONE chokidar instance watching two roots:
+    //   • the project repo itself (main view)
+    //   • `~/.bornastar/worktrees/<projectId>/` — where every worktree
+    //     of that project lives (outside the repo, so the project tree
+    //     stays clean). mkdir -p before start so the watcher always has
+    //     something to attach to even before the first worktree exists.
     for (const project of projects) {
       if (this.watchers.has(project.path)) continue
-      const watcher = new ProjectWatcher(project.path)
+      const worktreesPath = join(homedir(), '.bornastar', 'worktrees', project.id)
+      try { mkdirSync(worktreesPath, { recursive: true }) } catch {}
+      const watcher = new ProjectWatcher(project.path, worktreesPath)
       watcher.on('change', (batch: FsChangeBatch) => {
-        console.log(`[isolation] fs_change project=${batch.projectPath} paths=${batch.paths.length}`)
+        console.log(`[isolation] fs_change project=${batch.projectPath} source=${batch.source} paths=${batch.paths.length}`)
         this.send({ type: 'fs_change', payload: batch }).catch(() => {})
       })
       watcher.on('error', (err) => {
@@ -726,6 +896,7 @@ export class Daemon extends EventEmitter {
       })
       watcher.start()
       this.watchers.set(project.path, watcher)
+      console.log(`[isolation] watcher SPAWN project=${project.path} id=${project.id.slice(0, 8)} worktreesPath=${worktreesPath}`)
     }
 
     // Tear down watchers for projects that were removed from config.
@@ -733,6 +904,7 @@ export class Daemon extends EventEmitter {
       if (!activePaths.has(path)) {
         watcher.stop()
         this.watchers.delete(path)
+        console.log(`[isolation] watcher TEARDOWN project=${path}`)
       }
     }
   }
@@ -740,9 +912,7 @@ export class Daemon extends EventEmitter {
   // ── Scan local repos ───────────────────────────────────────────────
 
   private async handleScanRepos(): Promise<void> {
-    const { homedir } = await import('node:os')
     const { existsSync, readdirSync, statSync } = await import('node:fs')
-    const { join } = await import('node:path')
 
     const home = homedir()
     const searchDirs = [
@@ -964,6 +1134,7 @@ export class Daemon extends EventEmitter {
       await this.post('/api/companion/register', {
         authInfo: { ...detectClaudeAuth(), version: getClaudeVersion() },
         projects: listProjects(),
+        homeDir: homedir(),
       })
     }, HEARTBEAT_INTERVAL_MS)
   }

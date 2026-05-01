@@ -39,18 +39,24 @@ function langFromPath(path: string): string {
 // unbounded. When the turn finishes the block collapses to a single
 // summary row ("Thought for 12s · 5 steps") that expands on click.
 
+// Worktrees live at `<homeDir>/.bornastar/worktrees/<projectId>/<wtId>/…`,
+// so absolute paths emitted by Claude tools start with that prefix. We
+// strip everything up to and including the `<wtId>/` segment so paths
+// render like `src/foo.ts` instead of the full absolute path.
+const WORKTREE_PREFIX_RE = /\.bornastar\/worktrees\/[^/]+\/[^/]+\//
+
+function stripWorktreePrefix(p: string): string | null {
+  const m = WORKTREE_PREFIX_RE.exec(p)
+  if (!m) return null
+  return p.slice(m.index + m[0].length)
+}
+
 function shortPath(p: string | undefined): string {
   if (!p) return ''
-  // Strip the `.bornastar-worktrees/<id>/` prefix if present so paths
-  // read like `src/foo.ts` instead of the full absolute path. When the
-  // path IS exactly the worktree root (no path after the id), return
-  // empty — callers use that as a signal to hide the location chip.
-  const worktreeIdx = p.lastIndexOf('.bornastar-worktrees/')
-  if (worktreeIdx >= 0) {
-    const afterId = p.indexOf('/', worktreeIdx + '.bornastar-worktrees/'.length)
-    if (afterId >= 0) return p.slice(afterId + 1)
-    return ''
-  }
+  // When the path IS exactly the worktree root (no path after the wtId),
+  // return empty — callers use that as a signal to hide the location chip.
+  const stripped = stripWorktreePrefix(p)
+  if (stripped !== null) return stripped
   // Otherwise keep the last 3 segments at most — enough context, not noisy.
   const parts = p.split('/')
   if (parts.length > 3) return '…/' + parts.slice(-3).join('/')
@@ -63,12 +69,8 @@ function shortPath(p: string | undefined): string {
 // path is more useful than fitting on one line.
 function relPath(p: string | undefined): string {
   if (!p) return ''
-  const worktreeIdx = p.lastIndexOf('.bornastar-worktrees/')
-  if (worktreeIdx >= 0) {
-    const afterId = p.indexOf('/', worktreeIdx + '.bornastar-worktrees/'.length)
-    if (afterId >= 0) return p.slice(afterId + 1)
-    return ''
-  }
+  const stripped = stripWorktreePrefix(p)
+  if (stripped !== null) return stripped
   return p
 }
 
@@ -374,13 +376,13 @@ function GrepBlock({ message }: { message: ChatMessage }) {
   // sees a readable error instead of XML noise. Also strips the
   // worktree's absolute prefix from any embedded path so the error
   // reads `pasta/que/nao/existe` instead of the full
-  // `/Users/.../bornastar-worktrees/wt-XXX/pasta/que/nao/existe`, and
-  // drops the trailing "your current working directory is …" hint that
-  // doubles the path noise.
+  // `/Users/.../.bornastar/worktrees/<projectId>/<wtId>/pasta/que/nao/existe`,
+  // and drops the trailing "your current working directory is …" hint
+  // that doubles the path noise.
   const errorText = isError
     ? raw
         .replace(/^<tool_use_error>([\s\S]*?)<\/tool_use_error>$/, '$1')
-        .replace(/\/Users\/[^/\s]+\/[^\s]*?\.bornastar-worktrees\/[^/\s]+\//g, '')
+        .replace(/\/(Users|home)\/[^/\s]+\/\.bornastar\/worktrees\/[^/\s]+\/[^/\s]+\//g, '')
         .replace(/\s*Note: your current working directory is[\s\S]*$/i, '')
         .trim()
     : ''
@@ -509,7 +511,7 @@ function GlobBlock({ message }: { message: ChatMessage }) {
   const errorText = isError
     ? raw
         .replace(/^<tool_use_error>([\s\S]*?)<\/tool_use_error>$/, '$1')
-        .replace(/\/Users\/[^/\s]+\/[^\s]*?\.bornastar-worktrees\/[^/\s]+\//g, '')
+        .replace(/\/(Users|home)\/[^/\s]+\/\.bornastar\/worktrees\/[^/\s]+\/[^/\s]+\//g, '')
         .replace(/\s*Note: your current working directory is[\s\S]*$/i, '')
         .trim()
     : ''
@@ -609,7 +611,7 @@ function LSBlock({ message }: { message: ChatMessage }) {
   const errorText = isError
     ? raw
         .replace(/^<tool_use_error>([\s\S]*?)<\/tool_use_error>$/, '$1')
-        .replace(/\/Users\/[^/\s]+\/[^\s]*?\.bornastar-worktrees\/[^/\s]+\//g, '')
+        .replace(/\/(Users|home)\/[^/\s]+\/\.bornastar\/worktrees\/[^/\s]+\/[^/\s]+\//g, '')
         .replace(/\s*Note: your current working directory is[\s\S]*$/i, '')
         .trim()
     : ''

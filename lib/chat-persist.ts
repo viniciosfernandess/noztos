@@ -43,11 +43,11 @@ interface SessionContext {
   userId: string
   worktreeId: string | null
   priorClaudeSession: string | null
-  // When the chat has been soft-deleted (user hit delete-forever, or
-  // trash TTL expired), we keep accepting in-flight events from the
-  // daemon queue so the audit/training dataset stays complete. The
-  // rows created here are stamped with this timestamp so they land
-  // hidden-from-UI, mirroring the other messages of the deleted chat.
+  // When the chat has been soft-deleted (user hit Delete forever), we
+  // keep accepting in-flight events from the daemon queue so the
+  // audit/training dataset stays complete. The rows created here are
+  // stamped with this timestamp so they land hidden-from-UI, mirroring
+  // the other messages of the deleted chat.
   sessionDeletedAt: Date | null
 }
 
