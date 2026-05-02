@@ -28,6 +28,7 @@ import { companionStore } from '@/lib/companion-store'
 import {
   useChatMessages, useChatIsRunning,
   useBusySessions, useUnreadSessions, useCompanionStatus, useCompanionInfo, usePendingSessions,
+  usePendingAttachments,
 } from '@/lib/hooks/useCompanionStore'
 import { CompanionProvider, setActiveSessionIdForUnread } from './CompanionProvider'
 import { ClaudeToolCard, SessionResultCard, ModeSelector, ModelSelector, ThinkingSelector, CompanionStatusBadge, WorkBlock, TodoBlock, ExitPlanModeBlock } from './ClaudeToolCard'
@@ -1209,19 +1210,6 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
   // regardless of which ChatPanel is mounted.
   const busySessions = useBusySessions()
 
-  // Hunk attachments from the Changes panel → injected into the next chat
-  // message. Stored as an array so the user can accumulate multiple hunks
-  // (even across different files) before sending. Each entry is cleared
-  // individually via its chip's × button, or all at once on send.
-  const [pendingHunkAttachments, setPendingHunkAttachments] = useState<Array<{
-    filePath: string
-    fileStatus: 'M' | 'A' | 'D'
-    focusStart: number
-    focusEnd: number
-    formattedContent: string
-    lineRange: string
-  }>>([])
-
   // Load scratchpad from localStorage on mount (per-project)
   useEffect(() => {
     try {
@@ -1255,6 +1243,12 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
   const [worktrees, setWorktrees] = useState<WorktreeInfo[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [activeWorktreeId, setActiveWorktreeId] = useState<string | null>(null)
+  // Hunk attachments live in companionStore keyed by sessionId — the
+  // Changes-panel "attach to current chat" click captures the active
+  // session at click time and stuffs the payload there. Switching chats
+  // doesn't drag attachments along: each chat's input bar reads its own
+  // slot. Survives chat switches as long as the slice is in cache.
+  const pendingHunkAttachments = usePendingAttachments(activeSessionId)
   // Central modal for create failures. Holds the user-facing message
   // and a callback for the "Try again" button so each handler can wire
   // its own retry logic. Null means no modal showing.
@@ -1844,7 +1838,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
   // cuid, the row is in the sidebar instantly so the user can't think
   // it didn't register, and a server failure surfaces explicitly.
 
-  async function handleNewMainChat() {
+  async function handleNewMainChat(): Promise<string> {
     const sessionId = companionStore.mintCuid('chat')
     const tStart = performance.now()
     console.log(`[opt] mainChat START sid=${sessionId.slice(0, 12)}`)
@@ -1880,6 +1874,11 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
         onRetry: () => { setCreateErrorModal(null); void handleNewMainChat() },
       })
     }
+    // Returns the session id even if the server POST failed — the
+    // optimistic row was already created and the caller (e.g. attach
+    // handlers) needs the id to target the right chat slot. The
+    // background failure is surfaced via the create-error modal.
+    return sessionId
   }
 
   async function handleNewWorktree() {
@@ -1992,7 +1991,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
     }
   }
 
-  async function handleAddChatToWorktree(worktreeId: string) {
+  async function handleAddChatToWorktree(worktreeId: string): Promise<string> {
     const sessionId = companionStore.mintCuid('chat')
     const tStart = performance.now()
     console.log(`[opt] addChat START wt=${worktreeId.slice(0, 12)} sid=${sessionId.slice(0, 12)}`)
@@ -2050,6 +2049,10 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
         onRetry: () => { setCreateErrorModal(null); void handleAddChatToWorktree(worktreeId) },
       })
     }
+    // Return the optimistic session id even on POST failure — same
+    // contract as handleNewMainChat (caller needs the id to target the
+    // right chat slot for attachments/etc).
+    return sessionId
   }
 
   // ── Hunk attach handlers ────────────────────────────────────────────────
@@ -2108,33 +2111,35 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
 
   async function handleAttachHunkToCurrentChat(filePath: string, fileStatus: 'M' | 'A' | 'D', hunk: DiffHunk) {
     const payload = buildHunkAttachmentPayload(filePath, fileStatus, hunk)
-    // If no chat is active, create a new main chat first (user is implicitly
-    // viewing main changes when they have no worktree/chat open)
-    if (!activeSessionId && !activeWorktreeId) {
-      await handleNewMainChat()
+    // Capture the target session id at click time. If no chat is active,
+    // create a new main chat first and attach there. Either way we
+    // commit the attachment to a SPECIFIC sessionId, not "whichever chat
+    // is active later" — switching chats afterwards must not drag the
+    // attachment to the wrong slot.
+    let targetSid = activeSessionId
+    if (!targetSid && !activeWorktreeId) {
+      targetSid = await handleNewMainChat()
     }
+    if (!targetSid) return
     // Accumulate — same file+range is a no-op so double-clicks don't duplicate.
-    setPendingHunkAttachments((prev) => {
-      const dup = prev.some((p) =>
-        p.filePath === payload.filePath &&
-        p.focusStart === payload.focusStart &&
-        p.focusEnd === payload.focusEnd,
-      )
-      return dup ? prev : [...prev, payload]
-    })
+    const prev = companionStore.getPendingAttachments(targetSid)
+    const dup = prev.some((p) =>
+      p.filePath === payload.filePath &&
+      p.focusStart === payload.focusStart &&
+      p.focusEnd === payload.focusEnd,
+    )
+    if (!dup) companionStore.setPendingAttachments(targetSid, [...prev, payload])
   }
 
   async function handleAttachHunkToNewChat(filePath: string, fileStatus: 'M' | 'A' | 'D', hunk: DiffHunk) {
     const payload = buildHunkAttachmentPayload(filePath, fileStatus, hunk)
     // New chat follows the current context: inside a worktree → add chat to
     // that worktree. Otherwise (main or empty) → new main chat.
-    if (activeWorktreeId) {
-      await handleAddChatToWorktree(activeWorktreeId)
-    } else {
-      await handleNewMainChat()
-    }
-    // New chat starts fresh with exactly one attachment.
-    setPendingHunkAttachments([payload])
+    const newSid = activeWorktreeId
+      ? await handleAddChatToWorktree(activeWorktreeId)
+      : await handleNewMainChat()
+    // New chat starts fresh with exactly one attachment, scoped to its id.
+    companionStore.setPendingAttachments(newSid, [payload])
   }
 
   // Bulk attach — used by the select-mode action bar in the Changes panel.
@@ -2159,30 +2164,29 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
 
   async function handleBulkAttachToCurrentChat(files: MockChangedFile[]) {
     if (files.length === 0) return
-    if (!activeSessionId && !activeWorktreeId) {
-      await handleNewMainChat()
+    let targetSid = activeSessionId
+    if (!targetSid && !activeWorktreeId) {
+      targetSid = await handleNewMainChat()
     }
+    if (!targetSid) return
     const payloads = flattenSelectedToPayloads(files)
-    // Append + dedupe against whatever's already staged.
-    setPendingHunkAttachments((prev) => {
-      const seen = new Set(prev.map((p) => `${p.filePath}:${p.focusStart}-${p.focusEnd}`))
-      const merged = [...prev]
-      for (const p of payloads) {
-        const key = `${p.filePath}:${p.focusStart}-${p.focusEnd}`
-        if (!seen.has(key)) { seen.add(key); merged.push(p) }
-      }
-      return merged
-    })
+    // Append + dedupe against whatever's already staged for this chat.
+    const prev = companionStore.getPendingAttachments(targetSid)
+    const seen = new Set(prev.map((p) => `${p.filePath}:${p.focusStart}-${p.focusEnd}`))
+    const merged = [...prev]
+    for (const p of payloads) {
+      const key = `${p.filePath}:${p.focusStart}-${p.focusEnd}`
+      if (!seen.has(key)) { seen.add(key); merged.push(p) }
+    }
+    companionStore.setPendingAttachments(targetSid, merged)
   }
 
   async function handleBulkAttachToNewChat(files: MockChangedFile[]) {
     if (files.length === 0) return
-    if (activeWorktreeId) {
-      await handleAddChatToWorktree(activeWorktreeId)
-    } else {
-      await handleNewMainChat()
-    }
-    setPendingHunkAttachments(flattenSelectedToPayloads(files))
+    const newSid = activeWorktreeId
+      ? await handleAddChatToWorktree(activeWorktreeId)
+      : await handleNewMainChat()
+    companionStore.setPendingAttachments(newSid, flattenSelectedToPayloads(files))
   }
 
   async function handleCloseWorktreeChat(worktreeId: string, sessionId: string) {
@@ -2557,8 +2561,15 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                   }}
                   onOpenScratchpad={() => setShowScratchpad(true)}
                   hunkAttachments={pendingHunkAttachments}
-                  onClearHunkAttachment={(index) => setPendingHunkAttachments((prev) => prev.filter((_, i) => i !== index))}
-                  onClearAllHunkAttachments={() => setPendingHunkAttachments([])}
+                  onClearHunkAttachment={(index) => {
+                    if (!activeSessionId) return
+                    const prev = companionStore.getPendingAttachments(activeSessionId)
+                    companionStore.setPendingAttachments(activeSessionId, prev.filter((_, i) => i !== index))
+                  }}
+                  onClearAllHunkAttachments={() => {
+                    if (!activeSessionId) return
+                    companionStore.clearPendingAttachments(activeSessionId)
+                  }}
                 />
               </div>
             </div>
@@ -6745,14 +6756,20 @@ function ChatPanel({
             }
             const msg = item.msg
             if (msg.role === 'user') {
-              // Live messages have attachments+clean text from the optimistic
-              // upsert. Hydrated-from-DB messages don't (DB stores the full
-              // prompt with diff blocks inline), so we fall back to parsing
-              // the diff blocks out of `content` so the bubble doesn't render
-              // raw git-diff text after a refresh.
-              const { text: bubbleText, attachments: chips } = msg.attachments && msg.attachments.length > 0
-                ? { text: msg.content, attachments: msg.attachments }
-                : extractInlineDiffAttachments(msg.content)
+              // Always run the diff stripper — no-op when there's no fenced
+              // diff in `content`, so live messages whose optimistic upsert
+              // already stored a clean userText pay only a regex miss. When
+              // either the optimistic insert was clobbered by a writeback
+              // or the message hydrated from DB (which still holds the full
+              // prompt) the stripped output is what the bubble shows. Chip
+              // source preference: explicit msg.attachments (more accurate
+              // — carries the user-clicked range) → fall back to whatever
+              // the stripper inferred from the fenced diff headers.
+              const stripped = extractInlineDiffAttachments(msg.content)
+              const bubbleText = stripped.text
+              const chips = msg.attachments && msg.attachments.length > 0
+                ? msg.attachments
+                : stripped.attachments
               return (
                 <div key={msg.id} className="flex flex-col items-end gap-1">
                   {/* Attachment chips — small file/line refs above the bubble.

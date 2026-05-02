@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useSyncExternalStore } from 'react'
-import { companionStore, type CompanionInfo } from '@/lib/companion-store'
+import { companionStore, type CompanionInfo, type PendingAttachment } from '@/lib/companion-store'
 import type { ChatMessage, CompanionStatus } from '@/lib/hooks/useCompanionStream'
 
 // ── Selectors ──────────────────────────────────────────────────────
@@ -73,6 +73,19 @@ export function usePendingSessions(): Set<string> {
     (cb) => companionStore.subscribePending(cb),
     () => companionStore.getPendingSessions(),
     () => EMPTY_SET,
+  )
+}
+
+const EMPTY_ATTACHMENTS_HOOK: PendingAttachment[] = []
+
+// Per-chat pending hunk attachments. Switching chats re-binds to the
+// new sessionId's list; cross-chat attachment leakage is impossible
+// because each session owns its own slot in the store.
+export function usePendingAttachments(sessionId: string | null | undefined): PendingAttachment[] {
+  return useSyncExternalStore(
+    (cb: () => void) => sessionId ? companionStore.subscribePendingAttachments(sessionId, cb) : () => {},
+    () => sessionId ? companionStore.getPendingAttachments(sessionId) : EMPTY_ATTACHMENTS_HOOK,
+    () => EMPTY_ATTACHMENTS_HOOK,
   )
 }
 

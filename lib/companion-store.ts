@@ -119,6 +119,14 @@ class CompanionStore {
   // what they were typing. Not persisted to disk/DB — reload clears.
   private drafts: Map<string, string> = new Map()
 
+  // Per-chat pending hunk attachments — diffs the user clicked "attach"
+  // on but hasn't sent yet. Mirrors the drafts pattern but with a
+  // listener fanout (DiffHunkView writes from one component, ChatPanel
+  // reads from another). Switching chats no longer leaks attachments
+  // between sessions: each chat owns its own list.
+  private pendingAttachments: Map<string, PendingAttachment[]> = new Map()
+  private pendingAttachmentListeners: Map<string, Set<Listener>> = new Map()
+
   // Per-worktree send queue. When a user sends a prompt to a chat
   // inside a worktree that's still being provisioned on the server
   // (state='pending' on the optimistic UI), we don't fire the POST
@@ -263,6 +271,41 @@ class CompanionStore {
 
   clearDraft(sessionId: string): void {
     this.drafts.delete(sessionId)
+  }
+
+  // ── Pending hunk attachments (per chat) ───────────────────────────
+
+  getPendingAttachments(sessionId: string): PendingAttachment[] {
+    return this.pendingAttachments.get(sessionId) ?? EMPTY_ATTACHMENTS
+  }
+
+  setPendingAttachments(sessionId: string, list: PendingAttachment[]): void {
+    if (list.length === 0) this.pendingAttachments.delete(sessionId)
+    else this.pendingAttachments.set(sessionId, list)
+    this.notifyPendingAttachments(sessionId)
+  }
+
+  clearPendingAttachments(sessionId: string): void {
+    if (!this.pendingAttachments.has(sessionId)) return
+    this.pendingAttachments.delete(sessionId)
+    this.notifyPendingAttachments(sessionId)
+  }
+
+  subscribePendingAttachments(sessionId: string, cb: Listener): () => void {
+    let set = this.pendingAttachmentListeners.get(sessionId)
+    if (!set) { set = new Set(); this.pendingAttachmentListeners.set(sessionId, set) }
+    set.add(cb)
+    return () => {
+      const s = this.pendingAttachmentListeners.get(sessionId)
+      s?.delete(cb)
+      if (s && s.size === 0) this.pendingAttachmentListeners.delete(sessionId)
+    }
+  }
+
+  private notifyPendingAttachments(sessionId: string): void {
+    const set = this.pendingAttachmentListeners.get(sessionId)
+    if (!set) return
+    for (const l of set) l()
   }
 
   // ── Per-worktree send queue (used by optimistic worktree creation) ─
@@ -1065,6 +1108,21 @@ class CompanionStore {
 }
 
 const EMPTY_MESSAGES: ChatMessage[] = []
+
+// Hunk attachment shape — diff payload + display metadata for the chip.
+// Lives here so both the producer (DiffHunkView click handler in WorkPanel)
+// and the consumer (ChatPanel input bar) agree on the structure without
+// re-importing across UI ↔ store boundaries.
+export interface PendingAttachment {
+  filePath: string
+  fileStatus: 'M' | 'A' | 'D'
+  focusStart: number
+  focusEnd: number
+  formattedContent: string
+  lineRange: string
+}
+
+const EMPTY_ATTACHMENTS: PendingAttachment[] = []
 
 let _localCounter = 0
 function localId(): string {
