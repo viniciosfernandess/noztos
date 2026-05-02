@@ -76,7 +76,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       const changeByPath = new Map(wtChanges.map((f) => [f.path, f]))
       const files: Array<{
         id: string; path: string; isModified: boolean; isNew: boolean; sizeBytes: number
-        added?: number; removed?: number; worktrees?: { id: string; name: string }[]
+        added?: number; removed?: number; uncommitted?: boolean
+        worktrees?: { id: string; name: string }[]
       }> = diskFiles.map((path, i) => {
         const c = changeByPath.get(path)
         return {
@@ -85,7 +86,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           isModified: !!c,
           isNew: c?.status === 'A',
           sizeBytes: 0,
-          ...(c && { added: c.added, removed: c.removed }),
+          ...(c && { added: c.added, removed: c.removed, uncommitted: c.uncommitted }),
         }
       })
       // Deleted files (don't exist on disk but show in git diff as 'D')
@@ -100,6 +101,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             sizeBytes: 0,
             added: c.added,
             removed: c.removed,
+            uncommitted: c.uncommitted,
           })
         }
       }

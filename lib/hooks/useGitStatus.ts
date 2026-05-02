@@ -7,7 +7,47 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { MOCK_GIT_STATUS } from '@/lib/mocks/checks-demo'
-import { getCachedGitStatus, setCachedGitStatus } from '@/lib/worktree-cache'
+import { getCachedGitStatus, setCachedGitStatus, clearWorktreeCache } from '@/lib/worktree-cache'
+
+// Module-level dedupe — multiple useGitStatus consumers can mount for the
+// same worktree (ChecksPanel + WorkPanel header). Without this, both would
+// race to POST /advance-base on a merge transition. First detector wins,
+// the rest skip while the request is in flight.
+const advanceInFlight = new Set<string>()
+
+// Idempotent post-merge baseline advance. Returns true on success (DB
+// updated, or already aligned and the no-op was confirmed) so the caller
+// can stop firing for this worktree. Returns false on transient failure
+// (network, 5xx) so the caller retries on the next poll.
+async function advanceBaseAndRefresh(projectId: string, worktreeId: string): Promise<boolean> {
+  if (advanceInFlight.has(worktreeId)) return false
+  advanceInFlight.add(worktreeId)
+  try {
+    const res = await fetch(`/api/projects/${projectId}/worktrees/${worktreeId}/advance-base`, { method: 'POST' })
+    if (!res.ok) return false
+    const data = await res.json() as { advanced?: boolean; baseCommit?: string }
+    if (data.advanced) {
+      // Stale: filesCache (yellow flags), hunksCache (per-file diffs vs base),
+      // gitStatusCache, worktreeMetaCache. Subscribers refetch on next render.
+      clearWorktreeCache(worktreeId)
+      // Wake the global fs-change refresher so the file tree / changes panel
+      // refetch in the current frame. paths=[wt/.] is a sentinel that
+      // satisfies parseAffectedCacheKeys → routes the refresh to this worktree.
+      window.dispatchEvent(new CustomEvent('bornastar-fs-change', {
+        detail: { source: 'worktrees', paths: [`${worktreeId}/.`] },
+      }))
+      console.log(`[isolation] base advanced wt=${worktreeId.slice(0, 8)} → ${data.baseCommit?.slice(0, 8) ?? '?'}`)
+    }
+    // Either advanced (great) or no-op (origin/main already matched the
+    // baseCommit — another tab beat us, or the merge hadn't actually moved
+    // the tip). Both count as success: nothing else for this caller to do.
+    return true
+  } catch {
+    return false
+  } finally {
+    advanceInFlight.delete(worktreeId)
+  }
+}
 
 export interface GitStatus {
   branch: string
@@ -73,6 +113,11 @@ export function useGitStatus(projectId: string, sessionId: string | null, worktr
   )
   const mounted = useRef(true)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Tracks whether we've successfully completed a post-merge advance for
+  // this worktree's PR. Stays false until the round trip confirms — a
+  // failed attempt (network blip, 5xx) keeps it false so the next poll
+  // retries. Reset to false when the worktree id changes (new mount).
+  const advancedRef = useRef<boolean>(false)
 
   // Fields the local-only probe returns. Used to type-narrow the merge
   // path so we never accidentally clobber GitHub-side state with `undefined`.
@@ -119,9 +164,41 @@ export function useGitStatus(projectId: string, sessionId: string | null, worktr
         const full = data as GitStatus
         setStatus(full)
         setCachedGitStatus(cacheKey, full)
+        // Merge transition detector — fires whenever the PR is merged AND
+        // we haven't yet confirmed an advance for this worktree. Idempotent
+        // server-side and dedup'd module-side, so multiple consumers
+        // (ChecksPanel + header) racing on the same worktree resolve to
+        // exactly one POST. Conductor-style: branch state stays intact,
+        // only the diff baseline moves so merged files drop out of the
+        // changes view automatically.
+        if (full.pr?.merged && !advancedRef.current && worktreeId) {
+          advanceBaseAndRefresh(projectId, worktreeId).then((ok) => {
+            if (ok && mounted.current) advancedRef.current = true
+          })
+        }
       }
     } catch {}
   }
+
+  // Adaptive poll cadence — when the PR is approved/clean (about to merge),
+  // we drop to 5s so the merge detection fires within seconds of the
+  // GitHub button being clicked, instead of waiting up to 30s. Default
+  // cadence resumes once the PR settles (merged, closed, or no PR).
+  // Only the local interval changes; the caller-provided `pollMs` still
+  // sets the default for non-imminent states.
+  function effectivePollMs(): number {
+    const pr = status?.pr
+    if (!pr || pr.merged || pr.state === 'closed') return pollMs
+    if (pr.derivedStatus === 'approved') return 5000
+    if (pr.derivedStatus === 'open' && pr.mergeable_state === 'clean') return 5000
+    return pollMs
+  }
+
+  useEffect(() => {
+    // Each new worktree starts with the advance-arming reset — the prior
+    // worktree's success doesn't carry over.
+    advancedRef.current = false
+  }, [worktreeId])
 
   useEffect(() => {
     mounted.current = true
@@ -133,13 +210,16 @@ export function useGitStatus(projectId: string, sessionId: string | null, worktr
     // worktree is real, and this effect re-runs to start polling.
     if (!enabled) return
     fetchOnce('full')
-    pollRef.current = setInterval(() => fetchOnce('full'), pollMs)
+    pollRef.current = setInterval(() => fetchOnce('full'), effectivePollMs())
     return () => {
       mounted.current = false
       if (pollRef.current) clearInterval(pollRef.current)
     }
+    // Re-runs when the effective interval changes — see status.pr.derivedStatus
+    // dependency below. Without that, an "approved" PR would keep polling at
+    // the original pollMs because the interval was set at mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, sessionId, worktreeId, pollMs, enabled])
+  }, [projectId, sessionId, worktreeId, pollMs, enabled, status?.pr?.derivedStatus, status?.pr?.mergeable_state])
 
   // fs-change driven local refresh. Same `bornastar-fs-change` event the
   // worktree-cache listens to — when files mutate on disk the daemon

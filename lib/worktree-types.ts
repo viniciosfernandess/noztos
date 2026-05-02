@@ -8,6 +8,10 @@ export interface FileEntry {
   isModified: boolean
   isNew: boolean
   sizeBytes: number
+  // True when at least one hunk in this file is still uncommitted vs HEAD.
+  // Drives the "U" badge in the Changes list. Optional because the main-
+  // view aggregation (cross-worktree) doesn't compute it.
+  uncommitted?: boolean
   // Cross-worktree info — present only when at least one open worktree touched this file
   added?: number
   removed?: number

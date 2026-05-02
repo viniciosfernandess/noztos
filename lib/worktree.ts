@@ -185,6 +185,12 @@ export interface ChangedFile {
   status: 'A' | 'M' | 'D' | 'R' | 'U'
   added: number
   removed: number
+  // True when at least one hunk in the file is still uncommitted (working
+  // tree differs from HEAD). A file in the changes list with all hunks
+  // already committed sets this false — its diff is fully captured in a
+  // commit, so the user doesn't need to run "Commit" again for this file.
+  // Drives the "U" badge on the Changes list.
+  uncommitted: boolean
 }
 
 /**
@@ -509,9 +515,12 @@ export async function getWorktreeChangedFiles(
   if (!sandboxId) return []
 
   try {
-    const [numstatRes, nameStatusRes] = await Promise.all([
+    const [numstatRes, nameStatusRes, porcelainRes] = await Promise.all([
       compute.exec(sandboxId, `cd ${wt.worktreePath} && git diff --numstat ${wt.baseCommit} || true`),
       compute.exec(sandboxId, `cd ${wt.worktreePath} && git diff --name-status ${wt.baseCommit} || true`),
+      // Working-tree state vs HEAD — any path here has at least one hunk
+      // that hasn't been committed yet. Drives the per-file "U" badge.
+      compute.exec(sandboxId, `cd ${wt.worktreePath} && git status --porcelain || true`),
     ])
     const numstatBlock = numstatRes.stdout?.trim() ?? ''
     const nameStatusBlock = nameStatusRes.stdout?.trim() ?? ''
@@ -525,13 +534,36 @@ export async function getWorktreeChangedFiles(
       numstats.set(m[3].trim(), { added, removed })
     }
 
+    // Parse `git status --porcelain` to build the uncommitted set.
+    // Format: "XY <path>" where XY is two status chars (e.g. " M", "M ",
+    // "MM", "??", "AD"). Any line ≥3 chars points at an uncommitted path.
+    // Renames show as "RR old -> new" — both names get added so a
+    // post-rename commit clears the badge from either side.
+    const uncommittedSet = new Set<string>()
+    for (const line of (porcelainRes.stdout ?? '').split('\n')) {
+      if (line.length < 4) continue
+      const rest = line.slice(3)
+      const arrow = rest.indexOf(' -> ')
+      if (arrow >= 0) {
+        uncommittedSet.add(rest.slice(0, arrow).trim())
+        uncommittedSet.add(rest.slice(arrow + 4).trim())
+      } else {
+        uncommittedSet.add(rest.trim())
+      }
+    }
+
     const files: ChangedFile[] = []
     for (const line of nameStatusBlock.split('\n')) {
       const m = line.match(/^([AMDRU])\s+(.+)$/)
       if (!m) continue
       const path = m[2].trim()
       const stats = numstats.get(path) ?? { added: 0, removed: 0 }
-      files.push({ path, status: m[1] as ChangedFile['status'], ...stats })
+      files.push({
+        path,
+        status: m[1] as ChangedFile['status'],
+        ...stats,
+        uncommitted: uncommittedSet.has(path),
+      })
     }
     return files
   } catch (err) {

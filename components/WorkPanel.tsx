@@ -3679,6 +3679,10 @@ interface MockChangedFile {
   added: number
   removed: number
   hunks: DiffHunk[]
+  // True when at least one hunk in this file isn't yet captured in a
+  // commit. Drives the "U" badge in the Changes list — disappears
+  // automatically post-commit because the next refetch sees the file
+  // as fully-committed (no entries in `git status --porcelain`).
   uncommitted?: boolean
   // First worktree that touched this file — used to fetch the correct
   // version when opening the inline diff. Optional because the legacy
@@ -3973,6 +3977,7 @@ function ChangesList({
       added: f.added ?? 0,
       removed: f.removed ?? 0,
       hunks: [],
+      uncommitted: f.uncommitted ?? false,
       worktreeId: worktreeId ?? f.worktrees?.[0]?.id,
     }))
   }
@@ -4092,23 +4097,35 @@ function ChangesList({
           </button>
           <div className="flex min-w-0 flex-1 items-baseline gap-1 pl-1">
             {dir && <span className="shrink-0 text-[11px] text-zinc-600">{dir}/</span>}
-            <span className="truncate text-[12px] font-medium text-zinc-200">{fileName}</span>
+            <span className="truncate text-[13px] font-medium text-zinc-200">{fileName}</span>
           </div>
-          {/* Open file in Explorer */}
-          <button
-            onClick={() => onOpenFile(openedFile.path)}
-            className="shrink-0 rounded border border-[#3C3C3C] px-2 py-0.5 text-[10px] font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:bg-white/5"
-            style={{ backgroundColor: '#2A2A2A' }}
-          >
-            Open file
-          </button>
-          <span className="shrink-0 font-mono text-[10px] tabular-nums">
-            {openedFile.added > 0 && <span className="text-emerald-400">+{openedFile.added}</span>}
-            {openedFile.removed > 0 && <span className="ml-1 text-red-400">-{openedFile.removed}</span>}
-          </span>
-          <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[11px] font-bold leading-none ${st.text} ${st.bg} ${st.border}`}>
-            {st.symbol}
-          </span>
+          {/* Right-side cluster — kept in its own flex with a wider gap so
+              the icon / stats / status square breathe instead of crowding
+              each other. Parent navbar still uses gap-1 to keep the nav
+              arrows (back, prev, next) tight. */}
+          <div className="flex shrink-0 items-center gap-2.5">
+            {/* Reveal in Explorer — opens the same file in the Explorer's
+                editor overlay. Icon mirrors VS Code's "reveal in side bar". */}
+            <button
+              onClick={() => onOpenFile(openedFile.path)}
+              title="Open in Explorer"
+              aria-label="Open in Explorer"
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-zinc-400 transition-colors hover:bg-white/5 hover:text-zinc-200"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.75} stroke="currentColor">
+                <rect x="3.5" y="4" width="17" height="16" rx="1.5" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.5 4v16" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 12h5m-2.5-2.5L18 12l-2.5 2.5" />
+              </svg>
+            </button>
+            <span className="shrink-0 font-mono text-[12px] tabular-nums">
+              {openedFile.added > 0 && <span className="text-emerald-400">+{openedFile.added}</span>}
+              {openedFile.removed > 0 && <span className="ml-1 text-red-400">-{openedFile.removed}</span>}
+            </span>
+            <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[11px] font-bold leading-none ${st.text} ${st.bg} ${st.border}`}>
+              {st.symbol}
+            </span>
+          </div>
         </div>
 
         {/* Inline diff — fetched from per-file endpoint using the worktree
@@ -4193,18 +4210,18 @@ function ChangesList({
             </div>
 
             {/* +/- stats */}
-            <span className="shrink-0 font-mono text-[10px] tabular-nums">
+            <span className="shrink-0 font-mono text-[12px] tabular-nums">
               {file.added > 0 && <span className="text-emerald-400">+{file.added}</span>}
               {file.removed > 0 && <span className="ml-1 text-red-400">-{file.removed}</span>}
             </span>
 
-            {/* U badge — only on files that haven't been committed yet. Sits
-                where the status square would go so committed/uncommitted
-                are immediately distinguishable at the end of the row. */}
+            {/* Uncommitted indicator — plain "U" letter (no chip / border).
+                Disappears automatically after Commit runs because the next
+                refetch sees the file as fully captured in HEAD. */}
             {file.uncommitted && (
               <span
-                title="Uncommitted"
-                className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-amber-400/40 bg-amber-400/10 text-[10px] font-bold leading-none text-amber-400"
+                title="Uncommitted changes — not yet captured in a commit"
+                className="shrink-0 text-[12px] font-bold leading-none text-zinc-200"
               >
                 U
               </span>
@@ -4541,7 +4558,17 @@ function FileTree({ projectId, worktreeId, hasActiveSession, mainState, worktree
   const [diskChangedPath, setDiskChangedPath] = useState<string | null>(null)
   const creatingRef = useRef<HTMLInputElement>(null)
 
-  // Listen for cross-panel "open file in explorer" requests
+  // Ref-shimmed handleSelectFile — the listener below registers once with
+  // empty deps (so the window event handler stays stable across renders),
+  // but handleSelectFile reads `files` / `worktreeId` from the current
+  // closure. The ref keeps it pointing at the latest version so the open
+  // request actually opens the file (not just highlights it in the tree).
+  const handleSelectFileRef = useRef<((path: string) => Promise<void>) | null>(null)
+
+  // Listen for cross-panel "open file in explorer" requests. Used by the
+  // "reveal in Explorer" button on each Changes-list file row — the user
+  // clicks it from inside the per-file diff view and lands on the same
+  // file, opened in the Explorer's editor overlay.
   useEffect(() => {
     function handleOpenFile(e: Event) {
       const path = (e as CustomEvent<string>).detail
@@ -4557,6 +4584,9 @@ function FileTree({ projectId, worktreeId, hasActiveSession, mainState, worktree
       // the user clicks "Open file" on the same path twice in a row.
       setExpandPaths(ancestors)
       setSelectedPath(path)
+      // Open the file viewer overlay. Without this the tree only highlights
+      // the row — the user has to click again to actually see the content.
+      void handleSelectFileRef.current?.(path)
     }
     window.addEventListener('explorer-open-file', handleOpenFile)
     return () => window.removeEventListener('explorer-open-file', handleOpenFile)
@@ -4675,6 +4705,10 @@ function FileTree({ projectId, worktreeId, hasActiveSession, mainState, worktree
       }
     }
   }
+  // Keep the ref pointing at the latest handleSelectFile so the
+  // explorer-open-file listener (registered with empty deps to stay
+  // stable) always invokes the up-to-date closure.
+  handleSelectFileRef.current = handleSelectFile
 
   // ── Agent-on-disk reconciliation ─────────────────────────────────
   // When the daemon's fs-watcher reports a change to the file the user

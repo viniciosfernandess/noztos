@@ -258,6 +258,17 @@ export function ChecksPanel({ projectId, sessionId, worktreeId, onArchive, merge
       const payload = JSON.stringify({ message: commitMessage.trim(), worktreeId, sessionId })
       const c = await fetch(`/api/projects/${projectId}/git/commit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload })
       if (!c.ok) { const t = await c.json().catch(() => ({})); throw new Error(t.error || 'commit failed') }
+      // Commit changed the porcelain state of every staged file — the
+      // Changes list's "U" badges depend on `git status --porcelain`,
+      // which fs-watcher doesn't observe (commit only touches .git/).
+      // Fire a synthetic fs-change so the global refresher refetches
+      // /repository/files and the U badges clear in this frame instead
+      // of waiting for the next poll.
+      if (worktreeId) {
+        window.dispatchEvent(new CustomEvent('bornastar-fs-change', {
+          detail: { source: 'worktrees', paths: [`${worktreeId}/.`] },
+        }))
+      }
       const p = await fetch(`/api/projects/${projectId}/git/push`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload })
       if (!p.ok) {
         const t = await p.json().catch(() => ({}))

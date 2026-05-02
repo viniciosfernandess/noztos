@@ -50,6 +50,15 @@ class LruCache<T> {
     return this.map.has(key)
   }
 
+  // Drop a single key. Notifies subscribers so they refetch on the next
+  // render — we use this for "the underlying baseline shifted, your data
+  // is no longer correct" events (e.g. post-merge baseCommit advance).
+  delete(key: string): boolean {
+    const existed = this.map.delete(key)
+    if (existed) this.notify(key)
+    return existed
+  }
+
   set(key: string, value: T): void {
     const existing = this.map.get(key)
     const entry: CacheEntry<T> = {
@@ -334,6 +343,20 @@ export function subscribeCachedFiles(key: string, listener: Listener): () => voi
 
 export function getCachedFilesKeys(): string[] {
   return filesCache.keys()
+}
+
+/**
+ * Drop every cache slice tied to a worktree id. Used when the worktree's
+ * diff baseline shifts (post-merge advance-base): cached file listings,
+ * per-file hunks, git status, and meta were computed against the OLD
+ * baseCommit and are now stale. Subscribers get notified so the next
+ * render refetches with the new baseline.
+ */
+export function clearWorktreeCache(worktreeId: string): void {
+  filesCache.delete(worktreeId)
+  hunksCache.delete(worktreeId)
+  gitStatusCache.delete(worktreeId)
+  worktreeMetaCache.delete(worktreeId)
 }
 
 /**
