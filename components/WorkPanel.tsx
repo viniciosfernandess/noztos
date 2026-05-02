@@ -3695,10 +3695,10 @@ const STATUS_ICONS: Record<string, { symbol: string; text: string; bg: string; b
 // Compact inline diff for the Changes tab drill-in view. Fetches the file's
 // current and original content from the per-file endpoint and builds hunks
 // via jsdiff (LCS-based, so inserts/deletes don't cascade). Only the
-// changed lines + 3 lines of context before/after are rendered — the rest
-// of the file is skipped entirely, so a small edit to a 500-line file
-// shows ~7 lines, not 500.
-function buildHunksFromContents(original: string, current: string, contextLines = 3): DiffHunk[] {
+// changed lines + 2 lines of context before/after are rendered — keeps
+// each hunk focused on one logical edit. Two changes more than 4 lines
+// apart split into separate hunks instead of merging into one big block.
+function buildHunksFromContents(original: string, current: string, contextLines = 2): DiffHunk[] {
   const parts = diffLines(original, current)
   // Flatten parts into a linear stream of typed lines. Track running old /
   // new line numbers so each line has the correct "sidebar" line number.
@@ -3895,7 +3895,7 @@ function InlineDiffView({
   }
   if (!state) return null
 
-  const hunks = buildHunksFromContents(state.originalContent, state.content, 3)
+  const hunks = buildHunksFromContents(state.originalContent, state.content, 2)
 
   if (hunks.length === 0) {
     return (
@@ -4434,7 +4434,13 @@ function DiffHunkView({
               : line.type === 'remove'
                 ? 'text-red-200'
                 : 'text-zinc-400'
-          const displayLine = line.type === 'remove' ? line.oldLine : (line.newLine ?? line.oldLine)
+          // Two-column line numbers (GitHub / GitLab convention): old file
+          // number on the left, new file number on the right. Removed lines
+          // render only the old number, added lines only the new — context
+          // shows both. Lets the user read "line 3 in old became line 5 in
+          // new (in-place edit, just shifted by inserts above)" at a glance.
+          const oldNum = line.type === 'add' ? '' : (line.oldLine ?? '')
+          const newNum = line.type === 'remove' ? '' : (line.newLine ?? '')
           const html = hlLines[i] || ''
           const lineNumColor =
             line.type === 'add' ? 'text-emerald-200/80'
@@ -4442,8 +4448,11 @@ function DiffHunkView({
             : 'text-zinc-500'
           return (
             <div key={i} className={`flex ${bg}`}>
-              <span className={`w-10 shrink-0 select-none pr-2 text-right text-[10px] ${lineNumColor}`}>
-                {displayLine ?? ''}
+              <span className={`w-8 shrink-0 select-none pr-1.5 text-right text-[10px] ${lineNumColor}`}>
+                {oldNum}
+              </span>
+              <span className={`w-8 shrink-0 select-none pr-1.5 text-right text-[10px] ${lineNumColor}`}>
+                {newNum}
               </span>
               <span className={`w-4 shrink-0 select-none text-center ${markerColor}`}>{marker}</span>
               <code
