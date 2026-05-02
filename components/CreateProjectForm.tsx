@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useGitHubModal } from './GitHubModal'
 import { useCompanionStatus } from '@/lib/hooks/useCompanionStore'
+import { invalidateProjects } from '@/lib/projects-cache'
 
 // Mint a project id client-side BEFORE the network round-trip. Lets
 // `POST /api/projects` be idempotent on retry: a re-clicked Create
@@ -162,6 +163,9 @@ function ProjectPickerModal({ onClose }: { onClose: () => void }) {
             }),
           })
           console.log(`[create-form] github DONE id=${id.slice(0, 8)} totalMs=${Date.now() - tStart}`)
+          // New project isn't in the cached switcher list yet — drop so
+          // the next ProjectLayout mount refetches.
+          invalidateProjects()
           router.push(`/projects/${id}`)
           router.refresh()
         } catch (err) {
@@ -224,6 +228,9 @@ function ProjectPickerModal({ onClose }: { onClose: () => void }) {
       console.log(`[create-form] local step3 /repository ms=${Date.now() - tRepo}`)
       console.log(`[create-form] local DONE id=${id.slice(0, 8)} totalMs=${Date.now() - tStart}`)
 
+      // New project doesn't appear in the cached switcher list yet —
+      // drop the cache so the next ProjectLayout mount refetches.
+      invalidateProjects()
       router.push(`/projects/${id}`)
       router.refresh()
     } catch (err) {
@@ -296,6 +303,9 @@ function ProjectPickerModal({ onClose }: { onClose: () => void }) {
       })
       console.log(`[create-form] scratch step3 /repository ms=${Date.now() - tRepo}`)
       console.log(`[create-form] scratch DONE id=${id.slice(0, 8)} totalMs=${Date.now() - tStart}`)
+      // New project doesn't appear in the cached switcher list yet —
+      // drop the cache so the next ProjectLayout mount refetches.
+      invalidateProjects()
       router.push(`/projects/${id}`)
       router.refresh()
     } catch (err) {

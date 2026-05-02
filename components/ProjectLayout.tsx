@@ -1,7 +1,34 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import {
+  getCachedProjects,
+  setCachedProjects,
+  isProjectsCacheStale,
+  type CachedProject,
+} from '@/lib/projects-cache'
+
+// Module-level guard so concurrent ProjectLayout mounts (rare but possible
+// during fast navigation) don't fire two background revalidates against
+// /api/projects. The fetch result lands in the shared cache regardless.
+let revalidateInFlight = false
+
+async function revalidateProjects(): Promise<void> {
+  if (revalidateInFlight) return
+  revalidateInFlight = true
+  try {
+    const r = await fetch('/api/projects')
+    if (!r.ok) return
+    const data = await r.json() as { projects?: CachedProject[] }
+    setCachedProjects(data.projects ?? [])
+  } catch {
+    // Network blip — next mount or next dropdown open retries automatically
+    // via the same isStale gate.
+  } finally {
+    revalidateInFlight = false
+  }
+}
 
 type Tab = 'overview' | 'work' | 'tasks' | 'team' | 'config'
 
@@ -33,7 +60,23 @@ export function ProjectLayout({
   onToggleSidebar,
 }: ProjectLayoutProps) {
   const [showProjectSwitcher, setShowProjectSwitcher] = useState(false)
-  const [userProjects, setUserProjects] = useState<{ id: string; name: string }[]>([])
+  // Seed render-state from the shared module cache so a deep-link mount
+  // shows the dropdown content instantly if a previous mount already
+  // populated it. Cold cache returns null → falls through to a fetch on
+  // the first dropdown open.
+  const [userProjects, setUserProjects] = useState<CachedProject[] | null>(() => getCachedProjects())
+
+  // Background revalidate on mount: fires only when the cache is stale
+  // (TTL or never populated) and never blocks the render path. The user
+  // sees the project page mount at full speed; the dropdown becomes hot
+  // a few dozen ms later.
+  useEffect(() => {
+    if (!isProjectsCacheStale()) return
+    void revalidateProjects().then(() => {
+      const fresh = getCachedProjects()
+      if (fresh) setUserProjects(fresh)
+    })
+  }, [])
 
   const showSidebarSection = activeTab === 'work'
 
@@ -63,14 +106,14 @@ export function ProjectLayout({
             {/* Project name block — clickable for fast switch */}
             <button
               onClick={async () => {
-                if (!showProjectSwitcher && userProjects.length === 0) {
-                  try {
-                    const r = await fetch('/api/projects')
-                    if (r.ok) {
-                      const data = await r.json()
-                      setUserProjects(data.projects ?? [])
-                    }
-                  } catch {}
+                // Cold-cache fallback: deep-link mounts that beat the
+                // background revalidate would otherwise show "Loading…"
+                // forever (the GET endpoint didn't even exist before this
+                // wiring). Block briefly here so the dropdown opens with
+                // content. Hot-cache mounts skip this entirely.
+                if (!showProjectSwitcher && (userProjects === null || userProjects.length === 0)) {
+                  await revalidateProjects()
+                  setUserProjects(getCachedProjects())
                 }
                 setShowProjectSwitcher(!showProjectSwitcher)
               }}
@@ -102,7 +145,7 @@ export function ProjectLayout({
                   className="absolute left-2 right-2 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-xl border border-white/15 py-1 shadow-2xl shadow-black/50"
                   style={{ backgroundColor: '#252526' }}
                 >
-                  {userProjects.length === 0 ? (
+                  {!userProjects || userProjects.length === 0 ? (
                     <p className="px-3 py-2 text-[11px] text-zinc-500">Loading...</p>
                   ) : (
                     userProjects.map((p) => (

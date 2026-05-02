@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { CreateProjectButton } from './CreateProjectForm'
+import { invalidateProjects } from '@/lib/projects-cache'
 
 interface Project {
   id: string
@@ -43,6 +44,9 @@ export function ProjectList({ projects }: ProjectListProps) {
     try {
       const res = await fetch(`/api/projects/${deleteModal.id}`, { method: 'DELETE' })
       if (res.ok || res.status === 204) {
+        // Drop the cached switcher list — it still includes the deleted
+        // project. The next dropdown open or page mount refetches.
+        invalidateProjects()
         setDeleteModal(null)
         router.refresh()
       }

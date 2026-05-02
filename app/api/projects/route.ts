@@ -3,6 +3,28 @@ import { cookies } from 'next/headers'
 import { prisma } from '@/lib/db'
 import { getSessionUserId } from '@/lib/session'
 
+// GET — list the authenticated user's non-deleted projects, just `id` +
+// `name`. Powers the project-switcher cache (lib/projects-cache.ts) — the
+// in-app dropdown that lets users hop between projects without going
+// through the home page. Kept minimal on purpose: anything more (worktree
+// counts, last activity, etc.) belongs in a separate endpoint so this one
+// stays cheap to call on every project-page mount.
+export async function GET() {
+  const cookieStore = await cookies()
+  const sessionValue = cookieStore.get('session')?.value
+  const userId = getSessionUserId(sessionValue)
+
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const projects = await prisma.project.findMany({
+    where: { userId, deletedAt: null },
+    select: { id: true, name: true },
+    orderBy: { createdAt: 'desc' },
+  })
+
+  return NextResponse.json({ projects })
+}
+
 // POST — create (or idempotently retrieve) a project for the
 // authenticated user. Accepts an optional client-minted cuid in the
 // body; when present, the call is idempotent across network retries:

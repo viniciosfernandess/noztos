@@ -6,6 +6,7 @@ import { ProjectList } from '@/components/ProjectList'
 import { CompanionSetup } from '@/components/CompanionSetup'
 import { DashboardSidebar } from '@/components/DashboardSidebar'
 import { CompanionProvider } from '@/components/CompanionProvider'
+import { ProjectsCacheSeeder } from '@/components/ProjectsCacheSeeder'
 
 export default async function Home() {
   const cookieStore = await cookies()
@@ -49,6 +50,9 @@ export default async function Home() {
           // a permanent "Offline" because nothing was opening the
           // /api/companion/stream connection on this page.
           <CompanionProvider>
+            {/* Seed the project switcher cache so the next project page's
+                "switch" dropdown opens instantly without a fetch. */}
+            <ProjectsCacheSeeder projects={projects.map((p) => ({ id: p.id, name: p.name }))} />
             <DashboardSidebar />
             <main className="flex flex-1 flex-col px-6 py-8 overflow-y-auto">
               <div className="w-full max-w-4xl mx-auto flex-1">
