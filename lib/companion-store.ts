@@ -138,6 +138,11 @@ class CompanionStore {
     projectId: string
     prompt: string
     userMsgId?: string
+    // Optional display split — see queueSendForWorktree() for details.
+    // Forwarded into sendPrompt on drain so the user-facing bubble shows
+    // only what the user typed, with attachment chips, instead of the
+    // raw diff text the model receives.
+    display?: { content: string; attachments?: Array<{ filePath: string; lineRange: string }> }
     // Auto-rename title computed by the caller (first words of the first
     // user message). Threaded through the queue so handleNewWorktree's
     // success path can apply the rename AFTER the row is created on the
@@ -285,6 +290,10 @@ class CompanionStore {
       // Title to apply after the worktree finalises (server-confirmed).
       pendingRename?: string
       opts?: { mode?: 'plan' | 'ask' | 'agent'; model?: string; thinking?: 'off' | 'low' | 'medium' | 'high' }
+      // Display split — see sendPrompt() for the full rationale. Forwarded
+      // through the queue so the eventual drain preserves the user-only
+      // bubble content + chips instead of dumping raw diff text.
+      display?: { content: string; attachments?: Array<{ filePath: string; lineRange: string }> }
     },
   ): void {
     const list = this.worktreeSendQueue.get(worktreeId) ?? []
@@ -308,6 +317,7 @@ class CompanionStore {
     userMsgId?: string
     pendingRename?: string
     opts?: { mode?: 'plan' | 'ask' | 'agent'; model?: string; thinking?: 'off' | 'low' | 'medium' | 'high' }
+    display?: { content: string; attachments?: Array<{ filePath: string; lineRange: string }> }
   }> {
     return this.worktreeSendQueue.get(worktreeId) ?? []
   }
@@ -325,7 +335,7 @@ class CompanionStore {
       // through so sendPrompt's upsertMessage hits the same row
       // instead of minting a fresh id (which would double-insert).
       this.markIdle(item.sessionId)
-      await this.sendPrompt(item.sessionId, item.projectId, item.prompt, item.opts, item.userMsgId)
+      await this.sendPrompt(item.sessionId, item.projectId, item.prompt, item.opts, item.userMsgId, item.display)
     }
   }
 
@@ -692,6 +702,14 @@ class CompanionStore {
     // omitted the function mints its own id, preserving the standard
     // single-call optimistic-render flow.
     userMsgId?: string,
+    // Optional split between what the user actually typed (shown in the
+    // bubble) and the full LLM payload (which may include attached diff
+    // blocks above the prose). When provided, the user-message row stores
+    // `display.content` + `display.attachments`; the daemon still gets
+    // the raw `prompt` so the model sees the diffs. Without this the
+    // user bubble would render the full diff text inline, which is
+    // unreadable and not what they typed.
+    display?: { content: string; attachments?: Array<{ filePath: string; lineRange: string }> },
   ): Promise<void> {
     this.markBusy(sessionId)
     const id = userMsgId ?? this.mintStableId()
@@ -700,7 +718,8 @@ class CompanionStore {
     this.upsertMessage(sessionId, {
       id,
       role: 'user',
-      content: prompt,
+      content: display?.content ?? prompt,
+      attachments: display?.attachments,
       timestamp: Date.now(),
     })
 
@@ -836,6 +855,15 @@ class CompanionStore {
         const row = r as Record<string, unknown>
         const claudeSid = typeof row.claudeSessionId === 'string' ? row.claudeSessionId : undefined
         if (claudeSid) this.setClaudeSessionId(sid, claudeSid)
+        // User-row writeback from the daemon carries the FULL prompt sent to
+        // the model (including any concatenated `--- a/file +++ b/file` diff
+        // blocks from attached changes). The optimistic local upsert in
+        // sendPrompt already stored the user-only display text + attachment
+        // chips — we don't want this writeback to clobber the bubble with
+        // raw diff text. Skip user rows entirely whenever the local row
+        // already exists; the optimistic insert is the source of truth.
+        // Tool rows / assistant rows / sync-replay rows still merge through.
+        if (r.role === 'user' && this.slices.get(sid)?.messages.has(r.id)) continue
         // Only fields that actually exist on PersistRow (see lib/chat-persist.ts).
         // filePath / oldString / command / etc. are derived browser-side from
         // toolInput at render time — not part of the wire shape — so we don't

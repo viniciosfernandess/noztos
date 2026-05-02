@@ -98,6 +98,10 @@ export interface ChatMessage {
   // Search results
   searchPattern?: string
   searchResults?: string[]
+  // Attached code-change references (only on user messages). Renders as
+  // chips in the user bubble; the actual diff content is concatenated
+  // into the LLM prompt server-side and never shown in the bubble itself.
+  attachments?: Array<{ filePath: string; lineRange: string }>
 }
 
 export type CompanionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'

@@ -2070,29 +2070,31 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
     formattedContent: string
     lineRange: string
   } {
-    // Compute focus range from hunk — min..max of any line number present
+    // Compute focus range from hunk — min..max of any line number present.
+    // Preserved as separate fields because the chat-input badge ("L36–38")
+    // and the attach-dedupe key (`${filePath}:${focusStart}-${focusEnd}`)
+    // both consume them; only `formattedContent` changes shape below.
     const oldNums = hunk.lines.map((l) => l.oldLine).filter((n): n is number => typeof n === 'number')
     const newNums = hunk.lines.map((l) => l.newLine).filter((n): n is number => typeof n === 'number')
     const allNums = [...oldNums, ...newNums]
     const focusStart = allNums.length > 0 ? Math.min(...allNums) : hunk.newStart
     const focusEnd = allNums.length > 0 ? Math.max(...allNums) : hunk.newStart
 
-    // Format: file header + diff block with markers around the focused hunk.
-    // TODO: when the real git diff API is wired, include the full file here
-    // with the hunk lines highlighted. For now we send the hunk diff itself.
-    const diffLines = hunk.lines.map((l) => {
+    // Build a canonical unified-diff hunk section ("@@ -A,B +C,D @@" + body),
+    // no file headers / code fences here — those are added once per file at
+    // concat time so multiple hunks from the same file collapse into a single
+    // diff block instead of repeating the file path. Format matches what the
+    // model has seen billions of times in git logs and PR patches: zero
+    // prompt-engineering required for it to parse.
+    const oldLines = hunk.lines.filter((l) => l.type !== 'add')
+    const newLines = hunk.lines.filter((l) => l.type !== 'remove')
+    const oldStart = oldLines[0]?.oldLine ?? hunk.oldStart
+    const newStart = newLines[0]?.newLine ?? hunk.newStart
+    const diffBody = hunk.lines.map((l) => {
       const marker = l.type === 'add' ? '+' : l.type === 'remove' ? '-' : ' '
       return `${marker}${l.content}`
     }).join('\n')
-
-    const formattedContent = [
-      `📎 Attached from Changes — ${filePath} (${fileStatus})`,
-      `Focus: lines ${focusStart}–${focusEnd}`,
-      '```diff',
-      diffLines,
-      '```',
-      '',
-    ].join('\n')
+    const formattedContent = `@@ -${oldStart},${oldLines.length} +${newStart},${newLines.length} @@\n${diffBody}`
 
     return {
       filePath,
@@ -3494,6 +3496,63 @@ function getLineIndent(content: string): number {
 // Empty lines have no leading whitespace of their own, which makes indent
 // guides "break" visually on blank rows. VS Code / Cursor paper over this
 // by inheriting the indent of the nearest non-empty line. We do the same:
+// User-message bubbles strip out any inline git-diff blocks we sent to the
+// model and surface them as compact "file · L1-10" chips instead. Live
+// messages already carry the split via the optimistic upsert
+// (msg.attachments + msg.content), but messages hydrated from DB only have
+// the full prompt — the daemon persists what it received, not the display
+// split. This parser is the fallback for those: regex-matches the canonical
+// `git diff` shape we emit (`--- a/path / +++ b/path / @@ ... @@`),
+// extracts file path + spanning line range from the @@ headers, returns
+// the cleaned text and the inferred chips.
+function extractInlineDiffAttachments(content: string): {
+  text: string
+  attachments: Array<{ filePath: string; lineRange: string }>
+} {
+  // Run two passes: first match 4-backtick fences (current format, robust
+  // against nested ``` inside the diff body — e.g., a README hunk that
+  // contains a ```bash block), then fall back to 3-backtick on the
+  // residue for messages persisted before the format bump. The 3-backtick
+  // fallback still has the nested-fence ambiguity, but only legacy rows
+  // depend on it; new sends never hit that path.
+  const all: Array<{ filePath: string; lineRange: string }> = []
+  let working = content
+  for (const fence of ['````', '```']) {
+    const blockRe = new RegExp(
+      `${fence}diff\\n--- a\\/(.+?)\\n\\+\\+\\+ b\\/.+?\\n([\\s\\S]*?)${fence}\\n*`,
+      'g',
+    )
+    let lastIndex = 0
+    let stripped = ''
+    let m: RegExpExecArray | null
+    while ((m = blockRe.exec(working)) !== null) {
+      stripped += working.slice(lastIndex, m.index)
+      const filePath = m[1]
+      const body = m[2]
+      // Walk every @@ -X,Y +Z,W @@ inside the block — when multiple hunks
+      // were grouped under one file the chip should span all of them.
+      const hunkRe = /@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/g
+      let h: RegExpExecArray | null
+      let lo = Infinity
+      let hi = -Infinity
+      while ((h = hunkRe.exec(body)) !== null) {
+        const start = parseInt(h[1], 10)
+        const count = h[2] ? parseInt(h[2], 10) : 1
+        lo = Math.min(lo, start)
+        hi = Math.max(hi, start + Math.max(count - 1, 0))
+      }
+      const lineRange = lo === Infinity
+        ? ''
+        : lo === hi ? `line ${lo}` : `lines ${lo}-${hi}`
+      all.push({ filePath, lineRange })
+      lastIndex = blockRe.lastIndex
+    }
+    stripped += working.slice(lastIndex)
+    working = stripped
+  }
+  return { text: working.trim(), attachments: all }
+}
+
 // an empty line gets the indent of the next non-empty line (falling back to
 // the previous one at end-of-file).
 function getEffectiveIndents(lines: string[]): number[] {
@@ -6302,9 +6361,30 @@ function ChatPanel({
       return
     }
 
-    const content = hunkAttachments.length > 0
-      ? `${hunkAttachments.map((h) => h.formattedContent).join('')}${userText}`
-      : userText
+    // Group hunks by file path so multiple hunks from the same file collapse
+    // into one fenced diff block with multiple "@@ ... @@" sections — exactly
+    // how `git diff` would emit them. The model recognises the format
+    // natively (treats it as a single multi-hunk patch instead of N
+    // disconnected snippets).
+    let content = userText
+    if (hunkAttachments.length > 0) {
+      const order: string[] = []
+      const byFile = new Map<string, typeof hunkAttachments>()
+      for (const h of hunkAttachments) {
+        if (!byFile.has(h.filePath)) { order.push(h.filePath); byFile.set(h.filePath, []) }
+        byFile.get(h.filePath)!.push(h)
+      }
+      const blocks = order.map((path) => {
+        const sections = byFile.get(path)!.map((h) => h.formattedContent).join('\n')
+        // 4-backtick fence (CommonMark allows >3) so any 3-backtick code
+        // blocks inside the diff body — markdown READMEs, fenced bash,
+        // etc. — don't accidentally close our outer fence and leak the
+        // tail into the bubble. Claude understands variable-length
+        // fences natively, no special handling needed model-side.
+        return `\`\`\`\`diff\n--- a/${path}\n+++ b/${path}\n${sections}\n\`\`\`\``
+      })
+      content = `${blocks.join('\n\n')}\n\n${userText}`
+    }
 
     // Auto-rename the chat using the first user message. We compute the
     // title here, but defer firing it to the right branch below: the
@@ -6340,13 +6420,25 @@ function ChatPanel({
     // sendPrompt's own optimistic insert), the spinner runs via
     // markBusy inside queueSendForWorktree, and the moment the worktree
     // finalises (handleNewWorktree's success path) the queue drains.
+    // The bubble shows only what the user typed; the diff blocks live
+    // alongside as chips and are reconstructed into the LLM prompt
+    // server-side. Without this split the bubble would dump the raw
+    // ```diff text the model needs to see.
+    const displaySplit = hunkAttachments.length > 0
+      ? {
+          content: userText,
+          attachments: hunkAttachments.map((h) => ({ filePath: h.filePath, lineRange: h.lineRange })),
+        }
+      : undefined
+
     if (worktreePending && activeWorktreeId) {
       console.log(`[opt] sendMessage QUEUED sid=${sessionId.slice(0, 12)} wt=${activeWorktreeId.slice(0, 12)} (worktree still provisioning)`)
       const userMsgId = companionStore.mintStableId()
       companionStore.upsertMessage(sessionId, {
         id: userMsgId,
         role: 'user',
-        content,
+        content: displaySplit?.content ?? content,
+        attachments: displaySplit?.attachments,
         timestamp: Date.now(),
       })
       // Pass the same id down through the queue. When the drainer fires
@@ -6362,12 +6454,13 @@ function ChatPanel({
         userMsgId,
         pendingRename: autoTitle ?? undefined,
         opts,
+        display: displaySplit,
       })
       return
     }
 
     if (autoTitle) onSessionRenamed(autoTitle)
-    await companionStore.sendPrompt(sessionId, companionProjectId, content, opts)
+    await companionStore.sendPrompt(sessionId, companionProjectId, content, opts, undefined, displaySplit)
   }
 
   const hasAnyone = hiredEmployees.length > 0 || teams.length > 0
@@ -6652,11 +6745,43 @@ function ChatPanel({
             }
             const msg = item.msg
             if (msg.role === 'user') {
+              // Live messages have attachments+clean text from the optimistic
+              // upsert. Hydrated-from-DB messages don't (DB stores the full
+              // prompt with diff blocks inline), so we fall back to parsing
+              // the diff blocks out of `content` so the bubble doesn't render
+              // raw git-diff text after a refresh.
+              const { text: bubbleText, attachments: chips } = msg.attachments && msg.attachments.length > 0
+                ? { text: msg.content, attachments: msg.attachments }
+                : extractInlineDiffAttachments(msg.content)
               return (
-                <div key={msg.id} className="flex justify-end">
-                  <div className="max-w-[85%] rounded-xl bg-[#3C3C3C] px-4 py-2 text-sm text-zinc-100">
-                    {msg.content}
-                  </div>
+                <div key={msg.id} className="flex flex-col items-end gap-1">
+                  {/* Attachment chips — small file/line refs above the bubble.
+                      The actual diff content went to the model in the prompt
+                      payload but is intentionally hidden from the bubble so
+                      the user sees only what they typed. */}
+                  {chips.length > 0 && (
+                    <div className="flex max-w-[85%] flex-wrap justify-end gap-1">
+                      {chips.map((att, i) => {
+                        const fileName = att.filePath.split('/').pop() ?? att.filePath
+                        const lineLabel = att.lineRange ? att.lineRange.replace('line ', 'L').replace('lines ', 'L') : ''
+                        return (
+                          <span
+                            key={`${msg.id}-att-${i}`}
+                            title={att.lineRange ? `${att.filePath} · ${att.lineRange}` : att.filePath}
+                            className="flex max-w-[220px] items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[10px] text-zinc-400"
+                          >
+                            <span className="truncate">{fileName}</span>
+                            {lineLabel && <span className="shrink-0 text-zinc-500">{lineLabel}</span>}
+                          </span>
+                        )
+                      })}
+                    </div>
+                  )}
+                  {bubbleText && (
+                    <div className="max-w-[85%] rounded-xl bg-[#3C3C3C] px-4 py-2 text-sm text-zinc-100">
+                      {bubbleText}
+                    </div>
+                  )}
                 </div>
               )
             }
