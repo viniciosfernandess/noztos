@@ -2143,23 +2143,77 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
   }
 
   // Bulk attach — used by the select-mode action bar in the Changes panel.
-  // We flatten every hunk of every selected file into an array of payloads
-  // (dedup'd by filePath+range) and hand the whole batch to the same state
-  // the single-hunk flow uses — so the chat input renders them as chips just
-  // like individual attaches do.
-  function flattenSelectedToPayloads(files: MockChangedFile[]) {
-    const seen = new Set<string>()
-    const out: Array<ReturnType<typeof buildHunkAttachmentPayload>> = []
+  // Collapses the user's whole selection into ONE synthetic payload (chip):
+  // the formattedContent carries every hunk of every selected file in a
+  // single fenced multi-file diff (`--- a/file1 / +++ b/file1 / @@... /
+  // --- a/file2 / +++ b/file2 / @@...`), and `bulkFiles` lists what's
+  // inside so the chip can render a "N files · M changes" summary with a
+  // hover tooltip. sendMessage detects `bulkFiles` and emits the
+  // formattedContent verbatim (skipping per-file grouping).
+  function buildBulkPayload(files: MockChangedFile[]): import('@/lib/companion-store').PendingAttachment {
+    const sections: string[] = []
+    const bulkFiles: Array<{ filePath: string; fileStatus: 'M' | 'A' | 'D'; hunkCount: number }> = []
+    let totalHunks = 0
     for (const f of files) {
-      for (const h of f.hunks) {
-        const p = buildHunkAttachmentPayload(f.path, f.status, h)
-        const key = `${p.filePath}:${p.focusStart}-${p.focusEnd}`
-        if (seen.has(key)) continue
-        seen.add(key)
-        out.push(p)
-      }
+      if (f.hunks.length === 0) continue
+      const fileSections = f.hunks
+        .map((h) => buildHunkAttachmentPayload(f.path, f.status, h).formattedContent)
+        .join('\n')
+      sections.push(`--- a/${f.path}\n+++ b/${f.path}\n${fileSections}`)
+      bulkFiles.push({ filePath: f.path, fileStatus: f.status, hunkCount: f.hunks.length })
+      totalHunks += f.hunks.length
     }
-    return out
+    const formattedContent = `\`\`\`\`diff\n${sections.join('\n')}\n\`\`\`\``
+    return {
+      // Synthetic placeholder — never used for routing because sendMessage
+      // checks `bulkFiles` first. Marker chosen for log readability.
+      filePath: '__bulk__',
+      fileStatus: 'M',
+      focusStart: 0,
+      focusEnd: 0,
+      formattedContent,
+      lineRange: `${bulkFiles.length} file${bulkFiles.length === 1 ? '' : 's'} · ${totalHunks} change${totalHunks === 1 ? '' : 's'}`,
+      bulkFiles,
+    }
+  }
+
+  // Wrapper kept for the existing call sites. Bulk now produces exactly one
+  // payload regardless of how many files / hunks the user selected.
+  function flattenSelectedToPayloads(files: MockChangedFile[]) {
+    return [buildBulkPayload(files)]
+  }
+
+  // Bulk-attach receives MockChangedFile entries from the Changes list,
+  // which only carries metadata (path / status / +N -M) — `hunks: []` is
+  // always empty there because computing diff hunks requires the file's
+  // raw content, which lives in the worktree-scoped hunksCache instead.
+  // This helper rehydrates each selected file with real hunks before the
+  // bulk payload is built. 95% of the time the hunksCache hit is free
+  // (the WorkPanel right-panel prefetcher warms it on worktree open);
+  // the cold-cache fallback fetches the file on-the-fly in parallel so
+  // the click never hangs serially through the list.
+  async function resolveFilesWithHunks(files: MockChangedFile[]): Promise<MockChangedFile[]> {
+    if (!activeWorktreeId) return files
+    const wt = activeWorktreeId
+    const out = await Promise.all(files.map(async (f) => {
+      let raw = getCachedHunk(wt, f.path)
+      if (!raw) {
+        try {
+          const res = await fetch(`/api/projects/${projectId}/repository/files/${encodeURIComponent(f.path)}?worktree=${wt}`)
+          if (res.ok) {
+            const data = await res.json()
+            raw = { content: data.content ?? '', originalContent: data.originalContent ?? '' }
+            setCachedHunk(wt, f.path, raw)
+          }
+        } catch {}
+      }
+      if (!raw) return { ...f, hunks: [] }
+      // Same `contextLines: 2` the Changes-tab drill-in view uses, so the
+      // bulk diff matches what the user sees inside each file.
+      const hunks = buildHunksFromContents(raw.originalContent, raw.content, 2)
+      return { ...f, hunks }
+    }))
+    return out.filter((f) => f.hunks.length > 0)
   }
 
   async function handleBulkAttachToCurrentChat(files: MockChangedFile[]) {
@@ -2169,7 +2223,9 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
       targetSid = await handleNewMainChat()
     }
     if (!targetSid) return
-    const payloads = flattenSelectedToPayloads(files)
+    const filesWithHunks = await resolveFilesWithHunks(files)
+    if (filesWithHunks.length === 0) return
+    const payloads = flattenSelectedToPayloads(filesWithHunks)
     // Append + dedupe against whatever's already staged for this chat.
     const prev = companionStore.getPendingAttachments(targetSid)
     const seen = new Set(prev.map((p) => `${p.filePath}:${p.focusStart}-${p.focusEnd}`))
@@ -2183,10 +2239,12 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
 
   async function handleBulkAttachToNewChat(files: MockChangedFile[]) {
     if (files.length === 0) return
+    const filesWithHunks = await resolveFilesWithHunks(files)
+    if (filesWithHunks.length === 0) return
     const newSid = activeWorktreeId
       ? await handleAddChatToWorktree(activeWorktreeId)
       : await handleNewMainChat()
-    companionStore.setPendingAttachments(newSid, flattenSelectedToPayloads(files))
+    companionStore.setPendingAttachments(newSid, flattenSelectedToPayloads(filesWithHunks))
   }
 
   async function handleCloseWorktreeChat(worktreeId: string, sessionId: string) {
@@ -3518,7 +3576,7 @@ function getLineIndent(content: string): number {
 // the cleaned text and the inferred chips.
 function extractInlineDiffAttachments(content: string): {
   text: string
-  attachments: Array<{ filePath: string; lineRange: string }>
+  attachments: Array<{ filePath: string; lineRange: string; bulkFiles?: Array<{ filePath: string; fileStatus: 'M' | 'A' | 'D'; hunkCount: number }> }>
 } {
   // Run two passes: first match 4-backtick fences (current format, robust
   // against nested ``` inside the diff body — e.g., a README hunk that
@@ -5770,6 +5828,7 @@ function ChatPanel({
     focusEnd: number
     formattedContent: string
     lineRange: string
+    bulkFiles?: Array<{ filePath: string; fileStatus: 'M' | 'A' | 'D'; hunkCount: number }>
   }>
   onClearHunkAttachment: (index: number) => void
   onClearAllHunkAttachments: () => void
@@ -6379,22 +6438,33 @@ function ChatPanel({
     // disconnected snippets).
     let content = userText
     if (hunkAttachments.length > 0) {
+      // Two kinds of payloads coexist in the same list:
+      //   • single-hunk attaches (no bulkFiles) — group by filePath into
+      //     one fenced diff block per file with multiple @@ sections
+      //   • bulk attaches (bulkFiles set) — formattedContent already
+      //     contains a complete fenced multi-file diff; emit verbatim
+      // 4-backtick fence (CommonMark allows >3) so any 3-backtick code
+      // blocks inside the diff body — markdown READMEs, fenced bash,
+      // etc. — don't accidentally close our outer fence and leak the
+      // tail into the bubble. Claude understands variable-length
+      // fences natively, no special handling needed model-side.
+      const bulkBlocks: string[] = []
       const order: string[] = []
       const byFile = new Map<string, typeof hunkAttachments>()
       for (const h of hunkAttachments) {
+        if (h.bulkFiles && h.bulkFiles.length > 0) {
+          bulkBlocks.push(h.formattedContent)
+          continue
+        }
         if (!byFile.has(h.filePath)) { order.push(h.filePath); byFile.set(h.filePath, []) }
         byFile.get(h.filePath)!.push(h)
       }
-      const blocks = order.map((path) => {
+      const singleBlocks = order.map((path) => {
         const sections = byFile.get(path)!.map((h) => h.formattedContent).join('\n')
-        // 4-backtick fence (CommonMark allows >3) so any 3-backtick code
-        // blocks inside the diff body — markdown READMEs, fenced bash,
-        // etc. — don't accidentally close our outer fence and leak the
-        // tail into the bubble. Claude understands variable-length
-        // fences natively, no special handling needed model-side.
         return `\`\`\`\`diff\n--- a/${path}\n+++ b/${path}\n${sections}\n\`\`\`\``
       })
-      content = `${blocks.join('\n\n')}\n\n${userText}`
+      const allBlocks = [...singleBlocks, ...bulkBlocks]
+      content = `${allBlocks.join('\n\n')}\n\n${userText}`
     }
 
     // Auto-rename the chat using the first user message. We compute the
@@ -6438,7 +6508,11 @@ function ChatPanel({
     const displaySplit = hunkAttachments.length > 0
       ? {
           content: userText,
-          attachments: hunkAttachments.map((h) => ({ filePath: h.filePath, lineRange: h.lineRange })),
+          attachments: hunkAttachments.map((h) => ({
+            filePath: h.filePath,
+            lineRange: h.lineRange,
+            ...(h.bulkFiles && { bulkFiles: h.bulkFiles }),
+          })),
         }
       : undefined
 
@@ -6779,6 +6853,24 @@ function ChatPanel({
                   {chips.length > 0 && (
                     <div className="flex max-w-[85%] flex-wrap justify-end gap-1">
                       {chips.map((att, i) => {
+                        // Bulk chip — collapse to "N files · M changes" with
+                        // a hover tooltip enumerating the bundle. Same shape
+                        // the input bar shows pre-send, mirrored here so the
+                        // bubble looks consistent before/after sending.
+                        if (att.bulkFiles && att.bulkFiles.length > 0) {
+                          const tooltip = att.bulkFiles
+                            .map((f) => `${f.filePath} (${f.hunkCount} change${f.hunkCount === 1 ? '' : 's'})`)
+                            .join('\n')
+                          return (
+                            <span
+                              key={`${msg.id}-att-${i}`}
+                              title={tooltip}
+                              className="flex max-w-[260px] items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[10px] text-zinc-400"
+                            >
+                              <span className="truncate">{att.lineRange}</span>
+                            </span>
+                          )
+                        }
                         const fileName = att.filePath.split('/').pop() ?? att.filePath
                         const lineLabel = att.lineRange ? att.lineRange.replace('line ', 'L').replace('lines ', 'L') : ''
                         return (
@@ -6999,6 +7091,37 @@ function ChatPanel({
             {hunkAttachments.length > 0 && (
               <div className="flex flex-wrap gap-1.5 border-b border-[#3C3C3C] px-3 py-2">
                 {hunkAttachments.map((att, i) => {
+                  // Bulk attachment renders as a single "N files · M changes"
+                  // chip with a hover tooltip enumerating the bundle.
+                  if (att.bulkFiles && att.bulkFiles.length > 0) {
+                    const tooltip = att.bulkFiles
+                      .map((f) => `${f.filePath} (${f.hunkCount} change${f.hunkCount === 1 ? '' : 's'})`)
+                      .join('\n')
+                    return (
+                      <div
+                        key={`bulk-${i}`}
+                        className="flex min-w-0 max-w-[260px] items-center gap-1.5 rounded-md border border-white/10 px-1.5 py-1"
+                        style={{ backgroundColor: '#2A2A2A' }}
+                        title={tooltip}
+                      >
+                        <svg className="h-3 w-3 shrink-0 text-zinc-400" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3.375 19.5h17.25m-17.25 0a1.125 1.125 0 01-1.125-1.125M3.375 19.5h7.5c.621 0 1.125-.504 1.125-1.125m-9.75 0V5.625m0 12.75v-1.5c0-.621.504-1.125 1.125-1.125m18.375 2.625V5.625m0 12.75c0 .621-.504 1.125-1.125 1.125m1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125m0 3.75h-7.5A1.125 1.125 0 0112 18.375m9.75-12.75c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125m19.5 0v1.5c0 .621-.504 1.125-1.125 1.125M2.25 5.625v1.5c0 .621.504 1.125 1.125 1.125m0 0h17.25m-17.25 0h7.5c.621 0 1.125.504 1.125 1.125M3.375 8.25c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m17.25-3.75h-7.5c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125m-17.25 0h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125M12 10.875v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 10.875c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125M13.125 12h7.5m-7.5 0c-.621 0-1.125.504-1.125 1.125M20.625 12c.621 0 1.125.504 1.125 1.125v1.5c0 .621-.504 1.125-1.125 1.125m-17.25 0h7.5M12 14.625v-1.5m0 1.5c0 .621-.504 1.125-1.125 1.125M12 14.625c0 .621.504 1.125 1.125 1.125m-2.25 0c.621 0 1.125.504 1.125 1.125m0 1.5v-1.5m0 0c0-.621.504-1.125 1.125-1.125m0 0h7.5" />
+                        </svg>
+                        <span className="truncate text-[11px] font-medium text-zinc-200">{att.lineRange}</span>
+                        <button
+                          type="button"
+                          onClick={() => onClearHunkAttachment(i)}
+                          className="shrink-0 text-zinc-500 hover:text-zinc-200"
+                          title="Remove"
+                        >
+                          <svg className="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    )
+                  }
+                  // Single-hunk chip — current behavior.
                   const fileName = att.filePath.split('/').pop() ?? att.filePath
                   return (
                     <div

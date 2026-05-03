@@ -150,7 +150,7 @@ class CompanionStore {
     // Forwarded into sendPrompt on drain so the user-facing bubble shows
     // only what the user typed, with attachment chips, instead of the
     // raw diff text the model receives.
-    display?: { content: string; attachments?: Array<{ filePath: string; lineRange: string }> }
+    display?: { content: string; attachments?: Array<{ filePath: string; lineRange: string; bulkFiles?: Array<{ filePath: string; fileStatus: 'M' | 'A' | 'D'; hunkCount: number }> }> }
     // Auto-rename title computed by the caller (first words of the first
     // user message). Threaded through the queue so handleNewWorktree's
     // success path can apply the rename AFTER the row is created on the
@@ -336,7 +336,7 @@ class CompanionStore {
       // Display split — see sendPrompt() for the full rationale. Forwarded
       // through the queue so the eventual drain preserves the user-only
       // bubble content + chips instead of dumping raw diff text.
-      display?: { content: string; attachments?: Array<{ filePath: string; lineRange: string }> }
+      display?: { content: string; attachments?: Array<{ filePath: string; lineRange: string; bulkFiles?: Array<{ filePath: string; fileStatus: 'M' | 'A' | 'D'; hunkCount: number }> }> }
     },
   ): void {
     const list = this.worktreeSendQueue.get(worktreeId) ?? []
@@ -360,7 +360,7 @@ class CompanionStore {
     userMsgId?: string
     pendingRename?: string
     opts?: { mode?: 'plan' | 'ask' | 'agent'; model?: string; thinking?: 'off' | 'low' | 'medium' | 'high' }
-    display?: { content: string; attachments?: Array<{ filePath: string; lineRange: string }> }
+    display?: { content: string; attachments?: Array<{ filePath: string; lineRange: string; bulkFiles?: Array<{ filePath: string; fileStatus: 'M' | 'A' | 'D'; hunkCount: number }> }> }
   }> {
     return this.worktreeSendQueue.get(worktreeId) ?? []
   }
@@ -752,7 +752,7 @@ class CompanionStore {
     // the raw `prompt` so the model sees the diffs. Without this the
     // user bubble would render the full diff text inline, which is
     // unreadable and not what they typed.
-    display?: { content: string; attachments?: Array<{ filePath: string; lineRange: string }> },
+    display?: { content: string; attachments?: Array<{ filePath: string; lineRange: string; bulkFiles?: Array<{ filePath: string; fileStatus: 'M' | 'A' | 'D'; hunkCount: number }> }> },
   ): Promise<void> {
     this.markBusy(sessionId)
     const id = userMsgId ?? this.mintStableId()
@@ -1120,6 +1120,12 @@ export interface PendingAttachment {
   focusEnd: number
   formattedContent: string
   lineRange: string
+  // When present, this attachment represents a bulk multi-file selection
+  // from the Changes panel. The chip renders as "N files · M changes"
+  // instead of the single-file path; formattedContent already contains
+  // the complete fenced diff for every file (no further per-file
+  // grouping in sendMessage). Single-hunk attachments leave this absent.
+  bulkFiles?: Array<{ filePath: string; fileStatus: 'M' | 'A' | 'D'; hunkCount: number }>
 }
 
 const EMPTY_ATTACHMENTS: PendingAttachment[] = []

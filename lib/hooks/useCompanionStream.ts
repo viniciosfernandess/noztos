@@ -101,7 +101,13 @@ export interface ChatMessage {
   // Attached code-change references (only on user messages). Renders as
   // chips in the user bubble; the actual diff content is concatenated
   // into the LLM prompt server-side and never shown in the bubble itself.
-  attachments?: Array<{ filePath: string; lineRange: string }>
+  // `bulkFiles` is set when the chip represents a bulk multi-file selection
+  // (collapsed into one "N files · M changes" badge instead of N rows).
+  attachments?: Array<{
+    filePath: string
+    lineRange: string
+    bulkFiles?: Array<{ filePath: string; fileStatus: 'M' | 'A' | 'D'; hunkCount: number }>
+  }>
 }
 
 export type CompanionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
