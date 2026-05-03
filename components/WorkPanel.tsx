@@ -2247,6 +2247,60 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
     companionStore.setPendingAttachments(newSid, flattenSelectedToPayloads(filesWithHunks))
   }
 
+  // ── Free-text selection attach (Cursor-style "Add to Chat") ─────────────
+  //
+  // Wired ONLY to the worktree-side viewers (CodeMirrorFileView and
+  // InlineDiffEditor). Main-state ReadOnlyShikiView intentionally has no
+  // attach affordance because main is read-only viewing, not authoring.
+  // The viewer hands us a flat list of {type, content} where type is
+  // 'add' / 'remove' / 'context'; we wrap it as a unified-diff hunk so
+  // it groups cleanly with any sibling per-file hunk attachments under
+  // the same `--- a/file +++ b/file` block in sendMessage.
+  function buildSelectionPayload(
+    filePath: string,
+    startLine: number,
+    endLine: number,
+    lines: Array<{ type: 'add' | 'remove' | 'context'; content: string }>,
+  ): import('@/lib/companion-store').PendingAttachment {
+    const oldCount = lines.filter((l) => l.type !== 'add').length
+    const newCount = lines.filter((l) => l.type !== 'remove').length
+    const body = lines.map((l) => {
+      const marker = l.type === 'add' ? '+' : l.type === 'remove' ? '-' : ' '
+      return `${marker}${l.content}`
+    }).join('\n')
+    const formattedContent = `@@ -${startLine},${oldCount} +${startLine},${newCount} @@\n${body}`
+    return {
+      filePath,
+      fileStatus: 'M',
+      focusStart: startLine,
+      focusEnd: endLine,
+      formattedContent,
+      lineRange: startLine === endLine ? `line ${startLine}` : `lines ${startLine}-${endLine}`,
+    }
+  }
+
+  async function handleAttachSelectionToCurrentChat(
+    filePath: string,
+    startLine: number,
+    endLine: number,
+    lines: Array<{ type: 'add' | 'remove' | 'context'; content: string }>,
+  ) {
+    if (lines.length === 0) return
+    const payload = buildSelectionPayload(filePath, startLine, endLine, lines)
+    let targetSid = activeSessionId
+    if (!targetSid && !activeWorktreeId) {
+      targetSid = await handleNewMainChat()
+    }
+    if (!targetSid) return
+    const prev = companionStore.getPendingAttachments(targetSid)
+    const dup = prev.some((p) =>
+      p.filePath === payload.filePath &&
+      p.focusStart === payload.focusStart &&
+      p.focusEnd === payload.focusEnd,
+    )
+    if (!dup) companionStore.setPendingAttachments(targetSid, [...prev, payload])
+  }
+
   async function handleCloseWorktreeChat(worktreeId: string, sessionId: string) {
     // Close the chat (status → closed, messages preserved in DB)
     await fetch(`/api/projects/${projectId}/chat-sessions/${sessionId}`, {
@@ -3222,7 +3276,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
           {/* Panel content — takes remaining space above terminal */}
           <div className="min-h-0 flex-1 overflow-hidden" style={{ backgroundColor: '#181818' }}>
             {rightPanelTab === 'explorer' && (
-              <FileTree key={activeWorktreeId ?? 'main'} projectId={projectId} worktreeId={activeWorktreeId} hasActiveSession={!!activeSessionId} mainState={!activeWorktreeId} worktreePending={activeWorktreePending} agentBusy={activeWorktreeAgentBusy} />
+              <FileTree key={activeWorktreeId ?? 'main'} projectId={projectId} worktreeId={activeWorktreeId} hasActiveSession={!!activeSessionId} mainState={!activeWorktreeId} worktreePending={activeWorktreePending} agentBusy={activeWorktreeAgentBusy} onAddSelection={handleAttachSelectionToCurrentChat} />
             )}
             {rightPanelTab === 'changes' && (
               <ChangesList
@@ -4434,8 +4488,13 @@ function ReadOnlyShikiView({ path, content }: { path: string; content: string })
   const htmlLines = useShikiLines(content, path)
   const plainLines = content.split('\n')
   const effIndents = getEffectiveIndents(plainLines)
+  // Explicit foreground colour so files without a Shiki language map
+  // (whose lines render as plain escaped text instead of styled spans)
+  // don't inherit the body's `color` — that one depends on the user's
+  // system light/dark preference and renders dark, near-invisible text
+  // on this surface for users in light mode.
   return (
-    <div className="h-full overflow-y-auto overflow-x-hidden text-[13px] leading-[1.5] font-mono" style={{ backgroundColor: '#1F1F1F' }}>
+    <div className="h-full overflow-y-auto overflow-x-hidden text-[13px] leading-[1.5] font-mono" style={{ backgroundColor: '#1F1F1F', color: '#D4D4D4' }}>
       {htmlLines.map((lineHtml, i) => (
         <div key={i} className="flex w-full min-w-0 hover:bg-white/5">
           <span className="w-12 shrink-0 select-none pr-3 text-right align-top text-[11px] text-zinc-500">
@@ -4616,7 +4675,7 @@ function DiffHunkView({
 
 // ── File Tree ──────────────────────────────────────────────────────────────
 
-function FileTree({ projectId, worktreeId, hasActiveSession, mainState, worktreePending, agentBusy }: { projectId: string; worktreeId?: string | null; hasActiveSession?: boolean; mainState?: boolean; worktreePending?: boolean; agentBusy?: boolean }) {
+function FileTree({ projectId, worktreeId, hasActiveSession, mainState, worktreePending, agentBusy, onAddSelection }: { projectId: string; worktreeId?: string | null; hasActiveSession?: boolean; mainState?: boolean; worktreePending?: boolean; agentBusy?: boolean; onAddSelection?: (filePath: string, startLine: number, endLine: number, lines: Array<{ type: 'add' | 'remove' | 'context'; content: string }>) => void }) {
   // Query-string helper: append ?worktree=ID to every file API call so the
   // tree, reads, writes and PATCH operations all stay scoped to the active
   // worktree. Main (no worktree) continues to use the project root.
@@ -5027,6 +5086,7 @@ function FileTree({ projectId, worktreeId, hasActiveSession, mainState, worktree
               agentBusy={agentBusy}
               diskChanged={diskChangedPath === diffViewingFile.path}
               onReload={reloadOpenFile}
+              onAddSelection={diffViewingFile.worktreeId ? onAddSelection : undefined}
             />
           </div>
 
@@ -5127,9 +5187,20 @@ function FileTree({ projectId, worktreeId, hasActiveSession, mainState, worktree
                 agentBusy={agentBusy}
                 diskChanged={diskChangedPath === viewingFile.path}
                 onReload={reloadOpenFile}
+                onAddSelection={onAddSelection}
               />
             ) : (
-              <ReadOnlyShikiView path={viewingFile.path} content={viewingFile.content} />
+              // Main-state preview reuses the same editor in readOnly mode
+              // so background, syntax theme and selection highlight stay
+              // identical to the worktree view. `onAddSelection` is omitted
+              // — the floating "Add to Chat" pill never renders here, which
+              // matches the rule that attaching is a worktree-only action.
+              <CodeMirrorFileView
+                projectId={projectId}
+                filePath={viewingFile.path}
+                initialContent={viewingFile.content}
+                readOnly
+              />
             )}
           </div>
 

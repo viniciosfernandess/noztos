@@ -11,10 +11,12 @@
 // ?worktree= / ?session= query params used to read, so the write lands in
 // the correct working dir (main or a worktree).
 
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useReducer, useRef, useState } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { EditorView, keymap } from '@codemirror/view'
 import { Prec } from '@codemirror/state'
+import { useDOMTextSelection } from '@/lib/hooks/useTextSelection'
+import { SelectionAddButton } from './SelectionAddButton'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { javascript } from '@codemirror/lang-javascript'
 import { python } from '@codemirror/lang-python'
@@ -73,6 +75,15 @@ export interface CodeMirrorFileViewProps {
   diskChanged?: boolean
   // Callback for the banner's Reload button.
   onReload?: () => void
+  // Cursor-style "Add to Chat" — fired when the user selects text and
+  // clicks the floating pill. All lines from a plain editor are reported
+  // as 'context' (no diff markers to interpret here).
+  onAddSelection?: (
+    filePath: string,
+    startLine: number,
+    endLine: number,
+    lines: Array<{ type: 'add' | 'remove' | 'context'; content: string }>,
+  ) => void
 }
 
 // Imperative handle so the parent (which owns the back/close button) can ask
@@ -95,6 +106,7 @@ export const CodeMirrorFileView = forwardRef<CodeMirrorFileViewHandle, CodeMirro
   agentBusy,
   diskChanged,
   onReload,
+  onAddSelection,
 }, ref) {
   // Normalize to a trailing newline so CodeMirror renders one numbered
   // empty line below the last content line — VS Code-style "click here
@@ -131,10 +143,11 @@ export const CodeMirrorFileView = forwardRef<CodeMirrorFileViewHandle, CodeMirro
       Prec.highest(EditorView.theme({
         '&': { fontSize: '13px', backgroundColor: '#1F1F1F' },
         '.cm-scroller': { backgroundColor: '#1F1F1F' },
-        // Bottom breathing room so the last line of the file isn't glued
-        // to the viewport edge — user can scroll past EOF and edit at
-        // the end comfortably (VS Code's "scrollBeyondLastLine" default).
-        '.cm-content': { backgroundColor: '#1F1F1F', paddingBottom: '200px' },
+        // .cm-content MUST stay transparent. drawSelection paints the
+        // selection layer at z-index: -1 (behind the content layer); a
+        // solid background here would block the yellow highlight from
+        // ever showing through. The visible #1F1F1F comes from .cm-scroller.
+        '.cm-content': { paddingBottom: '200px' },
         '.cm-gutters': { backgroundColor: '#1F1F1F', borderRight: '1px solid #2B2B2B' },
         '.cm-activeLine': { backgroundColor: 'rgba(255,255,255,0.03)' },
         '.cm-activeLineGutter': { backgroundColor: 'rgba(255,255,255,0.04)' },
@@ -152,6 +165,11 @@ export const CodeMirrorFileView = forwardRef<CodeMirrorFileViewHandle, CodeMirro
   // Explicit save — only runs on Ctrl/Cmd+S or imperative parent call.
   // Returns true on success so callers can sequence (e.g., save-then-close).
   const save = useCallback(async (): Promise<boolean> => {
+    // ReadOnly path: never PUT. Main-state file viewing uses readOnly to
+    // protect the project root from accidental writes (the main worker
+    // resets it every 5 min). Without this guard a stray Ctrl+S would
+    // still fire a no-op HTTP request to the bare repository endpoint.
+    if (readOnly) return false
     // Disk diverged underneath us (agent edited the file). Abort PUT —
     // pushing our buffer would clobber the agent's changes silently.
     // Caller (close-confirm modal / parent) sees `false` and surfaces
@@ -183,7 +201,7 @@ export const CodeMirrorFileView = forwardRef<CodeMirrorFileViewHandle, CodeMirro
       onSaved?.(false)
       return false
     }
-  }, [projectId, filePath, worktreeId, sessionId, onSaved, diskChanged])
+  }, [projectId, filePath, worktreeId, sessionId, onSaved, diskChanged, readOnly])
 
   const handleChange = useCallback((next: string) => {
     setValue(next)
@@ -207,6 +225,55 @@ export const CodeMirrorFileView = forwardRef<CodeMirrorFileViewHandle, CodeMirro
     discard: () => { setValue(savedContent); setStatus('idle') },
     isDirty: () => valueRef.current !== savedContent,
   }), [save, savedContent])
+
+  // ── "Add to Chat" selection capture ─────────────────────────────────
+  // The hook commits state only on mouseup so the user's drag never
+  // gets contested by a floating button mid-stroke. We then re-read
+  // `range.getBoundingClientRect()` on every render so the pill sticks
+  // to the highlighted text — a scroll listener forces a render so the
+  // pill follows when the user scrolls inside .cm-scroller.
+  const editorBodyRef = useRef<HTMLDivElement | null>(null)
+  const { selection: domSelection, clear: clearDomSelection } = useDOMTextSelection(editorBodyRef)
+  const [, bumpScroll] = useReducer((x: number) => x + 1, 0)
+  useEffect(() => {
+    if (!domSelection) return
+    const scroller = editorBodyRef.current?.querySelector('.cm-scroller')
+    if (!scroller) return
+    scroller.addEventListener('scroll', bumpScroll, { passive: true })
+    window.addEventListener('resize', bumpScroll)
+    return () => {
+      scroller.removeEventListener('scroll', bumpScroll)
+      window.removeEventListener('resize', bumpScroll)
+    }
+  }, [domSelection])
+
+  const selectionInfo = useMemo(() => {
+    if (!domSelection || !onAddSelection) return null
+    const root = editorBodyRef.current?.querySelector('.cm-content')
+    if (!root) return null
+    const lineEls = Array.from(root.querySelectorAll('.cm-line')) as HTMLElement[]
+    let firstIdx = -1
+    let lastIdx = -1
+    const picked: HTMLElement[] = []
+    for (let i = 0; i < lineEls.length; i++) {
+      if (domSelection.range.intersectsNode(lineEls[i])) {
+        if (firstIdx === -1) firstIdx = i
+        lastIdx = i
+        picked.push(lineEls[i])
+      }
+    }
+    if (firstIdx === -1) return null
+    return {
+      startLine: firstIdx + 1,
+      endLine: lastIdx + 1,
+      lines: picked.map((el) => ({ type: 'context' as const, content: el.textContent ?? '' })),
+      lineCount: picked.length,
+    }
+  }, [domSelection, onAddSelection])
+
+  // Live rect — recomputed every render. When `bumpScroll` fires we
+  // re-render and this picks up the new viewport coords automatically.
+  const liveRect = domSelection ? domSelection.range.getBoundingClientRect() : null
 
   return (
     <div className="flex h-full flex-col">
@@ -245,7 +312,7 @@ export const CodeMirrorFileView = forwardRef<CodeMirrorFileViewHandle, CodeMirro
           <span className="text-sky-300/80">Agent editing in this branch…</span>
         </div>
       ) : null}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ backgroundColor: '#1F1F1F' }}>
+      <div ref={editorBodyRef} className="flex-1 overflow-y-auto overflow-x-hidden" style={{ backgroundColor: '#1F1F1F' }}>
         <CodeMirror
           value={value}
           height="100%"
@@ -268,6 +335,17 @@ export const CodeMirrorFileView = forwardRef<CodeMirrorFileViewHandle, CodeMirro
           }}
         />
       </div>
+      {onAddSelection && selectionInfo && liveRect && (
+        <SelectionAddButton
+          anchor={{ top: liveRect.top, right: liveRect.right }}
+          lineCount={selectionInfo.lineCount}
+          onAdd={() => {
+            onAddSelection(filePath, selectionInfo.startLine, selectionInfo.endLine, selectionInfo.lines)
+            clearDomSelection()
+          }}
+          onDismiss={clearDomSelection}
+        />
+      )}
     </div>
   )
 })

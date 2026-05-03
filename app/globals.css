@@ -82,3 +82,25 @@ pre[class*="language-"] {
 .token.tag { color: #569cd6 !important; }
 .token.attr-name { color: #9cdcfe !important; }
 .token.attr-value { color: #ce9178 !important; }
+
+/* Yellow text-selection highlight for the worktree explorer's editable
+   viewers (CodeMirrorFileView + InlineDiffEditor). oneDark's default
+   selection (#3E4451) is nearly invisible against our #1F1F1F surface.
+   The repeated class names below (`.cm-editor.cm-editor.cm-editor`)
+   are a deliberate specificity hack — without them, oneDark's deeply-
+   nested selector wins. !important alone isn't enough when both rules
+   are !important, so we boost the rank too. */
+body .cm-editor.cm-editor.cm-editor .cm-selectionBackground,
+body .cm-editor.cm-editor.cm-editor.cm-focused .cm-selectionLayer .cm-selectionBackground,
+body .cm-editor.cm-editor.cm-editor .cm-selectionLayer .cm-selectionBackground {
+  background-color: rgba(255, 215, 0, 0.45) !important;
+  background: rgba(255, 215, 0, 0.45) !important;
+}
+body .cm-editor ::selection,
+body .cm-editor *::selection,
+body .cm-diff-remove-row ::selection,
+body .cm-diff-remove-row *::selection {
+  background-color: rgba(255, 215, 0, 0.45) !important;
+  background: rgba(255, 215, 0, 0.45) !important;
+  color: inherit !important;
+}

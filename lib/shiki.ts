@@ -18,7 +18,7 @@ const EXT_TO_LANG: Record<string, string> = {
   json: 'json', css: 'css', scss: 'scss',
   py: 'python', sh: 'bash', bash: 'bash', zsh: 'bash',
   yml: 'yaml', yaml: 'yaml', md: 'markdown', mdx: 'markdown',
-  sql: 'sql', html: 'html', htm: 'html', xml: 'xml',
+  sql: 'sql', html: 'html', htm: 'html', xml: 'xml', svg: 'xml',
   rs: 'rust', go: 'go', java: 'java',
   c: 'c', h: 'c', cpp: 'cpp', hpp: 'cpp', cc: 'cpp',
   cs: 'csharp', php: 'php', rb: 'ruby',

@@ -18,9 +18,12 @@ import {
   useEffect,
   useImperativeHandle,
   useMemo,
+  useReducer,
   useRef,
   useState,
 } from 'react'
+import { useDOMTextSelection } from '@/lib/hooks/useTextSelection'
+import { SelectionAddButton } from './SelectionAddButton'
 import CodeMirror from '@uiw/react-codemirror'
 import {
   EditorView,
@@ -293,7 +296,11 @@ const diffTheme = EditorView.theme({
   // the file's end and edit comfortably without the last line hugging
   // the viewport bottom. Top padding stays 0 so the first line aligns
   // with the header border.
-  '.cm-content': { paddingTop: '0', paddingBottom: '200px', backgroundColor: '#1F1F1F' },
+  // .cm-content MUST stay transparent — drawSelection paints the
+  // selection layer at z-index: -1 (behind .cm-content). A solid bg
+  // here would block the yellow highlight. .cm-scroller already provides
+  // the visible #1F1F1F backdrop.
+  '.cm-content': { paddingTop: '0', paddingBottom: '200px' },
   '.cm-gutters': { backgroundColor: '#1F1F1F', borderRight: 'none', color: '#71717A' },
   '.cm-diff-num-gutter': { minWidth: '2.5rem', padding: '0 0.5rem 0 0.25rem', textAlign: 'right' },
   '.cm-diff-marker-gutter': { width: '1rem', padding: '0', textAlign: 'center' },
@@ -367,10 +374,21 @@ export interface InlineDiffEditorProps {
   // the buffer is dirty. Renders a yellow Reload banner and blocks save.
   diskChanged?: boolean
   onReload?: () => void
+  // Cursor-style "Add to Chat" — fired when the user selects text inside
+  // the diff and clicks the floating pill. We classify each selected row
+  // by its diff role so the LLM sees a real unified-diff hunk: 'add' for
+  // green editor lines (.cm-diff-add-line), 'remove' for red widgets
+  // (.cm-diff-remove-row), 'context' for plain editor lines.
+  onAddSelection?: (
+    filePath: string,
+    startLine: number,
+    endLine: number,
+    lines: Array<{ type: 'add' | 'remove' | 'context'; content: string }>,
+  ) => void
 }
 
 export const InlineDiffEditor = forwardRef<InlineDiffEditorHandle, InlineDiffEditorProps>(
-  function InlineDiffEditor({ projectId, filePath, lines, worktreeId, sessionId, onSaved, onDirtyChange, agentBusy, diskChanged, onReload }, ref) {
+  function InlineDiffEditor({ projectId, filePath, lines, worktreeId, sessionId, onSaved, onDirtyChange, agentBusy, diskChanged, onReload, onAddSelection }, ref) {
     const plan = useMemo(() => planDiff(lines), [lines])
     // Trailing '\n' ensures CodeMirror renders one numbered empty line
     // below the last content line — VS Code-style "click here to extend
@@ -472,6 +490,75 @@ export const InlineDiffEditor = forwardRef<InlineDiffEditorHandle, InlineDiffEdi
       isDirty: () => valueRef.current !== savedContent,
     }), [save, savedContent])
 
+    // ── "Add to Chat" selection capture ────────────────────────────
+    // Diff selections can span editor lines (.cm-line — context or add)
+    // AND removed-line block widgets (.cm-diff-remove-row). We walk
+    // both in document order so the snippet handed to the LLM preserves
+    // the visual diff sequence with proper +/-/space prefixes.
+    const editorBodyRef = useRef<HTMLDivElement | null>(null)
+    const { selection: domSelection, clear: clearDomSelection } = useDOMTextSelection(editorBodyRef)
+    const [, bumpScroll] = useReducer((x: number) => x + 1, 0)
+    useEffect(() => {
+      if (!domSelection) return
+      const scroller = editorBodyRef.current?.querySelector('.cm-scroller')
+      if (!scroller) return
+      scroller.addEventListener('scroll', bumpScroll, { passive: true })
+      window.addEventListener('resize', bumpScroll)
+      return () => {
+        scroller.removeEventListener('scroll', bumpScroll)
+        window.removeEventListener('resize', bumpScroll)
+      }
+    }, [domSelection])
+
+    const selectionInfo = useMemo(() => {
+      if (!domSelection || !onAddSelection) return null
+      const root = editorBodyRef.current?.querySelector('.cm-content')
+      if (!root) return null
+      // querySelectorAll returns nodes in document order, so editor
+      // lines and remove widgets come back interleaved exactly as the
+      // user sees them on screen.
+      const rows = Array.from(
+        root.querySelectorAll('.cm-line, .cm-diff-remove-row'),
+      ) as HTMLElement[]
+      // Per-doc-line counter advances only on real editor lines so
+      // plan.docLines[idx] stays aligned. Remove widgets carry their
+      // own line number in `.cm-diff-remove-num`.
+      let docLineIdx = -1
+      const collected: Array<{ type: 'add' | 'remove' | 'context'; content: string; lineNum?: number }> = []
+      for (const el of rows) {
+        const isRemove = el.classList.contains('cm-diff-remove-row')
+        if (!isRemove) docLineIdx += 1
+        if (!domSelection.range.intersectsNode(el)) continue
+        if (isRemove) {
+          const numText = (el.querySelector('.cm-diff-remove-num')?.textContent ?? '').trim()
+          const num = numText ? Number(numText) : undefined
+          const content = el.querySelector('.cm-diff-remove-content')?.textContent ?? ''
+          collected.push({ type: 'remove', content, lineNum: Number.isFinite(num) ? num : undefined })
+        } else {
+          const planEntry = plan.docLines[docLineIdx]
+          const isAdd = !!planEntry && planEntry.type === 'add'
+          const lineNum = planEntry ? (planEntry.newLine ?? planEntry.oldLine) : undefined
+          collected.push({
+            type: isAdd ? 'add' : 'context',
+            content: el.textContent ?? '',
+            lineNum,
+          })
+        }
+      }
+      if (collected.length === 0) return null
+      const numbered = collected.map((l) => l.lineNum).filter((n): n is number => typeof n === 'number')
+      const startLine = numbered.length > 0 ? Math.min(...numbered) : 1
+      const endLine = numbered.length > 0 ? Math.max(...numbered) : collected.length
+      return {
+        startLine,
+        endLine,
+        lines: collected.map((l) => ({ type: l.type, content: l.content })),
+        lineCount: collected.length,
+      }
+    }, [domSelection, onAddSelection, plan])
+
+    const liveRect = domSelection ? domSelection.range.getBoundingClientRect() : null
+
     return (
       <div className="flex h-full flex-col">
         {/* Status strip — only renders when there's actual save state to
@@ -507,7 +594,7 @@ export const InlineDiffEditor = forwardRef<InlineDiffEditorHandle, InlineDiffEdi
             <span className="text-sky-300/80">Agent editing in this branch…</span>
           </div>
         ) : null}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ backgroundColor: '#1F1F1F' }}>
+        <div ref={editorBodyRef} className="flex-1 overflow-y-auto overflow-x-hidden" style={{ backgroundColor: '#1F1F1F' }}>
           <CodeMirror
             value={value}
             height="100%"
@@ -527,6 +614,17 @@ export const InlineDiffEditor = forwardRef<InlineDiffEditorHandle, InlineDiffEdi
             }}
           />
         </div>
+        {onAddSelection && selectionInfo && liveRect && (
+          <SelectionAddButton
+            anchor={{ top: liveRect.top, right: liveRect.right }}
+            lineCount={selectionInfo.lineCount}
+            onAdd={() => {
+              onAddSelection(filePath, selectionInfo.startLine, selectionInfo.endLine, selectionInfo.lines)
+              clearDomSelection()
+            }}
+            onDismiss={clearDomSelection}
+          />
+        )}
       </div>
     )
   },
