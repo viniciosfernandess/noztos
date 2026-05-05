@@ -13,6 +13,10 @@ const EMPLOYEES = [
   { id: 'architect', name: 'Architect', color: 'from-blue-500 to-cyan-600' },
   { id: 'designer', name: 'Designer', color: 'from-pink-500 to-rose-600' },
   { id: 'security', name: 'Security', color: 'from-red-500 to-orange-600' },
+  { id: 'tester', name: 'Tester', color: 'from-emerald-500 to-green-600' },
+  { id: 'reviewer', name: 'Reviewer', color: 'from-amber-500 to-yellow-600' },
+  { id: 'docs', name: 'Docs', color: 'from-stone-500 to-stone-700' },
+  { id: 'devops', name: 'DevOps', color: 'from-slate-500 to-slate-700' },
 ]
 
 interface TeamOption {

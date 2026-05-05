@@ -39,6 +39,34 @@ const AVAILABLE_EMPLOYEES: Employee[] = [
     description: 'OWASP Top 10, STRIDE threat modeling. Finds vulnerabilities before they reach production.',
     color: 'from-red-500 to-orange-600',
   },
+  {
+    id: 'tester',
+    role: 'Reviewer',
+    name: 'Tester',
+    description: 'Writes tests, runs them, validates coverage. Keeps regressions out before they ship.',
+    color: 'from-emerald-500 to-green-600',
+  },
+  {
+    id: 'reviewer',
+    role: 'Reviewer',
+    name: 'Reviewer',
+    description: 'Code review, standards, quality. Reads diffs with the eye of the next maintainer.',
+    color: 'from-amber-500 to-yellow-600',
+  },
+  {
+    id: 'docs',
+    role: 'Executor',
+    name: 'Docs',
+    description: 'Documentation, README, API docs. Turns shipped behaviour into something a stranger can read.',
+    color: 'from-stone-500 to-stone-700',
+  },
+  {
+    id: 'devops',
+    role: 'Executor',
+    name: 'DevOps',
+    description: 'Deploy, CI/CD, infrastructure, incidents. Owns the path from main to production.',
+    color: 'from-slate-500 to-slate-700',
+  },
 ]
 
 const BUILDER_EMPLOYEE: Employee = {

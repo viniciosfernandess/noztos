@@ -15,6 +15,10 @@ const EMPLOYEE_COLORS: Record<string, { color: string; role: string }> = {
   architect: { color: 'from-blue-500 to-cyan-600', role: 'Planner' },
   designer: { color: 'from-pink-500 to-rose-600', role: 'Planner' },
   security: { color: 'from-red-500 to-orange-600', role: 'Reviewer' },
+  tester: { color: 'from-emerald-500 to-green-600', role: 'Reviewer' },
+  reviewer: { color: 'from-amber-500 to-yellow-600', role: 'Reviewer' },
+  docs: { color: 'from-stone-500 to-stone-700', role: 'Executor' },
+  devops: { color: 'from-slate-500 to-slate-700', role: 'Executor' },
   builder: { color: 'from-red-600 to-red-700', role: 'Builder' },
 }
 
@@ -23,17 +27,19 @@ const EMPLOYEE_NAMES: Record<string, string> = {
   architect: 'Architect',
   designer: 'Designer',
   security: 'Security',
+  tester: 'Tester',
+  reviewer: 'Reviewer',
+  docs: 'Docs',
+  devops: 'DevOps',
   builder: 'Builder',
 }
 
 interface Project { id: string; name: string }
-interface Collaborator { id: string; name: string; description: string; phase: string; skillMd: string }
 interface Team { id: string; name: string; collaboratorOrder: { collaboratorIds: string[] } }
 interface Task { id: string; name: string; status: string; pausedAtEmployee: string | null }
 
 interface Props {
   project: Project
-  collaborators: Collaborator[]
   teams: Team[]
   tasks: Task[]
 }
@@ -41,9 +47,9 @@ interface Props {
 // Every project ships with the same fixed roster of agents — there is no
 // hiring step. Listed in the order they appear in MyTeamPanel and feed
 // the chat slash-command picker via WorkPanel.
-const AGENT_IDS = ['ceo', 'architect', 'designer', 'security'] as const
+const AGENT_IDS = ['ceo', 'architect', 'designer', 'security', 'tester', 'reviewer', 'docs', 'devops'] as const
 
-export function ProjectDashboardClient({ project, collaborators, teams, tasks }: Props) {
+export function ProjectDashboardClient({ project, teams, tasks }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('work')
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [localTeams, setLocalTeams] = useState<{ name: string; memberIds: string[]; hasBuilder: boolean; order: string[]; canRecreateTasks: Record<string, string> }[]>([])

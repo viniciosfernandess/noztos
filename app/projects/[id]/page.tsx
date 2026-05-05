@@ -23,12 +23,7 @@ export default async function ProjectPage({ params }: PageProps) {
 
   if (!project || project.userId !== userId) notFound()
 
-  const [collaborators, teams, tasks] = await Promise.all([
-    prisma.collaborator.findMany({
-      where: { projectId: id, isActive: true },
-      select: { id: true, name: true, description: true, phase: true, skillMd: true },
-      orderBy: { createdAt: 'asc' },
-    }),
+  const [teams, tasks] = await Promise.all([
     prisma.team.findMany({
       where: { projectId: id },
       select: { id: true, name: true, collaboratorOrder: true, createdAt: true },
@@ -44,7 +39,6 @@ export default async function ProjectPage({ params }: PageProps) {
   return (
     <ProjectDashboardClient
       project={project}
-      collaborators={collaborators}
       teams={teams.map((t) => ({
         id: t.id,
         name: t.name,
