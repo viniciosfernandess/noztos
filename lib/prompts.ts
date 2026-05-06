@@ -62,6 +62,7 @@ export async function ensureSkillCacheLoaded(): Promise<void> {
   // serverless cold starts hit this from N parallel chat requests.
   if (skillCacheLoadPromise) return skillCacheLoadPromise
   skillCacheLoadPromise = (async () => {
+    const t0 = Date.now()
     const all = await prisma.collaborator.findMany({
       where: { isPlatformDefault: true, projectId: null },
       select: { name: true, skillMd: true },
@@ -71,6 +72,7 @@ export async function ensureSkillCacheLoaded(): Promise<void> {
     }
     skillCacheLoaded = true
     skillCacheLoadPromise = null
+    console.log(`[skill-cache] loaded ${all.length} platform defaults from DB in ${Date.now() - t0}ms (names=${all.map((c) => c.name).join(', ')})`)
   })()
   return skillCacheLoadPromise
 }

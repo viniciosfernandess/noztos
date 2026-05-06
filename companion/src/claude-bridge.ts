@@ -268,6 +268,9 @@ export class ClaudeBridge extends EventEmitter {
     // to the local cache (offline / pre-fetch / typo), we silently
     // fall back to the bare mode prompt so chat keeps working.
     const skillPrompt = getSkillPromptByName(this.skillId)
+    if (this.skillId) {
+      console.log(`[isolation] skill lookup id=${this.skillId} hit=${skillPrompt ? 'yes' : 'no'} promptBytes=${skillPrompt?.length ?? 0} cacheVersion=${activeSkillsVersion}`)
+    }
     const skillBlock = skillPrompt ? `${skillPrompt}\n\n` : ''
     const appendPrompt = (skillBlock + (cfg.modePrompts[this.mode] ?? '') + cfg.namingRule).trim()
     if (appendPrompt) {

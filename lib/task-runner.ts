@@ -458,7 +458,7 @@ async function runTeamTask(options: {
   // Load collaborators
   const collaborators = await prisma.collaborator.findMany({
     where: { id: { in: collaboratorIds } },
-    select: { id: true, name: true, phase: true, skillMd: true },
+    select: { id: true, name: true, skillMd: true },
   })
   const collabMap = new Map(collaborators.map((c) => [c.id, c]))
 

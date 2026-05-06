@@ -19,5 +19,6 @@ export async function GET(request: NextRequest) {
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const payload = await loadAllSkillsForDaemon()
+  console.log(`[api/skills] daemon fetched skills version=${payload.version} count=${payload.skills.length}`)
   return NextResponse.json(payload)
 }

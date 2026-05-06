@@ -1,12 +1,11 @@
 import 'dotenv/config'
 import { Pool } from 'pg'
 import { PrismaPg } from '@prisma/adapter-pg'
-import { PrismaClient, Phase } from '../generated/prisma/client'
+import { PrismaClient } from '../generated/prisma/client'
 
-// Seed script — creates the 7 platform default collaborators as global templates.
-//
-// Global templates have projectId = null. When a user creates a project,
-// the app copies these into per-project collaborator rows (see Task 4).
+// Seed script — creates the platform default collaborators as global
+// templates. Global templates have projectId = null. When a user creates
+// a project, the app copies these into per-project collaborator rows.
 //
 // SKILL.md content for platform defaults is kept here (server-side only).
 // It is never exposed to the UI — users can only see the name and description.
@@ -22,7 +21,6 @@ const prisma = new PrismaClient({ adapter })
 interface PlatformCollaborator {
   name: string
   description: string
-  phase: Phase
   skillMd: string
 }
 
@@ -35,7 +33,6 @@ const PLATFORM_DEFAULTS: PlatformCollaborator[] = [
   {
     name: 'Builder',
     description: 'Executes the plan and writes the code',
-    phase: Phase.planner,
     skillMd: `# Builder — Code Executor
 
 You are the Builder. You execute the plan that your team has created.
@@ -60,7 +57,6 @@ You are the Builder. You execute the plan that your team has created.
   {
     name: 'CEO',
     description: "Questions if it's the right problem",
-    phase: Phase.planner,
     skillMd: `You are the CEO of an AI-powered company. Your role is strategic: you challenge assumptions, question scope, and ensure the team is solving the right problem before any work begins.
 
 When analyzing a task:
@@ -73,7 +69,6 @@ When analyzing a task:
   {
     name: 'Architect',
     description: 'Defines structure before building',
-    phase: Phase.planner,
     skillMd: `You are the Lead Architect. Your role is to define exactly what needs to be built before anyone writes code.
 
 When planning a task:
@@ -86,7 +81,6 @@ When planning a task:
   {
     name: 'Designer',
     description: 'Reviews design before building',
-    phase: Phase.planner,
     skillMd: `You are the Lead Designer. Your role is to review any UI/UX aspects of a task before implementation.
 
 When reviewing design:
@@ -99,7 +93,6 @@ When reviewing design:
   {
     name: 'Security',
     description: 'Reviews security vulnerabilities',
-    phase: Phase.reviewer,
     skillMd: `You are the Security Reviewer. Your role is to find security vulnerabilities before they reach production.
 
 When reviewing:
@@ -112,7 +105,6 @@ When reviewing:
   {
     name: 'Tester',
     description: 'Writes tests, runs them, validates coverage',
-    phase: Phase.reviewer,
     skillMd: `# TESTER
 
 ## Who You Are
@@ -246,7 +238,6 @@ You don't say "looks good" unless tests prove it's good.`,
   {
     name: 'Reviewer',
     description: 'Code review, standards, quality',
-    phase: Phase.reviewer,
     skillMd: `# REVIEWER
 
 ## Who You Are
@@ -390,7 +381,6 @@ You are a teacher. Every review is an opportunity to help someone become better.
   {
     name: 'Docs',
     description: 'Documentation, README, API docs',
-    phase: Phase.planner,
     skillMd: `# DOCS
 
 ## Who You Are
@@ -526,7 +516,6 @@ You are honest. If something is complicated, you say it's complicated. If someth
   {
     name: 'DevOps',
     description: 'Deploy, CI/CD, infra, incidents',
-    phase: Phase.planner,
     skillMd: `# DEVOPS
 
 ## Who You Are
@@ -700,7 +689,6 @@ async function main() {
         data: {
           description: collaborator.description,
           skillMd: collaborator.skillMd,
-          phase: collaborator.phase,
         },
       })
       console.log(`  ~ ${existing.name} (${existing.id}) updated`)
@@ -710,7 +698,6 @@ async function main() {
           name: collaborator.name,
           description: collaborator.description,
           skillMd: collaborator.skillMd,
-          phase: collaborator.phase,
           isPlatformDefault: true,
           isActive: true,
           projectId: null,

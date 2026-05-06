@@ -158,7 +158,6 @@ model Collaborator {
   description       String
   skillMd           String         @default("")
   isPlatformDefault Boolean        @default(false)
-  phase             Phase
   isActive          Boolean        @default(true)
   createdAt         DateTime       @default(now())
   project           Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -590,11 +589,6 @@ model BuildSession {
 
   @@index([projectId, active])
   @@map("build_sessions")
-}
-
-enum Phase {
-  planner
-  reviewer
 }
 
 enum TaskStatus {

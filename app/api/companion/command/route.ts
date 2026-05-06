@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (type === 'prompt') {
-    console.log(`[isolation] command type=prompt session=${bornastarSessionId?.slice(0, 8) ?? '-'} worktreePath=${worktreePath ?? '(main)'}`)
+    console.log(`[isolation] command type=prompt session=${bornastarSessionId?.slice(0, 8) ?? '-'} worktreePath=${worktreePath ?? '(main)'} mode=${mode ?? '-'} skill=${skillId ?? '-'}`)
   } else if (type === 'interrupt') {
     console.log(`[isolation] command type=interrupt session=${bornastarSessionId?.slice(0, 8) ?? '-'}`)
   }

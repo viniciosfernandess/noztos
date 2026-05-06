@@ -1133,7 +1133,6 @@ interface HiredEmployee {
   id: string
   name: string
   color: string
-  role: string
 }
 
 interface TeamInfo {
@@ -8208,7 +8207,6 @@ function MiniMap({
             <div className="px-3 py-2">
               <div className={`rounded-lg bg-gradient-to-br ${activeEmployee.color} px-3 py-3 shadow-sm`}>
                 <p className="text-xs font-bold text-white">{activeEmployee.name}</p>
-                <p className="text-[9px] text-white/60">{activeEmployee.role}</p>
               </div>
             </div>
           )}

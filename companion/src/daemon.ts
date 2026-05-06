@@ -660,7 +660,7 @@ export class Daemon extends EventEmitter {
     const bridgeKey = cmd.bornastarSessionId ?? project.id
 
     const scope = cmd.worktreePath ? 'worktree' : 'main'
-    console.log(`[isolation] prompt project=${project.name} scope=${scope} cwd=${cwd} bridgeKey=${bridgeKey.slice(0, 8)} mode=${cmd.mode ?? 'agent'}`)
+    console.log(`[isolation] prompt project=${project.name} scope=${scope} cwd=${cwd} bridgeKey=${bridgeKey.slice(0, 8)} mode=${cmd.mode ?? 'agent'} skill=${cmd.skillId ?? 'none'}`)
 
     let bridge = this.bridges.get(bridgeKey)
     if (bridge?.isRunning()) {

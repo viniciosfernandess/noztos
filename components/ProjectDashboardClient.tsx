@@ -10,16 +10,16 @@ import { SourceControl } from './SourceControl'
 import type { Tab } from './ProjectLayout'
 
 // Employee color map — must match MyTeamPanel
-const EMPLOYEE_COLORS: Record<string, { color: string; role: string }> = {
-  ceo: { color: 'from-violet-500 to-purple-600', role: 'Planner' },
-  architect: { color: 'from-blue-500 to-cyan-600', role: 'Planner' },
-  designer: { color: 'from-pink-500 to-rose-600', role: 'Planner' },
-  security: { color: 'from-red-500 to-orange-600', role: 'Reviewer' },
-  tester: { color: 'from-emerald-500 to-green-600', role: 'Reviewer' },
-  reviewer: { color: 'from-amber-500 to-yellow-600', role: 'Reviewer' },
-  docs: { color: 'from-stone-500 to-stone-700', role: 'Executor' },
-  devops: { color: 'from-slate-500 to-slate-700', role: 'Executor' },
-  builder: { color: 'from-red-600 to-red-700', role: 'Builder' },
+const EMPLOYEE_COLORS: Record<string, string> = {
+  ceo: 'from-violet-500 to-purple-600',
+  architect: 'from-blue-500 to-cyan-600',
+  designer: 'from-pink-500 to-rose-600',
+  security: 'from-red-500 to-orange-600',
+  tester: 'from-emerald-500 to-green-600',
+  reviewer: 'from-amber-500 to-yellow-600',
+  docs: 'from-stone-500 to-stone-700',
+  devops: 'from-slate-500 to-slate-700',
+  builder: 'from-red-600 to-red-700',
 }
 
 const EMPLOYEE_NAMES: Record<string, string> = {
@@ -57,8 +57,7 @@ export function ProjectDashboardClient({ project, teams, tasks }: Props) {
   const hiredEmployees = AGENT_IDS.map((id) => ({
     id,
     name: EMPLOYEE_NAMES[id] ?? id,
-    color: EMPLOYEE_COLORS[id]?.color ?? 'from-zinc-500 to-zinc-600',
-    role: EMPLOYEE_COLORS[id]?.role ?? 'Unknown',
+    color: EMPLOYEE_COLORS[id] ?? 'from-zinc-500 to-zinc-600',
   }))
 
   // Build team infos for WorkPanel

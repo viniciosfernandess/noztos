@@ -22,7 +22,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: 'Collaborator not found' }, { status: 404 })
   }
 
-  let body: { name?: string; description?: string; phase?: string; skillMd?: string }
+  let body: { name?: string; description?: string; skillMd?: string }
   try {
     body = await request.json()
   } catch {
@@ -32,13 +32,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   const data: Record<string, string> = {}
   if (body.name?.trim()) data.name = body.name.trim()
   if (body.description?.trim()) data.description = body.description.trim()
-  if (body.phase === 'planner' || body.phase === 'reviewer') data.phase = body.phase
   if (body.skillMd !== undefined) data.skillMd = body.skillMd
 
   const updated = await prisma.collaborator.update({
     where: { id: collaboratorId },
     data,
-    select: { id: true, name: true, description: true, phase: true },
+    select: { id: true, name: true, description: true },
   })
 
   return NextResponse.json(updated)

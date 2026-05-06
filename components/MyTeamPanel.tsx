@@ -4,7 +4,6 @@ import { useState } from 'react'
 
 interface Employee {
   id: string
-  role: string
   name: string
   description: string
   color: string
@@ -13,56 +12,48 @@ interface Employee {
 const AVAILABLE_EMPLOYEES: Employee[] = [
   {
     id: 'ceo',
-    role: 'Planner',
     name: 'CEO',
     description: 'Questions if it\'s the right problem. Challenges scope, finds risks, gives go/no-go decisions.',
     color: 'from-violet-500 to-purple-600',
   },
   {
     id: 'architect',
-    role: 'Planner',
     name: 'Architect',
     description: 'Defines architecture, data flow, component breakdown. Your technical blueprint before any code.',
     color: 'from-blue-500 to-cyan-600',
   },
   {
     id: 'designer',
-    role: 'Planner',
     name: 'Designer',
     description: 'Reviews UI/UX, catches AI slop, ensures hierarchy and interaction states are solid.',
     color: 'from-pink-500 to-rose-600',
   },
   {
     id: 'security',
-    role: 'Reviewer',
     name: 'Security',
     description: 'OWASP Top 10, STRIDE threat modeling. Finds vulnerabilities before they reach production.',
     color: 'from-red-500 to-orange-600',
   },
   {
     id: 'tester',
-    role: 'Reviewer',
     name: 'Tester',
     description: 'Writes tests, runs them, validates coverage. Keeps regressions out before they ship.',
     color: 'from-emerald-500 to-green-600',
   },
   {
     id: 'reviewer',
-    role: 'Reviewer',
     name: 'Reviewer',
     description: 'Code review, standards, quality. Reads diffs with the eye of the next maintainer.',
     color: 'from-amber-500 to-yellow-600',
   },
   {
     id: 'docs',
-    role: 'Executor',
     name: 'Docs',
     description: 'Documentation, README, API docs. Turns shipped behaviour into something a stranger can read.',
     color: 'from-stone-500 to-stone-700',
   },
   {
     id: 'devops',
-    role: 'Executor',
     name: 'DevOps',
     description: 'Deploy, CI/CD, infrastructure, incidents. Owns the path from main to production.',
     color: 'from-slate-500 to-slate-700',
@@ -71,7 +62,6 @@ const AVAILABLE_EMPLOYEES: Employee[] = [
 
 const BUILDER_EMPLOYEE: Employee = {
   id: 'builder',
-  role: 'Builder',
   name: 'Builder',
   description: 'Writes the code. Executes the plan, edits files, creates features.',
   color: 'from-red-600 to-red-700',
@@ -181,7 +171,6 @@ function EmployeeCard({ employee, isAutomatic }: { employee: Employee; isAutomat
           </span>
         )}
         <p className="text-sm font-bold text-white">{employee.name}</p>
-        <p className="text-[10px] font-medium uppercase tracking-wider text-white/60">{employee.role}</p>
         <p className="mt-1 text-[11px] leading-relaxed text-white/80">{employee.description}</p>
       </div>
     </div>
@@ -194,7 +183,6 @@ function MiniCard({ employee, highlight }: { employee: Employee; highlight?: boo
   return (
     <div className={`rounded-lg bg-gradient-to-br ${employee.color} px-3 py-2 shadow-sm ${highlight ? 'ring-2 ring-white/50' : ''}`}>
       <p className="text-xs font-bold text-white">{employee.name}</p>
-      <p className="text-[9px] text-white/60">{employee.role}</p>
     </div>
   )
 }
@@ -362,7 +350,7 @@ function TeamBuilderModal({
                   >
                     <div className="flex-1">
                       <p className="text-sm font-semibold text-white">{emp.name}</p>
-                      <p className="text-[10px] text-white/70">{emp.role} — {emp.description}</p>
+                      <p className="text-[10px] text-white/70">{emp.description}</p>
                     </div>
                     <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 ${
                       isSelected ? 'border-white bg-white/30' : 'border-white/40'
@@ -450,7 +438,6 @@ function TeamBuilderModal({
                     </span>
                     <div>
                       <p className="text-sm font-semibold text-white">{emp.name}</p>
-                      <p className="text-[10px] text-white/70">{emp.role}</p>
                     </div>
                     <svg className="ml-auto h-4 w-4 text-white/40" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 9h16.5m-16.5 6.75h16.5" />

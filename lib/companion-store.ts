@@ -762,7 +762,7 @@ class CompanionStore {
     this.markBusy(sessionId)
     const id = userMsgId ?? this.mintStableId()
     const claudeSid = this.getClaudeSessionId(sessionId)
-    console.log(`[store] sendPrompt sid=${sessionId.slice(0, 8)} userMsgId=${id.slice(0, 16)}${userMsgId ? ' (reused)' : ''} claude=${claudeSid ?? 'new'} model=${opts?.model ?? '-'} thinking=${opts?.thinking ?? 'off'}`)
+    console.log(`[store] sendPrompt sid=${sessionId.slice(0, 8)} userMsgId=${id.slice(0, 16)}${userMsgId ? ' (reused)' : ''} claude=${claudeSid ?? 'new'} model=${opts?.model ?? '-'} thinking=${opts?.thinking ?? 'off'} skill=${opts?.skillId ?? '-'}`)
     this.upsertMessage(sessionId, {
       id,
       role: 'user',

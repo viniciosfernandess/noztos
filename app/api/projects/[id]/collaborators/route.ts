@@ -20,7 +20,6 @@ export async function GET(_request: NextRequest, context: RouteContext) {
       id: true,
       name: true,
       description: true,
-      phase: true,
       isActive: true,
       createdAt: true,
     },
@@ -38,7 +37,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: access.error }, { status: access.status })
   }
 
-  let body: { templateId?: string; name?: string; description?: string; phase?: string }
+  let body: { templateId?: string; name?: string; description?: string }
   try {
     body = await request.json()
   } catch {
@@ -60,9 +59,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
         name: template.name,
         description: template.description,
         skillMd: template.skillMd,
-        phase: template.phase,
       },
-      select: { id: true, name: true, description: true, phase: true },
+      select: { id: true, name: true, description: true },
     })
 
     return NextResponse.json(collaborator, { status: 201 })
@@ -79,16 +77,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: 'Description is required' }, { status: 400 })
   }
 
-  const phase = body.phase === 'reviewer' ? 'reviewer' : 'planner'
-
   const collaborator = await prisma.collaborator.create({
     data: {
       projectId: id,
       name,
       description,
-      phase: phase as 'planner' | 'reviewer',
     },
-    select: { id: true, name: true, description: true, phase: true },
+    select: { id: true, name: true, description: true },
   })
 
   return NextResponse.json(collaborator, { status: 201 })

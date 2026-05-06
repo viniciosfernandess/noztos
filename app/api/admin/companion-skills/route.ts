@@ -34,7 +34,7 @@ export async function GET() {
 
   const skills = await prisma.collaborator.findMany({
     where: { isPlatformDefault: true, projectId: null },
-    select: { id: true, name: true, description: true, phase: true, skillMd: true, isActive: true, createdAt: true },
+    select: { id: true, name: true, description: true, skillMd: true, isActive: true, createdAt: true },
     orderBy: { name: 'asc' },
   })
   return NextResponse.json({ skills })
@@ -44,11 +44,10 @@ interface UpdateBody {
   // Agent name (case-insensitive, e.g. 'CEO', 'tester'). Required so
   // we know which Collaborator row to mutate.
   name: string
-  // Optional partial fields. At least one of skillMd / description /
-  // phase must be present.
+  // Optional partial fields. At least one of skillMd / description
+  // must be present.
   skillMd?: string
   description?: string
-  phase?: 'planner' | 'reviewer'
 }
 
 export async function POST(request: NextRequest) {
@@ -65,7 +64,7 @@ export async function POST(request: NextRequest) {
   if (typeof body.name !== 'string' || body.name.length === 0) {
     return NextResponse.json({ error: 'Missing name' }, { status: 400 })
   }
-  if (body.skillMd === undefined && body.description === undefined && body.phase === undefined) {
+  if (body.skillMd === undefined && body.description === undefined) {
     return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
   }
 
@@ -83,10 +82,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: `Unknown platform default skill: ${body.name}` }, { status: 404 })
   }
 
-  const data: { skillMd?: string; description?: string; phase?: 'planner' | 'reviewer' } = {}
+  const data: { skillMd?: string; description?: string } = {}
   if (body.skillMd !== undefined) data.skillMd = body.skillMd
   if (body.description !== undefined) data.description = body.description
-  if (body.phase !== undefined) data.phase = body.phase
 
   await prisma.collaborator.update({
     where: { id: target.id },
