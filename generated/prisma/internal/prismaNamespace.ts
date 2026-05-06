@@ -2125,7 +2125,6 @@ export const CollaboratorScalarFieldEnum = {
   description: 'description',
   skillMd: 'skillMd',
   isPlatformDefault: 'isPlatformDefault',
-  phase: 'phase',
   isActive: 'isActive',
   createdAt: 'createdAt'
 } as const
@@ -2498,20 +2497,6 @@ export type IntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'In
  * Reference to a field of type 'Int[]'
  */
 export type ListIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int[]'>
-    
-
-
-/**
- * Reference to a field of type 'Phase'
- */
-export type EnumPhaseFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Phase'>
-    
-
-
-/**
- * Reference to a field of type 'Phase[]'
- */
-export type ListEnumPhaseFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Phase[]'>
     
 
 

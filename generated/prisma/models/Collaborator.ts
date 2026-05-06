@@ -31,7 +31,6 @@ export type CollaboratorMinAggregateOutputType = {
   description: string | null
   skillMd: string | null
   isPlatformDefault: boolean | null
-  phase: $Enums.Phase | null
   isActive: boolean | null
   createdAt: Date | null
 }
@@ -43,7 +42,6 @@ export type CollaboratorMaxAggregateOutputType = {
   description: string | null
   skillMd: string | null
   isPlatformDefault: boolean | null
-  phase: $Enums.Phase | null
   isActive: boolean | null
   createdAt: Date | null
 }
@@ -55,7 +53,6 @@ export type CollaboratorCountAggregateOutputType = {
   description: number
   skillMd: number
   isPlatformDefault: number
-  phase: number
   isActive: number
   createdAt: number
   _all: number
@@ -69,7 +66,6 @@ export type CollaboratorMinAggregateInputType = {
   description?: true
   skillMd?: true
   isPlatformDefault?: true
-  phase?: true
   isActive?: true
   createdAt?: true
 }
@@ -81,7 +77,6 @@ export type CollaboratorMaxAggregateInputType = {
   description?: true
   skillMd?: true
   isPlatformDefault?: true
-  phase?: true
   isActive?: true
   createdAt?: true
 }
@@ -93,7 +88,6 @@ export type CollaboratorCountAggregateInputType = {
   description?: true
   skillMd?: true
   isPlatformDefault?: true
-  phase?: true
   isActive?: true
   createdAt?: true
   _all?: true
@@ -178,7 +172,6 @@ export type CollaboratorGroupByOutputType = {
   description: string
   skillMd: string
   isPlatformDefault: boolean
-  phase: $Enums.Phase
   isActive: boolean
   createdAt: Date
   _count: CollaboratorCountAggregateOutputType | null
@@ -211,7 +204,6 @@ export type CollaboratorWhereInput = {
   description?: Prisma.StringFilter<"Collaborator"> | string
   skillMd?: Prisma.StringFilter<"Collaborator"> | string
   isPlatformDefault?: Prisma.BoolFilter<"Collaborator"> | boolean
-  phase?: Prisma.EnumPhaseFilter<"Collaborator"> | $Enums.Phase
   isActive?: Prisma.BoolFilter<"Collaborator"> | boolean
   createdAt?: Prisma.DateTimeFilter<"Collaborator"> | Date | string
   project?: Prisma.XOR<Prisma.ProjectNullableScalarRelationFilter, Prisma.ProjectWhereInput> | null
@@ -225,7 +217,6 @@ export type CollaboratorOrderByWithRelationInput = {
   description?: Prisma.SortOrder
   skillMd?: Prisma.SortOrder
   isPlatformDefault?: Prisma.SortOrder
-  phase?: Prisma.SortOrder
   isActive?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   project?: Prisma.ProjectOrderByWithRelationInput
@@ -243,7 +234,6 @@ export type CollaboratorWhereUniqueInput = Prisma.AtLeast<{
   description?: Prisma.StringFilter<"Collaborator"> | string
   skillMd?: Prisma.StringFilter<"Collaborator"> | string
   isPlatformDefault?: Prisma.BoolFilter<"Collaborator"> | boolean
-  phase?: Prisma.EnumPhaseFilter<"Collaborator"> | $Enums.Phase
   isActive?: Prisma.BoolFilter<"Collaborator"> | boolean
   createdAt?: Prisma.DateTimeFilter<"Collaborator"> | Date | string
   project?: Prisma.XOR<Prisma.ProjectNullableScalarRelationFilter, Prisma.ProjectWhereInput> | null
@@ -257,7 +247,6 @@ export type CollaboratorOrderByWithAggregationInput = {
   description?: Prisma.SortOrder
   skillMd?: Prisma.SortOrder
   isPlatformDefault?: Prisma.SortOrder
-  phase?: Prisma.SortOrder
   isActive?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   _count?: Prisma.CollaboratorCountOrderByAggregateInput
@@ -275,7 +264,6 @@ export type CollaboratorScalarWhereWithAggregatesInput = {
   description?: Prisma.StringWithAggregatesFilter<"Collaborator"> | string
   skillMd?: Prisma.StringWithAggregatesFilter<"Collaborator"> | string
   isPlatformDefault?: Prisma.BoolWithAggregatesFilter<"Collaborator"> | boolean
-  phase?: Prisma.EnumPhaseWithAggregatesFilter<"Collaborator"> | $Enums.Phase
   isActive?: Prisma.BoolWithAggregatesFilter<"Collaborator"> | boolean
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"Collaborator"> | Date | string
 }
@@ -286,7 +274,6 @@ export type CollaboratorCreateInput = {
   description: string
   skillMd?: string
   isPlatformDefault?: boolean
-  phase: $Enums.Phase
   isActive?: boolean
   createdAt?: Date | string
   project?: Prisma.ProjectCreateNestedOneWithoutCollaboratorsInput
@@ -300,7 +287,6 @@ export type CollaboratorUncheckedCreateInput = {
   description: string
   skillMd?: string
   isPlatformDefault?: boolean
-  phase: $Enums.Phase
   isActive?: boolean
   createdAt?: Date | string
   taskSkillLogs?: Prisma.TaskSkillLogUncheckedCreateNestedManyWithoutCollaboratorInput
@@ -312,7 +298,6 @@ export type CollaboratorUpdateInput = {
   description?: Prisma.StringFieldUpdateOperationsInput | string
   skillMd?: Prisma.StringFieldUpdateOperationsInput | string
   isPlatformDefault?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  phase?: Prisma.EnumPhaseFieldUpdateOperationsInput | $Enums.Phase
   isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   project?: Prisma.ProjectUpdateOneWithoutCollaboratorsNestedInput
@@ -326,7 +311,6 @@ export type CollaboratorUncheckedUpdateInput = {
   description?: Prisma.StringFieldUpdateOperationsInput | string
   skillMd?: Prisma.StringFieldUpdateOperationsInput | string
   isPlatformDefault?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  phase?: Prisma.EnumPhaseFieldUpdateOperationsInput | $Enums.Phase
   isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   taskSkillLogs?: Prisma.TaskSkillLogUncheckedUpdateManyWithoutCollaboratorNestedInput
@@ -339,7 +323,6 @@ export type CollaboratorCreateManyInput = {
   description: string
   skillMd?: string
   isPlatformDefault?: boolean
-  phase: $Enums.Phase
   isActive?: boolean
   createdAt?: Date | string
 }
@@ -350,7 +333,6 @@ export type CollaboratorUpdateManyMutationInput = {
   description?: Prisma.StringFieldUpdateOperationsInput | string
   skillMd?: Prisma.StringFieldUpdateOperationsInput | string
   isPlatformDefault?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  phase?: Prisma.EnumPhaseFieldUpdateOperationsInput | $Enums.Phase
   isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -362,7 +344,6 @@ export type CollaboratorUncheckedUpdateManyInput = {
   description?: Prisma.StringFieldUpdateOperationsInput | string
   skillMd?: Prisma.StringFieldUpdateOperationsInput | string
   isPlatformDefault?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  phase?: Prisma.EnumPhaseFieldUpdateOperationsInput | $Enums.Phase
   isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -389,7 +370,6 @@ export type CollaboratorCountOrderByAggregateInput = {
   description?: Prisma.SortOrder
   skillMd?: Prisma.SortOrder
   isPlatformDefault?: Prisma.SortOrder
-  phase?: Prisma.SortOrder
   isActive?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
 }
@@ -401,7 +381,6 @@ export type CollaboratorMaxOrderByAggregateInput = {
   description?: Prisma.SortOrder
   skillMd?: Prisma.SortOrder
   isPlatformDefault?: Prisma.SortOrder
-  phase?: Prisma.SortOrder
   isActive?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
 }
@@ -413,7 +392,6 @@ export type CollaboratorMinOrderByAggregateInput = {
   description?: Prisma.SortOrder
   skillMd?: Prisma.SortOrder
   isPlatformDefault?: Prisma.SortOrder
-  phase?: Prisma.SortOrder
   isActive?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
 }
@@ -465,10 +443,6 @@ export type CollaboratorUncheckedUpdateManyWithoutProjectNestedInput = {
   deleteMany?: Prisma.CollaboratorScalarWhereInput | Prisma.CollaboratorScalarWhereInput[]
 }
 
-export type EnumPhaseFieldUpdateOperationsInput = {
-  set?: $Enums.Phase
-}
-
 export type CollaboratorCreateNestedOneWithoutTaskSkillLogsInput = {
   create?: Prisma.XOR<Prisma.CollaboratorCreateWithoutTaskSkillLogsInput, Prisma.CollaboratorUncheckedCreateWithoutTaskSkillLogsInput>
   connectOrCreate?: Prisma.CollaboratorCreateOrConnectWithoutTaskSkillLogsInput
@@ -491,7 +465,6 @@ export type CollaboratorCreateWithoutProjectInput = {
   description: string
   skillMd?: string
   isPlatformDefault?: boolean
-  phase: $Enums.Phase
   isActive?: boolean
   createdAt?: Date | string
   taskSkillLogs?: Prisma.TaskSkillLogCreateNestedManyWithoutCollaboratorInput
@@ -503,7 +476,6 @@ export type CollaboratorUncheckedCreateWithoutProjectInput = {
   description: string
   skillMd?: string
   isPlatformDefault?: boolean
-  phase: $Enums.Phase
   isActive?: boolean
   createdAt?: Date | string
   taskSkillLogs?: Prisma.TaskSkillLogUncheckedCreateNestedManyWithoutCollaboratorInput
@@ -545,7 +517,6 @@ export type CollaboratorScalarWhereInput = {
   description?: Prisma.StringFilter<"Collaborator"> | string
   skillMd?: Prisma.StringFilter<"Collaborator"> | string
   isPlatformDefault?: Prisma.BoolFilter<"Collaborator"> | boolean
-  phase?: Prisma.EnumPhaseFilter<"Collaborator"> | $Enums.Phase
   isActive?: Prisma.BoolFilter<"Collaborator"> | boolean
   createdAt?: Prisma.DateTimeFilter<"Collaborator"> | Date | string
 }
@@ -556,7 +527,6 @@ export type CollaboratorCreateWithoutTaskSkillLogsInput = {
   description: string
   skillMd?: string
   isPlatformDefault?: boolean
-  phase: $Enums.Phase
   isActive?: boolean
   createdAt?: Date | string
   project?: Prisma.ProjectCreateNestedOneWithoutCollaboratorsInput
@@ -569,7 +539,6 @@ export type CollaboratorUncheckedCreateWithoutTaskSkillLogsInput = {
   description: string
   skillMd?: string
   isPlatformDefault?: boolean
-  phase: $Enums.Phase
   isActive?: boolean
   createdAt?: Date | string
 }
@@ -596,7 +565,6 @@ export type CollaboratorUpdateWithoutTaskSkillLogsInput = {
   description?: Prisma.StringFieldUpdateOperationsInput | string
   skillMd?: Prisma.StringFieldUpdateOperationsInput | string
   isPlatformDefault?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  phase?: Prisma.EnumPhaseFieldUpdateOperationsInput | $Enums.Phase
   isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   project?: Prisma.ProjectUpdateOneWithoutCollaboratorsNestedInput
@@ -609,7 +577,6 @@ export type CollaboratorUncheckedUpdateWithoutTaskSkillLogsInput = {
   description?: Prisma.StringFieldUpdateOperationsInput | string
   skillMd?: Prisma.StringFieldUpdateOperationsInput | string
   isPlatformDefault?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  phase?: Prisma.EnumPhaseFieldUpdateOperationsInput | $Enums.Phase
   isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -620,7 +587,6 @@ export type CollaboratorCreateManyProjectInput = {
   description: string
   skillMd?: string
   isPlatformDefault?: boolean
-  phase: $Enums.Phase
   isActive?: boolean
   createdAt?: Date | string
 }
@@ -631,7 +597,6 @@ export type CollaboratorUpdateWithoutProjectInput = {
   description?: Prisma.StringFieldUpdateOperationsInput | string
   skillMd?: Prisma.StringFieldUpdateOperationsInput | string
   isPlatformDefault?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  phase?: Prisma.EnumPhaseFieldUpdateOperationsInput | $Enums.Phase
   isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   taskSkillLogs?: Prisma.TaskSkillLogUpdateManyWithoutCollaboratorNestedInput
@@ -643,7 +608,6 @@ export type CollaboratorUncheckedUpdateWithoutProjectInput = {
   description?: Prisma.StringFieldUpdateOperationsInput | string
   skillMd?: Prisma.StringFieldUpdateOperationsInput | string
   isPlatformDefault?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  phase?: Prisma.EnumPhaseFieldUpdateOperationsInput | $Enums.Phase
   isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   taskSkillLogs?: Prisma.TaskSkillLogUncheckedUpdateManyWithoutCollaboratorNestedInput
@@ -655,7 +619,6 @@ export type CollaboratorUncheckedUpdateManyWithoutProjectInput = {
   description?: Prisma.StringFieldUpdateOperationsInput | string
   skillMd?: Prisma.StringFieldUpdateOperationsInput | string
   isPlatformDefault?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  phase?: Prisma.EnumPhaseFieldUpdateOperationsInput | $Enums.Phase
   isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
@@ -698,7 +661,6 @@ export type CollaboratorSelect<ExtArgs extends runtime.Types.Extensions.Internal
   description?: boolean
   skillMd?: boolean
   isPlatformDefault?: boolean
-  phase?: boolean
   isActive?: boolean
   createdAt?: boolean
   project?: boolean | Prisma.Collaborator$projectArgs<ExtArgs>
@@ -713,7 +675,6 @@ export type CollaboratorSelectCreateManyAndReturn<ExtArgs extends runtime.Types.
   description?: boolean
   skillMd?: boolean
   isPlatformDefault?: boolean
-  phase?: boolean
   isActive?: boolean
   createdAt?: boolean
   project?: boolean | Prisma.Collaborator$projectArgs<ExtArgs>
@@ -726,7 +687,6 @@ export type CollaboratorSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.
   description?: boolean
   skillMd?: boolean
   isPlatformDefault?: boolean
-  phase?: boolean
   isActive?: boolean
   createdAt?: boolean
   project?: boolean | Prisma.Collaborator$projectArgs<ExtArgs>
@@ -739,12 +699,11 @@ export type CollaboratorSelectScalar = {
   description?: boolean
   skillMd?: boolean
   isPlatformDefault?: boolean
-  phase?: boolean
   isActive?: boolean
   createdAt?: boolean
 }
 
-export type CollaboratorOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "projectId" | "name" | "description" | "skillMd" | "isPlatformDefault" | "phase" | "isActive" | "createdAt", ExtArgs["result"]["collaborator"]>
+export type CollaboratorOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "projectId" | "name" | "description" | "skillMd" | "isPlatformDefault" | "isActive" | "createdAt", ExtArgs["result"]["collaborator"]>
 export type CollaboratorInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   project?: boolean | Prisma.Collaborator$projectArgs<ExtArgs>
   taskSkillLogs?: boolean | Prisma.Collaborator$taskSkillLogsArgs<ExtArgs>
@@ -770,7 +729,6 @@ export type $CollaboratorPayload<ExtArgs extends runtime.Types.Extensions.Intern
     description: string
     skillMd: string
     isPlatformDefault: boolean
-    phase: $Enums.Phase
     isActive: boolean
     createdAt: Date
   }, ExtArgs["result"]["collaborator"]>
@@ -1204,7 +1162,6 @@ export interface CollaboratorFieldRefs {
   readonly description: Prisma.FieldRef<"Collaborator", 'String'>
   readonly skillMd: Prisma.FieldRef<"Collaborator", 'String'>
   readonly isPlatformDefault: Prisma.FieldRef<"Collaborator", 'Boolean'>
-  readonly phase: Prisma.FieldRef<"Collaborator", 'Phase'>
   readonly isActive: Prisma.FieldRef<"Collaborator", 'Boolean'>
   readonly createdAt: Prisma.FieldRef<"Collaborator", 'DateTime'>
 }

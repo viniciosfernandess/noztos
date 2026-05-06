@@ -226,23 +226,6 @@ export type IntWithAggregatesFilter<$PrismaModel = never> = {
   _max?: Prisma.NestedIntFilter<$PrismaModel>
 }
 
-export type EnumPhaseFilter<$PrismaModel = never> = {
-  equals?: $Enums.Phase | Prisma.EnumPhaseFieldRefInput<$PrismaModel>
-  in?: $Enums.Phase[] | Prisma.ListEnumPhaseFieldRefInput<$PrismaModel>
-  notIn?: $Enums.Phase[] | Prisma.ListEnumPhaseFieldRefInput<$PrismaModel>
-  not?: Prisma.NestedEnumPhaseFilter<$PrismaModel> | $Enums.Phase
-}
-
-export type EnumPhaseWithAggregatesFilter<$PrismaModel = never> = {
-  equals?: $Enums.Phase | Prisma.EnumPhaseFieldRefInput<$PrismaModel>
-  in?: $Enums.Phase[] | Prisma.ListEnumPhaseFieldRefInput<$PrismaModel>
-  notIn?: $Enums.Phase[] | Prisma.ListEnumPhaseFieldRefInput<$PrismaModel>
-  not?: Prisma.NestedEnumPhaseWithAggregatesFilter<$PrismaModel> | $Enums.Phase
-  _count?: Prisma.NestedIntFilter<$PrismaModel>
-  _min?: Prisma.NestedEnumPhaseFilter<$PrismaModel>
-  _max?: Prisma.NestedEnumPhaseFilter<$PrismaModel>
-}
-
 export type IntNullableFilter<$PrismaModel = never> = {
   equals?: number | Prisma.IntFieldRefInput<$PrismaModel> | null
   in?: number[] | Prisma.ListIntFieldRefInput<$PrismaModel> | null
@@ -635,23 +618,6 @@ export type NestedFloatFilter<$PrismaModel = never> = {
   gt?: number | Prisma.FloatFieldRefInput<$PrismaModel>
   gte?: number | Prisma.FloatFieldRefInput<$PrismaModel>
   not?: Prisma.NestedFloatFilter<$PrismaModel> | number
-}
-
-export type NestedEnumPhaseFilter<$PrismaModel = never> = {
-  equals?: $Enums.Phase | Prisma.EnumPhaseFieldRefInput<$PrismaModel>
-  in?: $Enums.Phase[] | Prisma.ListEnumPhaseFieldRefInput<$PrismaModel>
-  notIn?: $Enums.Phase[] | Prisma.ListEnumPhaseFieldRefInput<$PrismaModel>
-  not?: Prisma.NestedEnumPhaseFilter<$PrismaModel> | $Enums.Phase
-}
-
-export type NestedEnumPhaseWithAggregatesFilter<$PrismaModel = never> = {
-  equals?: $Enums.Phase | Prisma.EnumPhaseFieldRefInput<$PrismaModel>
-  in?: $Enums.Phase[] | Prisma.ListEnumPhaseFieldRefInput<$PrismaModel>
-  notIn?: $Enums.Phase[] | Prisma.ListEnumPhaseFieldRefInput<$PrismaModel>
-  not?: Prisma.NestedEnumPhaseWithAggregatesFilter<$PrismaModel> | $Enums.Phase
-  _count?: Prisma.NestedIntFilter<$PrismaModel>
-  _min?: Prisma.NestedEnumPhaseFilter<$PrismaModel>
-  _max?: Prisma.NestedEnumPhaseFilter<$PrismaModel>
 }
 
 export type NestedIntNullableWithAggregatesFilter<$PrismaModel = never> = {

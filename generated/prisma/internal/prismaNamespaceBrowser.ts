@@ -198,7 +198,6 @@ export const CollaboratorScalarFieldEnum = {
   description: 'description',
   skillMd: 'skillMd',
   isPlatformDefault: 'isPlatformDefault',
-  phase: 'phase',
   isActive: 'isActive',
   createdAt: 'createdAt'
 } as const

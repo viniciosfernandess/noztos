@@ -9,14 +9,6 @@
 * 🟢 You can import this file directly.
 */
 
-export const Phase = {
-  planner: 'planner',
-  reviewer: 'reviewer'
-} as const
-
-export type Phase = (typeof Phase)[keyof typeof Phase]
-
-
 export const TaskStatus = {
   pending: 'pending',
   queue: 'queue',
