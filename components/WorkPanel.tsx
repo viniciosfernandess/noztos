@@ -1207,18 +1207,44 @@ interface WorktreeInfo {
 
 export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true }: WorkPanelProps) {
   const [terminalOpen, setTerminalOpen] = useState(true)
-  const [rightPanelTab, setRightPanelTab] = useState<'explorer' | 'changes' | 'checks'>('explorer')
   // Main-state refresh telemetry — timestamp of the last successful
   // refresh-main, plus an in-flight flag so the UI can disable the
   // button + show a spinner.
   const [mainRefreshedAt, setMainRefreshedAt] = useState<number | null>(null)
   const [mainRefreshing, setMainRefreshing] = useState(false)
-  // Changes tab: select-mode toggle. When on, rows show checkboxes and the
-  // action bar at the bottom replaces the default row click behavior with
-  // selection toggling. Lives up here (not inside ChangesList) so the header
-  // icon can drive it.
-  const [changesSelectMode, setChangesSelectMode] = useState(false)
-  const [rightPanelExpanded, setRightPanelExpanded] = useState(false)
+
+  // ── Per-worktree right-panel UI state ─────────────────────────────
+  //
+  // Switching worktrees should leave each one looking the way the user
+  // left it: tab choice, expanded mode, select mode, and explorer
+  // folder expansion all preserved per worktree (or 'main' for the
+  // no-worktree context). Without this, e.g. opening Changes in
+  // worktree A and switching to B would show B in Changes too — pure
+  // global state leakage.
+  //
+  // Single Map keyed by `activeWorktreeId ?? 'main'` instead of N
+  // separate Maps: keeps related fields together, one update path,
+  // future fields just extend RightPanelUiState.
+  //
+  // Cache layer (worktree-cache.ts) is untouched — that's for SERVER
+  // data (files, hunks, git status). This is pure UI state that lives
+  // and dies with the WorkPanel mount, by design.
+  type RightPanelTab = 'explorer' | 'changes' | 'checks'
+  interface RightPanelUiState {
+    tab: RightPanelTab
+    expanded: boolean
+    selectMode: boolean
+    // Explicit folder toggles in Explorer. Absent path → fall back to
+    // FolderNode's default (depth < 1). Set to true/false to override.
+    expandedFolders: Map<string, boolean>
+  }
+  const DEFAULT_UI_STATE: RightPanelUiState = {
+    tab: 'explorer',
+    expanded: false,
+    selectMode: false,
+    expandedFolders: new Map(),
+  }
+  const [uiByWorktree, setUiByWorktree] = useState<Map<string, RightPanelUiState>>(() => new Map())
   // Scratchpad — per-project free-form notes, referenced via @notes in chat
   const [showScratchpad, setShowScratchpad] = useState(false)
   const [scratchpadContent, setScratchpadContent] = useState('')
@@ -1263,6 +1289,45 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
   const [worktrees, setWorktrees] = useState<WorktreeInfo[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
   const [activeWorktreeId, setActiveWorktreeId] = useState<string | null>(null)
+
+  // ── Right-panel UI state — derived per worktree ────────────────────
+  // Same names + setter shapes as before so call sites are unchanged.
+  // Reads pull from uiByWorktree keyed on the current context; writes
+  // patch only that key so other worktrees keep their state intact.
+  const uiKey = activeWorktreeId ?? 'main'
+  const ui = uiByWorktree.get(uiKey) ?? DEFAULT_UI_STATE
+  const rightPanelTab = ui.tab
+  const rightPanelExpanded = ui.expanded
+  const changesSelectMode = ui.selectMode
+  const expandedFoldersForActive = ui.expandedFolders
+
+  function patchUi(patch: Partial<RightPanelUiState>) {
+    setUiByWorktree((prev) => {
+      const next = new Map(prev)
+      const cur = next.get(uiKey) ?? DEFAULT_UI_STATE
+      next.set(uiKey, { ...cur, ...patch })
+      return next
+    })
+  }
+  const setRightPanelTab = (tab: RightPanelTab) => patchUi({ tab })
+  const setRightPanelExpanded = (expanded: boolean) => patchUi({ expanded })
+  const setChangesSelectMode = (selectMode: boolean) => patchUi({ selectMode })
+
+  // Folder expansion in Explorer — keep persistence per worktree by
+  // upserting into the current key's Map. FolderNode keeps its own
+  // local useState (init from this map) for fast in-tree renders, and
+  // calls back here on every toggle so the value survives FileTree's
+  // remount-on-worktree-switch (key={activeWorktreeId ?? 'main'}).
+  function setExpandedFolder(path: string, expanded: boolean) {
+    setUiByWorktree((prev) => {
+      const next = new Map(prev)
+      const cur = next.get(uiKey) ?? DEFAULT_UI_STATE
+      const folders = new Map(cur.expandedFolders)
+      folders.set(path, expanded)
+      next.set(uiKey, { ...cur, expandedFolders: folders })
+      return next
+    })
+  }
   // Hunk attachments live in companionStore keyed by sessionId — the
   // Changes-panel "attach to current chat" click captures the active
   // session at click time and stuffs the payload there. Switching chats
@@ -3286,7 +3351,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                 changed files (and all their hunks) to a chat in one go. */}
             {rightPanelTab === 'changes' && (
               <button
-                onClick={() => setChangesSelectMode((v) => !v)}
+                onClick={() => setChangesSelectMode(!changesSelectMode)}
                 title={changesSelectMode ? 'Exit select mode' : 'Select changes'}
                 className={`ml-2 transition-colors ${changesSelectMode ? 'text-zinc-100' : 'text-zinc-500 hover:text-zinc-300'}`}
               >
@@ -3319,7 +3384,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
           {/* Panel content — takes remaining space above terminal */}
           <div className="min-h-0 flex-1 overflow-hidden" style={{ backgroundColor: '#181818' }}>
             {rightPanelTab === 'explorer' && (
-              <FileTree key={activeWorktreeId ?? 'main'} projectId={projectId} worktreeId={activeWorktreeId} hasActiveSession={!!activeSessionId} mainState={!activeWorktreeId} worktreePending={activeWorktreePending} agentBusy={activeWorktreeAgentBusy} onAddSelection={handleAttachSelectionToCurrentChat} />
+              <FileTree key={activeWorktreeId ?? 'main'} projectId={projectId} worktreeId={activeWorktreeId} hasActiveSession={!!activeSessionId} mainState={!activeWorktreeId} worktreePending={activeWorktreePending} agentBusy={activeWorktreeAgentBusy} onAddSelection={handleAttachSelectionToCurrentChat} expandedFolders={expandedFoldersForActive} setExpandedFolder={setExpandedFolder} />
             )}
             {rightPanelTab === 'changes' && (
               <ChangesList
@@ -4718,7 +4783,7 @@ function DiffHunkView({
 
 // ── File Tree ──────────────────────────────────────────────────────────────
 
-function FileTree({ projectId, worktreeId, hasActiveSession, mainState, worktreePending, agentBusy, onAddSelection }: { projectId: string; worktreeId?: string | null; hasActiveSession?: boolean; mainState?: boolean; worktreePending?: boolean; agentBusy?: boolean; onAddSelection?: (filePath: string, startLine: number, endLine: number, lines: Array<{ type: 'add' | 'remove' | 'context'; content: string }>) => void }) {
+function FileTree({ projectId, worktreeId, hasActiveSession, mainState, worktreePending, agentBusy, onAddSelection, expandedFolders, setExpandedFolder }: { projectId: string; worktreeId?: string | null; hasActiveSession?: boolean; mainState?: boolean; worktreePending?: boolean; agentBusy?: boolean; onAddSelection?: (filePath: string, startLine: number, endLine: number, lines: Array<{ type: 'add' | 'remove' | 'context'; content: string }>) => void; expandedFolders: Map<string, boolean>; setExpandedFolder: (path: string, expanded: boolean) => void }) {
   // Query-string helper: append ?worktree=ID to every file API call so the
   // tree, reads, writes and PATCH operations all stay scoped to the active
   // worktree. Main (no worktree) continues to use the project root.
@@ -5399,7 +5464,7 @@ function FileTree({ projectId, worktreeId, hasActiveSession, mainState, worktree
         ) : filteredFiles.length === 0 ? (
           <p className="px-3 py-2 text-xs text-zinc-400">{search ? 'No matches' : 'No files'}</p>
         ) : (
-          <TreeNode node={tree} depth={0} selectedPath={selectedPath} onSelect={handleSelectFile} collapseKey={collapseKey} expandPaths={expandPaths} onContextMenu={handleContextMenu} onMove={handleMoveFile} />
+          <TreeNode node={tree} depth={0} selectedPath={selectedPath} onSelect={handleSelectFile} collapseKey={collapseKey} expandPaths={expandPaths} onContextMenu={handleContextMenu} onMove={handleMoveFile} expandedFolders={expandedFolders} setExpandedFolder={setExpandedFolder} />
         )}
       </div>
 
@@ -5622,9 +5687,15 @@ interface TreeProps {
   expandPaths?: Set<string>
   onContextMenu?: (e: React.MouseEvent, path: string) => void
   onMove?: (fromPath: string, toFolder: string) => void
+  // Per-worktree folder-expansion store, lifted to WorkPanel so it
+  // survives FileTree's remount-on-worktree-switch (key trick).
+  // FolderNode reads its initial state from here and writes back on
+  // every toggle, so coming back to a worktree restores the same view.
+  expandedFolders: Map<string, boolean>
+  setExpandedFolder: (path: string, expanded: boolean) => void
 }
 
-function TreeNode({ node, depth, selectedPath, onSelect, collapseKey, expandPaths, onContextMenu, onMove }: TreeProps) {
+function TreeNode({ node, depth, selectedPath, onSelect, collapseKey, expandPaths, onContextMenu, onMove, expandedFolders, setExpandedFolder }: TreeProps) {
   return (
     <>
       {node.children.map((child) => (
@@ -5639,7 +5710,7 @@ function TreeNode({ node, depth, selectedPath, onSelect, collapseKey, expandPath
             onMove={onMove}
           />
         ) : (
-          <FolderNode key={child.path} node={child} depth={depth} selectedPath={selectedPath} onSelect={onSelect} collapseKey={collapseKey} expandPaths={expandPaths} onContextMenu={onContextMenu} onMove={onMove} />
+          <FolderNode key={child.path} node={child} depth={depth} selectedPath={selectedPath} onSelect={onSelect} collapseKey={collapseKey} expandPaths={expandPaths} onContextMenu={onContextMenu} onMove={onMove} expandedFolders={expandedFolders} setExpandedFolder={setExpandedFolder} />
         )
       ))}
     </>
@@ -5679,18 +5750,39 @@ function FileNodeDraggable({ child, depth, selectedPath, onSelect, onContextMenu
   )
 }
 
-function FolderNode({ node, depth, selectedPath, onSelect, collapseKey, expandPaths, onContextMenu, onMove }: TreeProps) {
-  const [expanded, setExpanded] = useState(depth < 1)
+function FolderNode({ node, depth, selectedPath, onSelect, collapseKey, expandPaths, onContextMenu, onMove, expandedFolders, setExpandedFolder }: TreeProps) {
+  // Initial value: explicit per-worktree toggle wins, otherwise the
+  // existing default (top level open). On every change we mirror the
+  // value back to the per-worktree map so it survives FileTree's
+  // remount on worktree switch.
+  const [expanded, setExpanded] = useState<boolean>(() => {
+    const stored = expandedFolders.get(node.path)
+    return stored !== undefined ? stored : depth < 1
+  })
   const [dragOver, setDragOver] = useState(false)
 
+  function toggleExpanded() {
+    const next = !expanded
+    setExpanded(next)
+    setExpandedFolder(node.path, next)
+  }
+
   useEffect(() => {
-    if (collapseKey && collapseKey > 0) setExpanded(false)
+    if (collapseKey && collapseKey > 0) {
+      setExpanded(false)
+      setExpandedFolder(node.path, false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collapseKey])
 
   // Auto-expand when this folder's path is an ancestor of a requested path.
   useEffect(() => {
     if (!expandPaths || expandPaths.size === 0) return
-    if (expandPaths.has(node.path)) setExpanded(true)
+    if (expandPaths.has(node.path)) {
+      setExpanded(true)
+      setExpandedFolder(node.path, true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expandPaths, node.path])
 
   function handleDragOver(e: React.DragEvent) {
@@ -5719,7 +5811,7 @@ function FolderNode({ node, depth, selectedPath, onSelect, collapseKey, expandPa
   return (
     <div>
       <button
-        onClick={() => setExpanded(!expanded)}
+        onClick={toggleExpanded}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -5738,7 +5830,7 @@ function FolderNode({ node, depth, selectedPath, onSelect, collapseKey, expandPa
         {node.isNew && <span className="shrink-0 text-[9px] font-bold text-[#73C991]">U</span>}
         {node.isModified && !node.isNew && <span className="shrink-0 text-[9px] font-bold text-[#E2C08D]">M</span>}
       </button>
-      {expanded && <TreeNode node={node} depth={depth + 1} selectedPath={selectedPath} onSelect={onSelect} collapseKey={collapseKey} expandPaths={expandPaths} onContextMenu={onContextMenu} onMove={onMove} />}
+      {expanded && <TreeNode node={node} depth={depth + 1} selectedPath={selectedPath} onSelect={onSelect} collapseKey={collapseKey} expandPaths={expandPaths} onContextMenu={onContextMenu} onMove={onMove} expandedFolders={expandedFolders} setExpandedFolder={setExpandedFolder} />}
     </div>
   )
 }
