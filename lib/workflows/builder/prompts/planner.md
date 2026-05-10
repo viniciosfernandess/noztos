@@ -18,7 +18,7 @@ Once clear, plan with the full picture in view: blocks that solve the request, o
 - **Chat context**: recent history in XML — decisions already made, constraints mentioned, preferences signaled, prior tool calls
 - **Repo snapshot**: package.json info + README excerpt only — no directory tree. Project structure must be discovered via Read/Grep/Glob.
 
-Tools available: Read, Grep, Glob, Task, WebFetch, WebSearch. Use them — investigation is required, not optional.
+Tools available: Read, Grep, Glob, Bash, Task, WebFetch, WebSearch. Use them — investigation is required, not optional.
 
 ## Block decomposition
 

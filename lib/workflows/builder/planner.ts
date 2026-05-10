@@ -188,9 +188,12 @@ export async function runPlannerStep(input: PlannerInput): Promise<PlannerStepRe
     userText,
     cwd: input.projectPath,
     model: 'sonnet',
-    // Planner não precisa editar — só pensar e ler (Read pra investigar
-    // se quiser, mas o snapshot já vem no prompt)
-    disallowedTools: ['Edit', 'Write', 'Bash', 'NotebookEdit', 'MultiEdit'],
+    // Planner não escreve código, mas precisa explorar livremente.
+    // Bash fica permitido (read-only por convenção: ls, find, cat, head,
+    // tree) — sem ele o modelo não consegue enumerar diretórios de
+    // forma ergonômica e acaba "advinhando" estrutura. Edit/Write
+    // bloqueados garantem que ele não pode modificar arquivos.
+    disallowedTools: ['Edit', 'Write', 'NotebookEdit', 'MultiEdit'],
     permissionMode: 'bypassPermissions',
     onChunk: input.onChunk,
   })
