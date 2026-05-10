@@ -41,38 +41,19 @@ export interface PlannerStepResult {
   userText: string
 }
 
-// Builda repo snapshot leve. Top-level + key dirs + package.json hints.
+// Repo snapshot — only what's bias-free.
+//
+// We deliberately DO NOT include a directory tree here. Earlier versions
+// listed top-level entries + key dirs one level deep; that gave the
+// Planner a false sense of "I already know the structure" and it stopped
+// investigating before discovering route groups, dynamic paths, etc.
+// Now the snapshot only carries package.json (stack/scripts/deps) and
+// the README excerpt — both describe WHAT the project is without
+// claiming WHERE things live. The Planner is forced to use Read/Grep/
+// Glob to learn structure, which prevents asserting absences that
+// aren't real.
 export async function buildRepoSnapshot(projectPath: string): Promise<string> {
-  const KEY_DIRS = new Set([
-    'src', 'lib', 'app', 'components', 'utils', 'helpers',
-    'pages', 'api', 'server', 'routes', 'hooks', 'modules',
-    'features', 'packages', 'prisma', 'db',
-  ])
-  const lines: string[] = [`Project root: ${projectPath}`, '', 'Top-level entries:']
-  const keyDirs: string[] = []
-  try {
-    const entries = await fs.readdir(projectPath, { withFileTypes: true })
-    for (const e of entries) {
-      if (e.name.startsWith('.') || e.name === 'node_modules' || e.name === 'dist' || e.name === 'build') continue
-      lines.push(`  ${e.name}${e.isDirectory() ? '/' : ''}`)
-      if (e.isDirectory() && KEY_DIRS.has(e.name)) keyDirs.push(e.name)
-    }
-  } catch (err) {
-    return `(error reading projectPath: ${(err as Error).message})`
-  }
-  if (keyDirs.length > 0) {
-    lines.push('', 'Key directories (one level deep):')
-    for (const d of keyDirs) {
-      try {
-        const sub = await fs.readdir(join(projectPath, d), { withFileTypes: true })
-        const items = sub
-          .filter((e) => !e.name.startsWith('.'))
-          .slice(0, 20)
-          .map((e) => `${e.name}${e.isDirectory() ? '/' : ''}`)
-        lines.push(`  ${d}/ → ${items.join(', ')}${sub.length > 20 ? `, … (+${sub.length - 20})` : ''}`)
-      } catch {}
-    }
-  }
+  const lines: string[] = [`Project root: ${projectPath}`]
   try {
     const pkgRaw = await fs.readFile(join(projectPath, 'package.json'), 'utf-8')
     const pkg = JSON.parse(pkgRaw) as {
