@@ -2005,9 +2005,19 @@ const MODE_ACCENT: Record<ModeId, {
 export function ModeSelector({
   mode,
   onChange,
+  lockedTo,
+  lockReason,
 }: {
   mode: ModeId
   onChange: (mode: ModeId) => void
+  // When set, only `lockedTo` is selectable; other modes appear dimmed
+  // and are non-interactive. Used by the Build workflow chip to force
+  // Agent mode (since the workflow mutates code). Removing the chip
+  // clears this, letting the user pick freely again.
+  lockedTo?: ModeId
+  // Short copy shown at the top of the dropdown explaining why the
+  // selection is constrained. Only rendered when `lockedTo` is set.
+  lockReason?: string
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -2044,19 +2054,31 @@ export function ModeSelector({
       </button>
       {open && (
         <div className="absolute bottom-full right-0 mb-1 z-50 min-w-[220px] overflow-hidden rounded-lg border border-[#2B2B2B] bg-[#1B1B1B] shadow-xl shadow-black/40">
+          {lockedTo && (
+            <div className="border-b border-[#2B2B2B] px-2.5 py-1.5 text-[10px] leading-snug text-zinc-400">
+              {lockReason ?? `Locked to ${MODES.find((m) => m.id === lockedTo)?.label ?? lockedTo}`}
+            </div>
+          )}
           {MODES.map((m) => {
             const Icon = MODE_ICONS[m.id]
             const accent = MODE_ACCENT[m.id]
             const selected = mode === m.id
+            const disabled = !!lockedTo && lockedTo !== m.id
             return (
               <button
                 key={m.id}
                 type="button"
-                onClick={() => { onChange(m.id); setOpen(false) }}
-                className={`flex w-full items-start gap-2 border-l-2 px-2.5 py-2 text-left text-[11px] transition-colors ${accent.bgHover} ${
-                  selected
-                    ? `${accent.borderActive} ${accent.bgActive}`
-                    : `border-l-transparent ${accent.bgIdle}`
+                disabled={disabled}
+                aria-disabled={disabled}
+                onClick={() => {
+                  if (disabled) return
+                  onChange(m.id)
+                  setOpen(false)
+                }}
+                className={`flex w-full items-start gap-2 border-l-2 px-2.5 py-2 text-left text-[11px] transition-colors ${
+                  disabled
+                    ? 'cursor-not-allowed border-l-transparent opacity-40'
+                    : `${accent.bgHover} ${selected ? `${accent.borderActive} ${accent.bgActive}` : `border-l-transparent ${accent.bgIdle}`}`
                 }`}
               >
                 <Icon className={`mt-[1px] h-3.5 w-3.5 ${accent.icon}`} />
@@ -2064,7 +2086,7 @@ export function ModeSelector({
                   <span className={`block font-medium ${accent.label}`}>{m.label}</span>
                   <span className="block text-[10px] text-zinc-500">{m.desc}</span>
                 </span>
-                {selected && (
+                {selected && !disabled && (
                   <svg className={`mt-[2px] h-3 w-3 ${accent.icon}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
                     <path d="M5 13l4 4L19 7" />
                   </svg>

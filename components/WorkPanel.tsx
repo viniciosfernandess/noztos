@@ -6423,6 +6423,17 @@ function ChatPanel({
     return () => window.removeEventListener('bornastar-approve-plan', handler)
   }, [])
 
+  // Build workflow mutates code, so the chat mode must be 'agent' when the
+  // chip is active. Auto-switch on selection — does NOT revert on chip
+  // removal (user keeps agent until they manually pick another). The
+  // ModeSelector below also locks the dropdown to agent while the chip is
+  // active so the user can't sneak back into plan/ask mid-flow.
+  useEffect(() => {
+    if (activeMode === 'workflow' && claudeMode !== 'agent') {
+      setClaudeMode('agent')
+    }
+  }, [activeMode, claudeMode])
+
   const bottomRef = useRef<HTMLDivElement>(null)
   // Scroll container ref + pagination flag. Together they let us
   // preserve the user's scroll position when older messages are
@@ -7730,7 +7741,12 @@ function ChatPanel({
             )}
 
             {/* Mode selector — compact dropdown right before the send button */}
-            <ModeSelector mode={claudeMode} onChange={setClaudeMode} />
+            <ModeSelector
+              mode={claudeMode}
+              onChange={setClaudeMode}
+              lockedTo={activeMode === 'workflow' ? 'agent' : undefined}
+              lockReason={activeMode === 'workflow' && activeWorkflow ? `${activeWorkflow.name} workflow requires Agent mode` : undefined}
+            />
 
             {/* Submit / stop button */}
             {isRunning ? (
