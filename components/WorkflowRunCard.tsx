@@ -1,13 +1,18 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useWorkflowRunPoller, type WorkflowRunSnapshot } from '@/lib/hooks/useWorkflowRunPoller'
+import { useWorkflowSnapshot, type WorkflowRunUIState } from '@/lib/hooks/useWorkflowSnapshot'
 import { companionStore } from '@/lib/companion-store'
 
 // Card vivo no chat com progresso do Builder Workflow.
 //
-// Polling via useWorkflowRunPoller (1s). Renderiza Planner → blocks →
-// agents step-by-step. Não mostra cost/tokens (user paga via OAuth).
+// Lives off `useWorkflowSnapshot` which mirrors the chat-message pattern:
+// SSE deltas flow into the store instantly, DB cold-load fills the gap
+// on mount/reconnect, low-freq backup poll catches missed frames. On
+// terminal status the snapshot stays in the store — card keeps rendering
+// the final state until the user dismisses it. Não mostra cost/tokens
+// (user paga via OAuth).
+
 
 interface TranscriptChunk {
   ts: number
@@ -52,8 +57,10 @@ interface RunSnapshotProgress {
   } | null
 }
 
+const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
+
 export function WorkflowRunCard({ sessionId, runId }: { sessionId: string; runId: string }) {
-  const snapshot = useWorkflowRunPoller(sessionId, runId)
+  const snapshot = useWorkflowSnapshot(runId)
 
   if (!snapshot) {
     return (
@@ -62,6 +69,8 @@ export function WorkflowRunCard({ sessionId, runId }: { sessionId: string; runId
       </div>
     )
   }
+
+  const isTerminal = TERMINAL_STATUSES.has(snapshot.status)
 
   return (
     <div className="my-3 rounded-md border border-white/10 bg-white/[0.02]">
@@ -72,6 +81,17 @@ export function WorkflowRunCard({ sessionId, runId }: { sessionId: string; runId
       {snapshot.errorReason && (
         <div className="border-t border-white/10 px-3 py-1.5 text-[10px] text-rose-400">
           {snapshot.errorReason}
+        </div>
+      )}
+      {isTerminal && (
+        <div className="flex justify-end border-t border-white/10 px-3 py-1.5">
+          <button
+            type="button"
+            onClick={() => companionStore.dismissWorkflowRun(runId, sessionId)}
+            className="rounded px-2 py-1 text-[10px] text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-300"
+          >
+            Dispensar
+          </button>
         </div>
       )}
     </div>
@@ -126,7 +146,7 @@ function CardScrollBody({ children }: { children: React.ReactNode }) {
   )
 }
 
-function Header({ snapshot }: { snapshot: WorkflowRunSnapshot }) {
+function Header({ snapshot }: { snapshot: WorkflowRunUIState }) {
   const status = snapshot.status
   const elapsed = ((snapshot.completedAt ? new Date(snapshot.completedAt).getTime() : Date.now()) - new Date(snapshot.createdAt).getTime()) / 1000
 
@@ -151,7 +171,7 @@ function StatusDot({ status }: { status: string }) {
   return <span className={`inline-block h-1.5 w-1.5 rounded-full ${cls}`} />
 }
 
-function Body({ snapshot }: { snapshot: WorkflowRunSnapshot }) {
+function Body({ snapshot }: { snapshot: WorkflowRunUIState }) {
   const progress = (snapshot.progress ?? {}) as RunSnapshotProgress
   const blocks = progress.blocks ?? []
 

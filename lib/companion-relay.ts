@@ -210,17 +210,19 @@ function maybeBufferEvent(event: unknown, userId: string): void {
     console.log('[relay-buffer] skip: event is not object')
     return
   }
-  // Only persist the raw Claude stream into the buffer. Status
-  // heartbeats, fs_change notifications, running_sessions rollups, etc.
-  // are ephemeral presence signals — they have no place in a replayed
-  // chat history and would just waste bytes.
-  if (env.type !== 'claude_event') {
-    console.log(`[relay-buffer] skip: type=${env.type} (not claude_event)`)
+  // Two frame types persist into the ring:
+  //   • claude_event       — the raw Claude stream (chat turns, tool rows)
+  //   • workflow_progress  — delta chunks from a running Builder Workflow
+  //                          (planner/architect/builder/reviewer transcripts)
+  // Status heartbeats, fs_change, running_sessions, pty_* are ephemeral
+  // presence signals and never buffer — they'd just waste bytes on replay.
+  if (env.type !== 'claude_event' && env.type !== 'workflow_progress') {
+    console.log(`[relay-buffer] skip: type=${env.type} (not buffered)`)
     return
   }
   const sessionId = env.payload?.bornastarSessionId
   if (!sessionId) {
-    console.log('[relay-buffer] skip: claude_event missing bornastarSessionId')
+    console.log(`[relay-buffer] skip: ${env.type} missing bornastarSessionId`)
     return
   }
 
@@ -356,6 +358,38 @@ export function dropSessionBuffer(sessionId: string): void {
   if (!buf) return
   bufferBytes.value -= buf.bytes
   sessionBuffers.delete(sessionId)
+}
+
+// Drop only the frames matching `predicate` (in-place rewrite of the
+// session ring). Bytes are refunded to the global counter so the cap
+// math stays accurate. Used by the workflow runner to free chunks of
+// blocks that have already completed — cache should hold the working
+// tip, not the whole history. DB stays as the source of truth for the
+// completed work; UI cold-load goes there if a user scrolls back far
+// enough that they've evicted from cache.
+export function dropFramesByPredicate(
+  sessionId: string,
+  predicate: (event: unknown) => boolean,
+): number {
+  const buf = sessionBuffers.get(sessionId)
+  if (!buf) return 0
+  let dropped = 0
+  const kept: unknown[] = []
+  for (const ev of buf.events) {
+    if (predicate(ev)) {
+      const size = estimateBytes(ev)
+      buf.bytes -= size
+      bufferBytes.value -= size
+      dropped++
+    } else {
+      kept.push(ev)
+    }
+  }
+  if (dropped > 0) {
+    buf.events = kept
+    console.log(`[relay-buffer] predicate drop sessionId=${sessionId.slice(0, 8)} dropped=${dropped} kept=${buf.events.length} bytes=${buf.bytes}`)
+  }
+  return dropped
 }
 
 export function getBufferStats(): {

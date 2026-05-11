@@ -101,6 +101,12 @@ export interface RunSnapshot {
   plan?: PlannerOutput
   blocks: BlockState[]
   currentBlockIndex?: number    // -1 / undefined = phase 0 / pre-blocks
+  // Monotonic chunk counter — the runner stamps each delta with seq before
+  // pushing to the relay; the persist tick writes the latest value here.
+  // The browser uses it on cold-load to set its dedupe cursor so any
+  // SSE-replayed delta whose seq is already covered by the DB snapshot
+  // gets dropped instead of double-applied to the transcript.
+  chunkSeq?: number
   // Live step indicator pra UI mostrar "▶ Architect thinking..." +
   // o transcript em tempo real do agent (text + tool_use + tool_result
   // como vem do stream-json). UI renderiza igual o chat normal renderiza

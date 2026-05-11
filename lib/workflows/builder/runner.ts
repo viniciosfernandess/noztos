@@ -10,7 +10,7 @@
 import { promises as fs } from 'node:fs'
 import { join } from 'node:path'
 import { prisma } from '@/lib/db'
-import { getChannel } from '@/lib/companion-relay'
+import { getChannel, dropFramesByPredicate } from '@/lib/companion-relay'
 import { loadSessionContext, persistRows, type PersistRow } from '@/lib/chat-persist'
 import { buildBridgeInContext } from '../shared/bridge-in'
 import { cleanupHandoff, readArchitectPlan, readBuilderReport, readRejectionList } from '../shared/artifacts'
@@ -125,17 +125,26 @@ async function markStatus(runId: string, status: string): Promise<void> {
 
 // Live transcript onChunk factory.
 //
-// Returns a callback the agent step passes into callClaude. Each parsed
-// stream-json chunk lands in `snapshot.currentStep.transcript`, which
-// the WorkflowRunCard polls and renders via the same components the
-// chat normal already uses. DB writes are throttled to ~`THROTTLE_MS`
-// so a chatty agent doesn't hammer Postgres — the trailing-edge timer
-// guarantees the latest chunk lands on disk within one window.
+// Each parsed stream-json chunk has two destinations:
 //
-// Fire-and-forget on the persist (no await) so the agent's parse loop
-// is never backpressured; persistProgress is a single Prisma update of
-// one row, fast and idempotent.
-function makeLiveOnChunk(runId: string, snapshot: RunSnapshot): (chunk: TranscriptChunk) => void {
+//   1. Cache (relay ring + browser SSE) — instant. `channel.pushEvent` of a
+//      `workflow_progress` frame buffers in the per-session ring and emits
+//      to the browser. UI applies the delta to its store and re-renders.
+//      In-process push is microseconds; the `claude -p` child is unaffected.
+//
+//   2. DB (durability backstop) — throttled ~500ms. Mobile reconnect,
+//      F5, ring eviction past the cap all read from `WorkflowRun.progress`.
+//
+// Plus the in-memory snapshot mutation so the runner itself keeps an
+// accurate view for its own decisions (Reviewer needs transcript, etc).
+//
+// Fire-and-forget on persist (no await) so the agent's parse loop is
+// never backpressured; persistProgress is a single Prisma update.
+function makeLiveOnChunk(
+  runId: string,
+  snapshot: RunSnapshot,
+  ctx: { userId: string; sessionId: string; seqRef: { value: number } },
+): (chunk: TranscriptChunk) => void {
   const THROTTLE_MS = 500
   let scheduled: ReturnType<typeof setTimeout> | null = null
   let lastFlushAt = 0
@@ -153,6 +162,31 @@ function makeLiveOnChunk(runId: string, snapshot: RunSnapshot): (chunk: Transcri
     if (!snapshot.currentStep.transcript) snapshot.currentStep.transcript = []
     snapshot.currentStep.transcript.push(chunk)
 
+    // Push delta to relay (cache + SSE). Best-effort: relay failures must
+    // never break the agent's parse loop. Seq is monotonic per run so the
+    // browser store can dedupe replays on reconnect. Stamped on the
+    // snapshot so the throttled persist captures the latest cursor; the
+    // browser reads it on cold-load to seed its dedupe state.
+    const seq = ++ctx.seqRef.value
+    snapshot.chunkSeq = seq
+    try {
+      const channel = getChannel(ctx.userId)
+      channel.pushEvent({
+        type: 'workflow_progress',
+        payload: {
+          bornastarSessionId: ctx.sessionId,
+          runId,
+          seq,
+          role: snapshot.currentStep.role,
+          blockIndex: snapshot.currentStep.blockIndex,
+          attempt: snapshot.currentStep.attempt,
+          chunk,
+        },
+      }, ctx.userId)
+    } catch (err) {
+      console.warn(`[wf-runner] relay push (workflow_progress) failed: ${(err as Error).message}`)
+    }
+
     if (scheduled) return  // already a flush queued
     const elapsed = Date.now() - lastFlushAt
     if (elapsed >= THROTTLE_MS) {
@@ -160,6 +194,50 @@ function makeLiveOnChunk(runId: string, snapshot: RunSnapshot): (chunk: Transcri
     } else {
       scheduled = setTimeout(flush, THROTTLE_MS - elapsed)
     }
+  }
+}
+
+// Type guard for the relay drop predicates below — narrows `unknown` to
+// the workflow_progress envelope so we can read runId/blockIndex without
+// casting at every call site.
+interface WorkflowProgressEnvelope {
+  type: 'workflow_progress'
+  payload: {
+    bornastarSessionId: string
+    runId: string
+    blockIndex: number
+    [k: string]: unknown
+  }
+}
+function isWorkflowProgressFrame(ev: unknown): ev is WorkflowProgressEnvelope {
+  const e = ev as { type?: string; payload?: { runId?: string } }
+  return !!e && e.type === 'workflow_progress' && typeof e.payload?.runId === 'string'
+}
+
+// Free the cache footprint of a single completed block. The full snapshot
+// stays in DB; the WorkflowRunCard reads it from there if the user scrolls
+// back to inspect the block. Keeping the cache lean keeps the working tip
+// hot and protects neighboring chat sessions from LRU pressure.
+function evictBlockFromCache(sessionId: string, runId: string, blockIndex: number): void {
+  const dropped = dropFramesByPredicate(sessionId, (ev) =>
+    isWorkflowProgressFrame(ev)
+    && ev.payload.runId === runId
+    && ev.payload.blockIndex === blockIndex,
+  )
+  if (dropped > 0) {
+    console.log(`[wf-runner] evicted block from cache runId=${runId.slice(0, 8)} blockIndex=${blockIndex} frames=${dropped}`)
+  }
+}
+
+// Free every frame belonging to this run when the workflow ends (any
+// terminal status). DB has the final snapshot; UI can hydrate from there
+// if a future view of this run is requested.
+function evictRunFromCache(sessionId: string, runId: string): void {
+  const dropped = dropFramesByPredicate(sessionId, (ev) =>
+    isWorkflowProgressFrame(ev) && ev.payload.runId === runId,
+  )
+  if (dropped > 0) {
+    console.log(`[wf-runner] evicted run from cache runId=${runId.slice(0, 8)} frames=${dropped}`)
   }
 }
 
@@ -185,6 +263,12 @@ async function executeRun(runId: string, input: StartWorkflowInput): Promise<voi
   // it was started by the assistant out of nowhere.
   await persistUserMessage(runId, input)
 
+  // Monotonic counter shared across every step's onChunk so the browser
+  // store can dedupe deltas on SSE reconnect. The ref shape keeps it
+  // mutable across the closures without globals.
+  const seqRef = { value: 0 }
+  const chunkCtx = { userId: input.userId, sessionId: input.sessionId, seqRef }
+
   // ── Phase 0: Bridge IN + repo snapshot + Planner ─────────────────
 
   snapshot.currentStep = {
@@ -203,6 +287,7 @@ async function executeRun(runId: string, input: StartWorkflowInput): Promise<voi
 
   if (await isCancelled(runId)) {
     console.log(`[wf-runner] run=${runId.slice(0, 8)} cancelled before planner`)
+    evictRunFromCache(input.sessionId, runId)
     return
   }
   console.log(`[wf-runner] run=${runId.slice(0, 8)} ▶ planner starting userMsgBytes=${input.userMessage.length}`)
@@ -214,7 +299,7 @@ async function executeRun(runId: string, input: StartWorkflowInput): Promise<voi
     mode: input.mode,
     projectPath: input.projectPath,
     runId,
-    onChunk: makeLiveOnChunk(runId, snapshot),
+    onChunk: makeLiveOnChunk(runId, snapshot, chunkCtx),
   })
 
   if (!plannerResult.plan) {
@@ -228,6 +313,7 @@ async function executeRun(runId: string, input: StartWorkflowInput): Promise<voi
         completedAt: new Date(),
       },
     })
+    evictRunFromCache(input.sessionId, runId)
     return
   }
 
@@ -256,6 +342,7 @@ async function executeRun(runId: string, input: StartWorkflowInput): Promise<voi
   for (let i = 0; i < snapshot.blocks.length; i++) {
     if (await isCancelled(runId)) {
       console.log(`[wf-runner] run=${runId.slice(0, 8)} cancelled before block=${i + 1}`)
+      evictRunFromCache(input.sessionId, runId)
       return
     }
 
@@ -268,7 +355,7 @@ async function executeRun(runId: string, input: StartWorkflowInput): Promise<voi
 
     console.log(`[wf-runner] run=${runId.slice(0, 8)} block=${i + 1}/${snapshot.blocks.length} START name="${block.name}"`)
 
-    const ok = await runBlock(runId, snapshot, i, isFinalBlock, plannerResult.plan, input)
+    const ok = await runBlock(runId, snapshot, i, isFinalBlock, plannerResult.plan, input, chunkCtx)
     if (!ok) {
       block.status = 'failed'
       block.finishedAt = Date.now()
@@ -281,6 +368,7 @@ async function executeRun(runId: string, input: StartWorkflowInput): Promise<voi
           completedAt: new Date(),
         },
       })
+      evictRunFromCache(input.sessionId, runId)
       return
     }
 
@@ -288,6 +376,12 @@ async function executeRun(runId: string, input: StartWorkflowInput): Promise<voi
     block.finishedAt = Date.now()
     await persistProgress(runId, snapshot)
     console.log(`[wf-runner] run=${runId.slice(0, 8)} block=${i + 1} DONE`)
+
+    // Free the chunks of this completed block from the relay ring. DB
+    // still holds the full transcript so the card can still scroll back
+    // to inspect it (cold-load via /api/workflow/[runId]). The cache
+    // keeps only the working tip: the block currently running.
+    evictBlockFromCache(input.sessionId, runId, i)
   }
 
   // ── Phase final: post final response as chat message ─────────────
@@ -302,6 +396,11 @@ async function executeRun(runId: string, input: StartWorkflowInput): Promise<voi
   } catch (err) {
     console.warn(`[wf-runner] cleanup failed: ${(err as Error).message}`)
   }
+
+  // Final cache eviction: drop any remaining workflow_progress frames for
+  // this run (e.g. planner-phase chunks where blockIndex = -1, which the
+  // per-block eviction above doesn't catch).
+  evictRunFromCache(input.sessionId, runId)
 
   await prisma.workflowRun.updateMany({
     where: { id: runId, status: { not: 'cancelled' } },
@@ -325,6 +424,7 @@ async function runBlock(
   isFinalBlock: boolean,
   plan: NonNullable<RunSnapshot['plan']>,
   input: StartWorkflowInput,
+  chunkCtx: { userId: string; sessionId: string; seqRef: { value: number } },
 ): Promise<boolean> {
   const block = snapshot.blocks[blockIndex]
   const totalBlocks = snapshot.blocks.length
@@ -361,7 +461,7 @@ async function runBlock(
       isRetry: architectIsRetry,
       previousPlan: previousArchitectPlan,
       rejectionList: previousRejectionList,
-      onChunk: makeLiveOnChunk(runId, snapshot),
+      onChunk: makeLiveOnChunk(runId, snapshot, chunkCtx),
     })
 
     archStep.finishedAt = Date.now()
@@ -404,7 +504,7 @@ async function runBlock(
       mode: input.mode,
       runId,
       isRetry: attempt > 1,
-      onChunk: makeLiveOnChunk(runId, snapshot),
+      onChunk: makeLiveOnChunk(runId, snapshot, chunkCtx),
     })
 
     buildStep.finishedAt = Date.now()
@@ -451,7 +551,7 @@ async function runBlock(
       isFinalBlock,
       runId,
       previousRejections: allRejections,
-      onChunk: makeLiveOnChunk(runId, snapshot),
+      onChunk: makeLiveOnChunk(runId, snapshot, chunkCtx),
     })
 
     revStep.finishedAt = Date.now()

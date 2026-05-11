@@ -85,6 +85,24 @@ export interface CompanionInfo {
 
 type Listener = () => void
 
+// Shape held in the store for a live Builder Workflow run. Mirrors the
+// `/api/workflow/[runId]` response (the DB row) so cold-load + SSE deltas
+// converge on the same object. The `progress` payload is the structured
+// `RunSnapshot` (blocks, currentStep, transcripts) the card renders.
+export interface WorkflowRunUIState {
+  id: string
+  sessionId: string
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
+  workflowType: string
+  userMessage: string
+  plan: unknown
+  progress: unknown
+  finalResponse: string | null
+  errorReason: string | null
+  createdAt: string
+  completedAt: string | null
+}
+
 function emptySlice(): ChatSlice {
   return {
     messages: new Map(),
@@ -170,6 +188,19 @@ class CompanionStore {
     pendingRename?: string
     opts?: { mode?: 'plan' | 'ask' | 'agent'; model?: string; thinking?: 'off' | 'low' | 'medium' | 'high'; skillId?: string | null }
   }>> = new Map()
+
+  // ── Workflow live snapshot (per runId) ─────────────────────────
+  //
+  // Holds the live RunSnapshot fed by SSE `workflow_progress` frames +
+  // initial cold-load from `/api/workflow/[runId]`. The WorkflowRunCard
+  // subscribes to this map by runId; deltas land here in ~ms and the
+  // card re-renders. Survives terminal status until the user dismisses
+  // (so a finished/cancelled run stays visible exactly as it was).
+  //
+  // `lastSeq` per run dedupes SSE replay on reconnect.
+  private workflowSnapshots: Map<string, WorkflowRunUIState> = new Map()
+  private workflowLastSeq: Map<string, number> = new Map()
+  private workflowListeners: Map<string, Set<Listener>> = new Map()
 
   // ── Snapshot helpers (referentially stable between notifies) ──
 
@@ -700,6 +731,122 @@ class CompanionStore {
 
   getWorkflowRunId(sessionId: string): string | null {
     return this.slices.get(sessionId)?.workflowRunId ?? null
+  }
+
+  // ── Workflow live snapshot — SSE + DB cold-load merge ──────────
+  //
+  // Mirrors the chat-message pattern: cache primary (SSE deltas flow into
+  // `workflowSnapshots` instantly), DB fallback (cold-load on first mount
+  // / reconnect via `/api/workflow/[runId]`). The card subscribes by runId
+  // and re-renders on every notify.
+  //
+  // Snapshot survives terminal status — user dismisses explicitly via
+  // `dismissWorkflowRun`, which also detaches the slice's runId so the
+  // card unmounts. Detach alone (e.g. on chat delete) keeps the snapshot
+  // for any other consumer; dismiss is the user-driven cleanup.
+
+  private notifyWorkflow(runId: string): void {
+    const set = this.workflowListeners.get(runId)
+    if (set) for (const l of set) l()
+  }
+
+  subscribeWorkflowSnapshot(runId: string, cb: Listener): () => void {
+    let set = this.workflowListeners.get(runId)
+    if (!set) { set = new Set(); this.workflowListeners.set(runId, set) }
+    set.add(cb)
+    return () => {
+      const s = this.workflowListeners.get(runId)
+      s?.delete(cb)
+      if (s && s.size === 0) this.workflowListeners.delete(runId)
+    }
+  }
+
+  getWorkflowSnapshot(runId: string): WorkflowRunUIState | undefined {
+    return this.workflowSnapshots.get(runId)
+  }
+
+  // Cold-load: replace the snapshot wholesale from a DB fetch. Reads
+  // `progress.chunkSeq` to seed the dedupe cursor — without it, an SSE
+  // delta drained on reconnect whose seq is already covered by the DB
+  // snapshot would double-apply to the transcript.
+  hydrateWorkflowSnapshot(runId: string, snapshot: WorkflowRunUIState): void {
+    const progress = snapshot.progress as { chunkSeq?: number } | null
+    const cursor = typeof progress?.chunkSeq === 'number' ? progress.chunkSeq : 0
+    this.workflowSnapshots.set(runId, snapshot)
+    this.workflowLastSeq.set(runId, cursor)
+    this.notifyWorkflow(runId)
+  }
+
+  // SSE delta apply. Routes the chunk into both:
+  //   • snapshot.currentStep.transcript (live tip the card renders)
+  //   • the historical step entry under blocks[i].steps[j] when the
+  //     step has already been logged, so a user scrolling back sees the
+  //     full transcript for completed steps too.
+  // Idempotent via monotonic seq — replays from SSE reconnect are dropped.
+  ingestWorkflowProgress(payload: {
+    runId: string
+    seq: number
+    role: 'planner' | 'architect' | 'builder' | 'reviewer'
+    blockIndex: number
+    attempt: number
+    chunk: unknown
+  }): void {
+    const last = this.workflowLastSeq.get(payload.runId) ?? -1
+    if (payload.seq <= last) return
+    const state = this.workflowSnapshots.get(payload.runId)
+    if (!state) return  // not hydrated yet — initial cold-load handles catch-up
+
+    const progress = state.progress as {
+      blocks?: Array<{
+        index: number
+        steps?: Array<{
+          role: string
+          attempt: number
+          transcript?: unknown[]
+        }>
+      }>
+      currentStep?: {
+        role: string
+        blockIndex: number
+        attempt: number
+        transcript?: unknown[]
+      } | null
+    } | null
+
+    if (!progress) return
+
+    // Live tip.
+    if (progress.currentStep
+      && progress.currentStep.role === payload.role
+      && progress.currentStep.blockIndex === payload.blockIndex
+      && progress.currentStep.attempt === payload.attempt) {
+      if (!progress.currentStep.transcript) progress.currentStep.transcript = []
+      progress.currentStep.transcript.push(payload.chunk)
+    }
+
+    // Historical step entry (for scrollback to completed/in-flight steps).
+    if (payload.blockIndex >= 0 && Array.isArray(progress.blocks)) {
+      const block = progress.blocks.find((b) => b.index === payload.blockIndex)
+      const step = block?.steps?.find((s) => s.role === payload.role && s.attempt === payload.attempt)
+      if (step) {
+        if (!step.transcript) step.transcript = []
+        step.transcript.push(payload.chunk)
+      }
+    }
+
+    this.workflowLastSeq.set(payload.runId, payload.seq)
+    // Force a new object identity so React's useSyncExternalStore notices.
+    this.workflowSnapshots.set(payload.runId, { ...state, progress: { ...progress } })
+    this.notifyWorkflow(payload.runId)
+  }
+
+  // User-driven dismissal of a terminal-state card: drop snapshot from
+  // memory, clear the slice's runId so the card unmounts, free listeners.
+  dismissWorkflowRun(runId: string, sessionId: string): void {
+    this.workflowSnapshots.delete(runId)
+    this.workflowLastSeq.delete(runId)
+    this.notifyWorkflow(runId)
+    this.detachWorkflowRun(sessionId)
   }
 
   markUnread(sessionId: string): void {

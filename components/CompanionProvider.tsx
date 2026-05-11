@@ -138,6 +138,32 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
                 }
                 continue
               }
+              // workflow_progress: live delta from a running Builder
+              // workflow run. Bypasses ingestClaudeEvent (chat-message
+              // path) and lands directly on the per-run snapshot in the
+              // store. The card subscribes by runId.
+              if (rawType === 'workflow_progress') {
+                const payload = event.payload as unknown as {
+                  bornastarSessionId?: string
+                  runId?: string
+                  seq?: number
+                  role?: 'planner' | 'architect' | 'builder' | 'reviewer'
+                  blockIndex?: number
+                  attempt?: number
+                  chunk?: unknown
+                } | undefined
+                if (payload?.runId && typeof payload.seq === 'number' && payload.role && typeof payload.blockIndex === 'number' && typeof payload.attempt === 'number' && payload.chunk) {
+                  companionStore.ingestWorkflowProgress({
+                    runId: payload.runId,
+                    seq: payload.seq,
+                    role: payload.role,
+                    blockIndex: payload.blockIndex,
+                    attempt: payload.attempt,
+                    chunk: payload.chunk,
+                  })
+                }
+                continue
+              }
               // Unread tagging: a claude_event for a chat that isn't
               // the one on screen marks that chat as unread. The
               // active chat clears its own unread via the mark-read
