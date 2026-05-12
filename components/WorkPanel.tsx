@@ -72,6 +72,9 @@ interface BuiltinWorkflowItem {
   trigger: string
   description: string
   color: string                 // tailwind gradient for the chip in the input
+  // Backend dispatcher key. UI maps the picked chip to this and posts it
+  // to /api/workflow/start so the right runner gets invoked.
+  workflowType: 'builder' | 'debug'
 }
 
 const BUILTIN_WORKFLOWS: BuiltinWorkflowItem[] = [
@@ -81,6 +84,15 @@ const BUILTIN_WORKFLOWS: BuiltinWorkflowItem[] = [
     trigger: '/build',
     description: 'Tell it what to build. Planner scopes, Architect designs, Builder writes, Reviewer ships.',
     color: 'from-emerald-500 to-teal-600',
+    workflowType: 'builder',
+  },
+  {
+    id: 'debug',
+    name: 'Debug',
+    trigger: '/debug',
+    description: 'Describe the bug. Detectives investigate in parallel, Consolidator unifies, Architect designs the fix, Builder applies, Reviewer verifies.',
+    color: 'from-orange-500 to-red-600',
+    workflowType: 'debug',
   },
 ]
 
@@ -6893,29 +6905,34 @@ function ChatPanel({
     // Two entry points feed the same dispatcher:
     //   1. activeMode === 'workflow'  — user picked a workflow chip and
     //      typed the task as free-form prompt
-    //   2. legacy slash prefix         — user typed `/build <task>` by hand
-    // Both normalize to a {workflowId, task} pair and fire /api/workflow/start.
-    let workflowDispatch: { workflowId: string; task: string } | null = null
+    //   2. legacy slash prefix         — user typed `/<trigger> <task>` by hand
+    // Both normalize to a {workflow item, task} pair and fire /api/workflow/start.
+    let workflowDispatch: { workflow: BuiltinWorkflowItem; task: string } | null = null
     if (activeMode === 'workflow' && activeWorkflow) {
       const task = content.trim()
       if (task.length === 0) {
         console.warn('[chat] workflow send with empty task ignored')
         return
       }
-      workflowDispatch = { workflowId: activeWorkflow.id, task }
+      workflowDispatch = { workflow: activeWorkflow, task }
     } else {
-      const slashMatch = content.match(/^\s*\/build\s+([\s\S]+)$/)
-      if (slashMatch) {
-        const task = slashMatch[1].trim()
-        if (task.length === 0) {
-          console.warn('[chat] /build with no task ignored')
-          return
+      // Try each registered trigger; first match wins.
+      for (const wf of BUILTIN_WORKFLOWS) {
+        const escaped = wf.trigger.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const slashMatch = content.match(new RegExp(`^\\s*${escaped}\\s+([\\s\\S]+)$`))
+        if (slashMatch) {
+          const task = slashMatch[1].trim()
+          if (task.length === 0) {
+            console.warn(`[chat] ${wf.trigger} with no task ignored`)
+            return
+          }
+          workflowDispatch = { workflow: wf, task }
+          break
         }
-        workflowDispatch = { workflowId: 'builder', task }
       }
     }
     if (workflowDispatch) {
-      const { task } = workflowDispatch
+      const { task, workflow } = workflowDispatch
       // Optimistic insert with a stable id; the runner reuses the same
       // id when it persists the user row server-side, so the SSE event
       // that lands shortly after is an upsert (no duplicate row, no
@@ -6935,25 +6952,26 @@ function ChatPanel({
           body: JSON.stringify({
             sessionId,
             userMessage: task,
+            workflowType: workflow.workflowType,
             mode: claudeMode === 'plan' ? 'ask' : 'agent',
             userMsgId,
           }),
         })
         const data = await res.json()
         if (!res.ok) {
-          console.error('[chat] /build failed:', data.error)
+          console.error(`[chat] ${workflow.trigger} failed:`, data.error)
           companionStore.upsertMessage(sessionId, {
             id: companionStore.mintStableId(),
             role: 'system',
-            content: `Builder Workflow falhou ao iniciar: ${data.error ?? res.statusText}`,
+            content: `${workflow.name} workflow failed to start: ${data.error ?? res.statusText}`,
             timestamp: Date.now(),
           })
           return
         }
-        console.log(`[chat] /build started runId=${data.runId.slice(0, 8)}`)
+        console.log(`[chat] ${workflow.trigger} started runId=${data.runId.slice(0, 8)}`)
         companionStore.attachWorkflowRun(sessionId, data.runId)
       } catch (err) {
-        console.error('[chat] /build exception:', err)
+        console.error(`[chat] ${workflow.trigger} exception:`, err)
       }
       return
     }

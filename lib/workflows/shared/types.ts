@@ -8,9 +8,9 @@ export type WorkflowMode = 'ask' | 'agent'
 
 export type WorkflowStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
 
-export type WorkflowType = 'builder'  // V1; futuro: 'review' | 'test' | etc
+export type WorkflowType = 'builder' | 'debug'  // V1.1; futuro: 'review' | 'test' | etc
 
-// ── Planner output ──────────────────────────────────────────────────
+// ── Builder planner output ──────────────────────────────────────────
 
 export interface PlannerBlock {
   name: string                  // título curto
@@ -23,9 +23,30 @@ export interface PlannerOutput {
   blocks: PlannerBlock[]
 }
 
+// ── Debug planner output ────────────────────────────────────────────
+//
+// /debug planner decomposes the codebase surface area into N independent
+// "regions" — each one assigned to a detective. The regions are first
+// reasoned about logically (auth flow, session management, db layer),
+// then mapped to physical filesystem paths. Detectives investigate in
+// parallel; their notes are unified by the Consolidator before the fix
+// pipeline (Architect → Builder → Reviewer) runs once.
+
+export interface DetectiveBlock {
+  name: string                  // short label, e.g. "Auth Flow"
+  logicalArea: string           // logical rationale ("session token storage + middleware")
+  paths: string[]               // filesystem paths the detective owns (files or dirs)
+  mission: string               // the bug description verbatim — same on every block
+}
+
+export interface DebugPlannerOutput {
+  rationale?: string
+  blocks: DetectiveBlock[]
+}
+
 // ── Step state (live) ───────────────────────────────────────────────
 
-export type StepRole = 'planner' | 'architect' | 'builder' | 'reviewer'
+export type StepRole = 'planner' | 'architect' | 'builder' | 'reviewer' | 'detective' | 'consolidator'
 
 export type StepStatus = 'pending' | 'running' | 'completed' | 'failed'
 
@@ -98,9 +119,16 @@ export interface RunSnapshot {
   mode: WorkflowMode
   // Caminho da worktree onde os agents operam (vem da ChatSession)
   projectPath: string
-  plan?: PlannerOutput
+  // /builder: PlannerOutput. /debug: DebugPlannerOutput. The runner that
+  // produced the snapshot knows which one to read; UI inspects the shape.
+  plan?: PlannerOutput | DebugPlannerOutput
   blocks: BlockState[]
   currentBlockIndex?: number    // -1 / undefined = phase 0 / pre-blocks
+  // High-level phase for the run. /builder cycles "planner → fixing"
+  // per block; /debug walks "planner → investigating → consolidating
+  // → fixing → done". The UI uses this to decide whether to render
+  // parallel detective transcripts or the single-step layout.
+  phase?: 'planner' | 'investigating' | 'consolidating' | 'fixing' | 'done'
   // Monotonic chunk counter — the runner stamps each delta with seq before
   // pushing to the relay; the persist tick writes the latest value here.
   // The browser uses it on cold-load to set its dedupe cursor so any
@@ -118,6 +146,13 @@ export interface RunSnapshot {
     startedAt: number
     transcript?: TranscriptChunk[]
   } | null
+  // /debug only — populated while phase === 'investigating'. Each entry
+  // is a detective running in parallel; UI renders them in a grid.
+  // Cleared (or left as historical record) once the consolidator starts.
+  parallelSteps?: StepState[]
+  // Consolidated diagnostic findings produced by /debug's consolidator.
+  // Markdown; feeds into Architect as the source-of-truth for the fix.
+  consolidatedFindings?: string
   finalResponse?: string
 }
 

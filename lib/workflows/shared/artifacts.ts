@@ -136,6 +136,95 @@ export async function readPreviousSummaries(projectPath: string, beforeBlockInde
   return out
 }
 
+// ── Debug workflow artifacts ────────────────────────────────────────
+//
+// /debug has a different handoff shape than /build:
+//   .team-handoff/
+//     detective-01/notes.md
+//     detective-02/notes.md
+//     ...
+//     consolidation/findings.md   <- consolidator output (handed to Architect)
+//     fix/
+//       architect-plan.md
+//       builder-report.md
+//       rejection-list-N.md
+//       final-response.md
+
+function detectiveDir(projectPath: string, detectiveIndex: number): string {
+  const display = String(detectiveIndex + 1).padStart(2, '0')
+  return join(projectPath, HANDOFF_DIR, `detective-${display}`)
+}
+
+export async function writeDetectiveNotes(projectPath: string, detectiveIndex: number, content: string): Promise<string> {
+  const dir = detectiveDir(projectPath, detectiveIndex)
+  await fs.mkdir(dir, { recursive: true })
+  const path = join(dir, 'notes.md')
+  await fs.writeFile(path, content, 'utf-8')
+  return path
+}
+
+export async function readDetectiveNotes(projectPath: string, detectiveIndex: number): Promise<string | null> {
+  try {
+    const path = join(detectiveDir(projectPath, detectiveIndex), 'notes.md')
+    return await fs.readFile(path, 'utf-8')
+  } catch { return null }
+}
+
+export async function writeConsolidatedFindings(projectPath: string, content: string): Promise<string> {
+  const dir = join(projectPath, HANDOFF_DIR, 'consolidation')
+  await fs.mkdir(dir, { recursive: true })
+  const path = join(dir, 'findings.md')
+  await fs.writeFile(path, content, 'utf-8')
+  return path
+}
+
+export async function readConsolidatedFindings(projectPath: string): Promise<string | null> {
+  try {
+    const path = join(projectPath, HANDOFF_DIR, 'consolidation', 'findings.md')
+    return await fs.readFile(path, 'utf-8')
+  } catch { return null }
+}
+
+// /debug fix phase lives at .team-handoff/fix/ (single iteration vs /build
+// which has per-block dirs). Reuses the same {architect-plan, builder-report,
+// rejection-list-N, final-response} contract.
+
+function debugFixDir(projectPath: string): string {
+  return join(projectPath, HANDOFF_DIR, 'fix')
+}
+
+export async function writeDebugArchitectPlan(projectPath: string, content: string): Promise<string> {
+  const dir = debugFixDir(projectPath)
+  await fs.mkdir(dir, { recursive: true })
+  const path = join(dir, 'architect-plan.md')
+  await fs.writeFile(path, content, 'utf-8')
+  return path
+}
+
+export async function writeDebugBuilderReport(projectPath: string, content: string): Promise<string> {
+  const dir = debugFixDir(projectPath)
+  await fs.mkdir(dir, { recursive: true })
+  const path = join(dir, 'builder-report.md')
+  await fs.writeFile(path, content, 'utf-8')
+  return path
+}
+
+export async function writeDebugRejectionList(projectPath: string, attempt: number, content: string): Promise<string> {
+  const dir = debugFixDir(projectPath)
+  await fs.mkdir(dir, { recursive: true })
+  const path = join(dir, `rejection-list-${attempt}.md`)
+  await fs.writeFile(path, content, 'utf-8')
+  return path
+}
+
+export async function writeDebugFinalResponse(projectPath: string, content: string): Promise<string> {
+  const dir = debugFixDir(projectPath)
+  await fs.mkdir(dir, { recursive: true })
+  const path = join(dir, 'final-response.md')
+  await fs.writeFile(path, content, 'utf-8')
+  return path
+}
+
 // ── Cleanup ────────────────────────────────────────────────────────
 
 export async function cleanupHandoff(projectPath: string): Promise<void> {

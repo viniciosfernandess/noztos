@@ -1,9 +1,10 @@
 // POST /api/workflow/start
 //
-// Dispara um Builder Workflow. Body:
+// Dispatches a Workflow run. Body:
 //   {
 //     sessionId: string         // chat session
-//     userMessage: string       // task (parte depois do /build)
+//     userMessage: string       // task (parte depois do trigger)
+//     workflowType?: 'builder' | 'debug'  // default: 'builder' (legacy)
 //     mode?: 'ask' | 'agent'    // default: 'agent'
 //   }
 //
@@ -16,6 +17,8 @@ import { cookies } from 'next/headers'
 import { getSessionUserId } from '@/lib/session'
 import { prisma } from '@/lib/db'
 import { startBuilderWorkflow } from '@/lib/workflows/builder/runner'
+import { startDebugWorkflow } from '@/lib/workflows/debug/runner'
+import type { WorkflowType } from '@/lib/workflows/shared/types'
 import { promises as fs } from 'node:fs'
 
 export const maxDuration = 30  // só pra resposta inicial — orquestrador roda fire-and-forget
@@ -25,7 +28,7 @@ export async function POST(request: NextRequest) {
   const userId = getSessionUserId(cookieStore.get('session')?.value)
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  let body: { sessionId?: string; userMessage?: string; mode?: 'ask' | 'agent'; userMsgId?: string }
+  let body: { sessionId?: string; userMessage?: string; workflowType?: WorkflowType; mode?: 'ask' | 'agent'; userMsgId?: string }
   try { body = await request.json() } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
@@ -35,6 +38,10 @@ export async function POST(request: NextRequest) {
   const userMessage = body.userMessage.trim()
   if (userMessage.length === 0) {
     return NextResponse.json({ error: 'userMessage cannot be empty' }, { status: 400 })
+  }
+  const workflowType: WorkflowType = body.workflowType ?? 'builder'
+  if (workflowType !== 'builder' && workflowType !== 'debug') {
+    return NextResponse.json({ error: `Unknown workflowType: ${workflowType}` }, { status: 400 })
   }
 
   // Resolve session + worktree
@@ -70,19 +77,22 @@ export async function POST(request: NextRequest) {
     }, { status: 400 })
   }
 
-  console.log(`[api/workflow/start] session=${session.id.slice(0, 8)} mode=${body.mode ?? 'agent'} userMsgBytes=${userMessage.length} projectPath=${projectPath}`)
+  console.log(`[api/workflow/start] session=${session.id.slice(0, 8)} type=${workflowType} mode=${body.mode ?? 'agent'} userMsgBytes=${userMessage.length} projectPath=${projectPath}`)
 
   try {
-    const { runId } = await startBuilderWorkflow({
+    const dispatcherInput = {
       sessionId: session.id,
       userId,
       projectId: session.projectId,
-      workflowType: 'builder',
+      workflowType,
       userMessage,
       mode: body.mode ?? 'agent',
       projectPath,
       userMsgId: body.userMsgId,
-    })
+    }
+    const { runId } = workflowType === 'debug'
+      ? await startDebugWorkflow(dispatcherInput)
+      : await startBuilderWorkflow(dispatcherInput)
     return NextResponse.json({ ok: true, runId })
   } catch (err) {
     console.error(`[api/workflow/start] failed:`, (err as Error).message)

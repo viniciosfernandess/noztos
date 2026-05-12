@@ -20,6 +20,7 @@ import { runBuilderStep } from './builder'
 import { runReviewerStep, type ReviewerDecision } from './reviewer'
 import type {
   BlockState,
+  PlannerOutput,
   RunSnapshot,
   StepState,
   TranscriptChunk,
@@ -445,7 +446,7 @@ async function runBlock(
   snapshot: RunSnapshot,
   blockIndex: number,
   isFinalBlock: boolean,
-  plan: NonNullable<RunSnapshot['plan']>,
+  plan: PlannerOutput,
   input: StartWorkflowInput,
   chunkCtx: { userId: string; sessionId: string; seqRef: { value: number } },
 ): Promise<boolean> {

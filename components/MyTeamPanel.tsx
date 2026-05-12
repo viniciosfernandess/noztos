@@ -23,6 +23,18 @@ const AVAILABLE_EMPLOYEES: Employee[] = [
     color: 'from-sky-500 to-indigo-600',
   },
   {
+    id: 'detective',
+    name: 'Detective',
+    description: 'Owns one region of the codebase during a debug run. Investigates independently, gathers evidence, files notes.',
+    color: 'from-orange-500 to-red-600',
+  },
+  {
+    id: 'consolidator',
+    name: 'Consolidator',
+    description: 'Reads every detective\'s notes, deduplicates findings, ranks evidence, declares the root cause for the fix pipeline.',
+    color: 'from-amber-500 to-orange-600',
+  },
+  {
     id: 'architect',
     name: 'Architect',
     description: 'Defines architecture, data flow, component breakdown. Your technical blueprint before any code.',
@@ -109,6 +121,13 @@ const BUILTIN_WORKFLOWS: BuiltinWorkflow[] = [
     trigger: '/build',
     description: 'Tell it what to build. Planner scopes, Architect designs, Builder writes, Reviewer ships.',
     agentSequence: ['planner', 'architect', 'builder', 'reviewer'],
+  },
+  {
+    id: 'debug',
+    name: 'Debug',
+    trigger: '/debug',
+    description: 'Describe the bug. Detectives investigate in parallel, Consolidator unifies, Architect designs the fix, Builder applies, Reviewer verifies.',
+    agentSequence: ['planner', 'detective', 'consolidator', 'architect', 'builder', 'reviewer'],
   },
 ]
 

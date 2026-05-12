@@ -787,7 +787,7 @@ class CompanionStore {
   ingestWorkflowProgress(payload: {
     runId: string
     seq: number
-    role: 'planner' | 'architect' | 'builder' | 'reviewer'
+    role: 'planner' | 'architect' | 'builder' | 'reviewer' | 'detective' | 'consolidator'
     blockIndex: number
     attempt: number
     chunk: unknown
@@ -818,11 +818,18 @@ class CompanionStore {
         attempt: number
         transcript?: unknown[]
       } | null
+      // /debug only — parallel detective slots filled during the
+      // 'investigating' phase. payload.blockIndex is the slot index.
+      parallelSteps?: Array<{
+        role: string
+        transcript?: unknown[]
+      }>
     } | null
 
     if (!progress) return
 
-    // Live tip.
+    // Live tip — matches when the single sequential step (planner,
+    // consolidator, architect, builder, reviewer) is producing chunks.
     if (progress.currentStep
       && progress.currentStep.role === payload.role
       && progress.currentStep.blockIndex === payload.blockIndex
@@ -831,7 +838,22 @@ class CompanionStore {
       progress.currentStep.transcript.push(payload.chunk)
     }
 
-    // Historical step entry (for scrollback to completed/in-flight steps).
+    // /debug parallel detective slot — payload.blockIndex doubles as the
+    // detective index inside parallelSteps. Without this branch the
+    // detectives' deltas would never reach the browser (currentStep is
+    // null while N detectives run concurrently) and the UI would only
+    // refresh via the 10s backup poll.
+    if (payload.role === 'detective' && Array.isArray(progress.parallelSteps)) {
+      const slot = progress.parallelSteps[payload.blockIndex]
+      if (slot) {
+        if (!slot.transcript) slot.transcript = []
+        slot.transcript.push(payload.chunk)
+      }
+    }
+
+    // Historical step entry — only used by /builder which materializes
+    // each step under blocks[i].steps[j]. /debug doesn't populate blocks
+    // so this branch is a no-op there.
     if (payload.blockIndex >= 0 && Array.isArray(progress.blocks)) {
       const block = progress.blocks.find((b) => b.index === payload.blockIndex)
       const step = block?.steps?.find((s) => s.role === payload.role && s.attempt === payload.attempt)

@@ -147,7 +147,7 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
                   bornastarSessionId?: string
                   runId?: string
                   seq?: number
-                  role?: 'planner' | 'architect' | 'builder' | 'reviewer'
+                  role?: 'planner' | 'architect' | 'builder' | 'reviewer' | 'detective' | 'consolidator'
                   blockIndex?: number
                   attempt?: number
                   chunk?: unknown

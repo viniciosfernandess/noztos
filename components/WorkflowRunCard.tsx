@@ -38,7 +38,7 @@ interface RunSnapshotProgress {
     status: 'pending' | 'running' | 'completed' | 'failed'
     rejectCount?: number
     steps?: Array<{
-      role: 'planner' | 'architect' | 'builder' | 'reviewer'
+      role: 'planner' | 'architect' | 'builder' | 'reviewer' | 'detective' | 'consolidator'
       attempt: number
       status: 'pending' | 'running' | 'completed' | 'failed'
       durationMs?: number
@@ -55,6 +55,27 @@ interface RunSnapshotProgress {
     startedAt: number
     transcript?: TranscriptChunk[]
   } | null
+  // /debug only — populated while phase === 'investigating'. N detectives
+  // run in parallel; each slot is one detective's StepState. UI renders
+  // them in a grid below the planner row.
+  parallelSteps?: Array<{
+    role: 'detective'
+    attempt: number
+    status: 'pending' | 'running' | 'completed' | 'failed'
+    startedAt?: number
+    finishedAt?: number
+    durationMs?: number
+    transcript?: TranscriptChunk[]
+    output?: string
+    errorReason?: string
+  }>
+  // High-level phase. Drives parallel/sequential rendering swap.
+  phase?: 'planner' | 'investigating' | 'consolidating' | 'fixing' | 'done'
+  // For /debug — Planner output is DebugPlannerOutput, not the BlockState
+  // shape. We render the detective names from here when phase is set.
+  plan?: {
+    blocks?: Array<{ name?: string; logicalArea?: string; paths?: string[] }>
+  }
 }
 
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
@@ -175,6 +196,14 @@ function Body({ snapshot }: { snapshot: WorkflowRunUIState }) {
   const progress = (snapshot.progress ?? {}) as RunSnapshotProgress
   const blocks = progress.blocks ?? []
 
+  // /debug branch — phase-driven layout. Planner row first, then either
+  // parallel detective grid (investigating) or the standard single-step
+  // live tip (consolidating / fixing / done). Builder workflow has no
+  // `phase`, so it falls through to the existing blocks-based layout below.
+  if (progress.phase) {
+    return <DebugBody progress={progress} />
+  }
+
   // Pre-blocks state: planner is the active step. The other agents
   // (architect/builder/reviewer) only run AFTER blocks exist, so they
   // already get their transcript inside BlockRow.expanded below.
@@ -202,6 +231,99 @@ function Body({ snapshot }: { snapshot: WorkflowRunUIState }) {
       {blocks.map((b) => (
         <BlockRow key={b.index} block={b} totalBlocks={blocks.length} liveStep={progress.currentStep ?? null} projectPath={progress.projectPath} />
       ))}
+    </div>
+  )
+}
+
+// Debug workflow render. Phase-aware: shows the planner banner, then a
+// grid of detective tiles when investigating, and finally the live tip
+// (consolidator → architect → builder → reviewer) for the remaining
+// phases. Each agent's transcript surfaces via the same LiveTranscript
+// component the chat normal already renders, so the visual language
+// stays consistent.
+function DebugBody({ progress }: { progress: RunSnapshotProgress }) {
+  const { phase, currentStep, parallelSteps, plan, projectPath } = progress
+  const detectiveBlocks = plan?.blocks ?? []
+
+  const phaseLabel = (() => {
+    switch (phase) {
+      case 'planner': return 'Planner — decomposing the bug'
+      case 'investigating': return `Detectives investigating (${parallelSteps?.length ?? 0})`
+      case 'consolidating': return 'Consolidator — unifying findings'
+      case 'fixing': return 'Fix pipeline — Architect → Builder → Reviewer'
+      case 'done': return 'Run complete'
+      default: return phase ?? ''
+    }
+  })()
+
+  return (
+    <div className="flex flex-col gap-2 px-3 py-2 text-[11px]">
+      <div className="text-[10px] uppercase tracking-wide text-zinc-500">{phaseLabel}</div>
+
+      {phase === 'planner' && currentStep?.role === 'planner' && (
+        <div>
+          <ThinkingLine label="Planner" startedAt={currentStep.startedAt} />
+          <LiveTranscript chunks={currentStep.transcript} projectPath={projectPath} />
+        </div>
+      )}
+
+      {phase === 'investigating' && parallelSteps && parallelSteps.length > 0 && (
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+          {parallelSteps.map((step, i) => (
+            <DetectiveTile
+              key={i}
+              index={i}
+              name={detectiveBlocks[i]?.name ?? `Detective ${i + 1}`}
+              step={step}
+              projectPath={projectPath}
+            />
+          ))}
+        </div>
+      )}
+
+      {(phase === 'consolidating' || phase === 'fixing') && currentStep && (
+        <div>
+          <ThinkingLine label={currentStep.role} startedAt={currentStep.startedAt} attempt={currentStep.attempt} />
+          <LiveTranscript chunks={currentStep.transcript} projectPath={projectPath} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DetectiveTile({
+  index,
+  name,
+  step,
+  projectPath,
+}: {
+  index: number
+  name: string
+  step: NonNullable<RunSnapshotProgress['parallelSteps']>[number]
+  projectPath?: string
+}) {
+  const marker = step.status === 'completed' ? '✓'
+    : step.status === 'failed' ? '✗'
+    : step.status === 'running' ? '▶'
+    : '◌'
+  const markerCls = step.status === 'completed' ? 'text-emerald-400'
+    : step.status === 'failed' ? 'text-rose-400'
+    : step.status === 'running' ? 'text-amber-400'
+    : 'text-zinc-600'
+
+  return (
+    <div className="rounded-md border border-white/5 bg-black/10">
+      <div className="flex items-center gap-2 border-b border-white/5 px-2 py-1">
+        <span className={`shrink-0 font-mono ${markerCls}`}>{marker}</span>
+        <span className="text-[10px] text-zinc-500">#{index + 1}</span>
+        <span className="truncate text-zinc-300">{name}</span>
+      </div>
+      <div className="max-h-[160px] overflow-y-auto px-2 py-1">
+        <LiveTranscript chunks={step.transcript} projectPath={projectPath} />
+        {step.status === 'failed' && step.errorReason && (
+          <p className="mt-1 text-[10px] text-rose-400">{step.errorReason}</p>
+        )}
+      </div>
     </div>
   )
 }
