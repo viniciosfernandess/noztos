@@ -1152,6 +1152,18 @@ class CompanionStore {
           costUsd: typeof row.costUsd === 'number' ? row.costUsd : undefined,
           durationMs: typeof row.durationMs === 'number' ? row.durationMs : undefined,
         }, { fuzzyMatch: true })
+        // Workflow run finished — the runner pushes its final assistant
+        // row with id `wf-${runId}-final`. That id format is unique to
+        // workflow finals (daemon chat-normal uses UUIDs), so the suffix
+        // is a safe terminal signal: mark the chat idle so the chat input
+        // unlocks and the message-grouping logic in ChatPanel promotes
+        // this row to a fully-rendered final response instead of burying
+        // it as a one-line preview inside a work block. The workflow
+        // card stays mounted (workflowRunId untouched); user dismisses
+        // explicitly via the Dispensar button.
+        if (r.role === 'assistant' && typeof r.id === 'string' && r.id.endsWith('-final') && r.id.startsWith('wf-')) {
+          this.markIdle(sid)
+        }
       }
       return
     }

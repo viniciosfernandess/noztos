@@ -95,6 +95,18 @@ function buildPlannerSystemPrompt(skill: string, input: PlannerInput): string {
   return sections.join('\n')
 }
 
+// Reverses the standard XML entity escapes the model emits when it
+// includes `&`, `<`, `>`, `"`, or `'` inside tag content. Without this,
+// users see `Auth &amp; Segurança` rendered literally in the workflow card.
+function decodeXmlEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+}
+
 // XML tag extraction. Non-greedy so the FIRST closing tag wins —
 // the model can put `<` for generics, backticks, quotes, real newlines,
 // markdown code blocks, anything inside a tag without breaking us. The
@@ -138,13 +150,13 @@ function parsePlannerOutput(raw: string): { plan: PlannerOutput | null; error?: 
     return { plan: null, error: 'planner output has no <block> tags' }
   }
 
-  const rationale = (extractTag(planInner, 'rationale') ?? '').trim()
+  const rationale = decodeXmlEntities((extractTag(planInner, 'rationale') ?? '').trim())
 
   const blocks: PlannerOutput['blocks'] = []
   for (let i = 0; i < blockSources.length; i++) {
     const src = blockSources[i]
-    const name = (extractTag(src, 'name') ?? '').trim()
-    const objective = (extractTag(src, 'objective') ?? '').trim()
+    const name = decodeXmlEntities((extractTag(src, 'name') ?? '').trim())
+    const objective = decodeXmlEntities((extractTag(src, 'objective') ?? '').trim())
     if (!name || !objective) {
       return { plan: null, error: `block ${i + 1} missing <name> or <objective>` }
     }

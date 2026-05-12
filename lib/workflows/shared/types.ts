@@ -153,6 +153,13 @@ export interface RunSnapshot {
   // Consolidated diagnostic findings produced by /debug's consolidator.
   // Markdown; feeds into Architect as the source-of-truth for the fix.
   consolidatedFindings?: string
+  // /debug only — audit trail for the fix loop. One StepState per role
+  // per attempt (architect/builder/reviewer × N attempts). Persisted on
+  // every role boundary so a finished run keeps every plan, report,
+  // rejection, and approval for later study. Mirrors `block.steps[]`
+  // in /build. Not read by the live UI — `currentStep` still drives
+  // the streaming card.
+  fixAttempts?: StepState[]
   finalResponse?: string
 }
 

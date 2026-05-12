@@ -86,7 +86,7 @@ export function WorkflowRunCard({ sessionId, runId }: { sessionId: string; runId
   if (!snapshot) {
     return (
       <div className="my-3 rounded-md border border-white/10 bg-white/[0.02] px-3 py-2 text-[11px] text-zinc-500">
-        Builder Team — starting…
+        Workflow — starting…
       </div>
     )
   }
@@ -167,14 +167,27 @@ function CardScrollBody({ children }: { children: React.ReactNode }) {
   )
 }
 
+// Header label per workflow type. Easy to extend when /review, /test,
+// etc land — just add a case.
+function workflowLabel(workflowType: string | undefined): { icon: string; name: string } {
+  switch (workflowType) {
+    case 'debug':
+      return { icon: '🔍', name: 'Debug Team' }
+    case 'builder':
+    default:
+      return { icon: '🛠️', name: 'Builder Team' }
+  }
+}
+
 function Header({ snapshot }: { snapshot: WorkflowRunUIState }) {
   const status = snapshot.status
   const elapsed = ((snapshot.completedAt ? new Date(snapshot.completedAt).getTime() : Date.now()) - new Date(snapshot.createdAt).getTime()) / 1000
+  const { icon, name } = workflowLabel(snapshot.workflowType)
 
   return (
     <div className="flex items-center gap-2 border-b border-white/10 px-3 py-1.5 text-[11px]">
       <StatusDot status={status} />
-      <span className="font-medium text-zinc-300">🛠️ Builder Team</span>
+      <span className="font-medium text-zinc-300">{icon} {name}</span>
       <span className="text-zinc-500">{status === 'running' ? 'running' : status}</span>
       <span className="ml-auto text-zinc-500">{elapsed.toFixed(0)}s</span>
     </div>

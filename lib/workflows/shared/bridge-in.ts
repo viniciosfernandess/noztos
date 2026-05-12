@@ -1,15 +1,20 @@
-// Bridge IN — cache pass-through pro Planner.
+// Bridge IN — chat history → XML pro Planner.
 //
-// Lê o histórico do chat do ring buffer (RAM) ou DB Postgres (fallback)
-// e formata como XML estruturado pra Planner consumir.
+// Estratégia: **cache primary com complemento do DB**.
 //
-// Decisões locked (ver docs/team-workflow/01-builder-workflow.md):
-// - Tier 1: ring buffer (sem cap — confia na cache tunada)
-// - Tier 2: DB com LIMIT 30
-// - Tier 3: empty (retorna "")
-// - Output: XML wrapped em <chat_context>...</chat_context>
-// - Sem chamada de modelo na crítica
-// - Wait time = 0 (não espera writeback do trigger msg)
+// 1. Lê ring buffer (RAM, ~0ms).
+// 2. Se ring atende o threshold mínimo de contexto → retorna direto,
+//    sem tocar no DB. Chat ativo cai aqui — cache fast-path.
+// 3. Se ring tem pouco ou nada → DB query (LIMIT MIN_CONTEXT_ROWS) pra
+//    complementar. Dedupe por id estável evita repetir o que ring já tem.
+// 4. Retorna o que tem (mesmo se vazio).
+//
+// Mantém o padrão do projeto: cache primary, DB durabilidade. Resolve
+// o cenário "ring quase-vazio" (1 frame com a trigger msg) que antes
+// fazia o Planner correr sem o histórico real do chat.
+//
+// Output: XML wrapped em <chat_context>...</chat_context>. Sem modelo
+// na crítica, wait time = 0.
 //
 // Quem usa: APENAS o Planner (Phase 0). Outros agents não veem chat raw.
 
@@ -57,8 +62,12 @@ interface RingEventEnvelope {
   }
 }
 
-function fromRingEvents(events: unknown[], sessionId: string): CanonicalRow[] {
+// Returns parsed canonical rows + the set of stable ids those rows came
+// from. The id set is what the DB query uses to skip duplicates when we
+// fall through to complement.
+function fromRingEvents(events: unknown[], sessionId: string): { rows: CanonicalRow[]; ids: Set<string> } {
   const out: CanonicalRow[] = []
+  const ids = new Set<string>()
   // Track tool_use → tool_result mapping by id within the stream.
   const toolByUseId = new Map<string, CanonicalRow>()
 
@@ -71,6 +80,7 @@ function fromRingEvents(events: unknown[], sessionId: string): CanonicalRow[] {
     if (Array.isArray(env.payload?.persistRows) && env.payload.persistRows.length > 0) {
       for (const r of env.payload.persistRows) {
         if (!r?.role) continue
+        if (r.id) ids.add(r.id)
         const role = r.role as CanonicalRow['role']
         if (role === 'tool') {
           out.push({
@@ -122,7 +132,7 @@ function fromRingEvents(events: unknown[], sessionId: string): CanonicalRow[] {
       }
     }
   }
-  return out
+  return { rows: out, ids }
 }
 
 // ── Adapter 2: DB rows → CanonicalRow[] ─────────────────────────────
@@ -175,31 +185,46 @@ function formatXml(rows: CanonicalRow[]): string {
   return `<chat_context>\n${rows.map(formatLine).join('\n')}\n</chat_context>`
 }
 
-// ── Tier-fallback: ring → DB → empty ───────────────────────────────
+// ── Cache primary with DB complement ───────────────────────────────
 
-const DB_LIMIT = 30
+const MIN_CONTEXT_ROWS = 30
 
 export async function buildBridgeInContext(sessionId: string, userId: string): Promise<string> {
-  // Tier 1: ring buffer (RAM, ~0ms)
+  // ── Tier 1: ring buffer (cache primary, ~0ms) ────────────────────
+  let ringRows: CanonicalRow[] = []
+  let ringIds = new Set<string>()
   try {
     const events = getSessionBuffer(sessionId, userId)
     if (events && events.length > 0) {
-      const rows = fromRingEvents(events, sessionId)
-      if (rows.length > 0) {
-        console.log(`[bridge-in] sid=${sessionId.slice(0, 8)} source=ring events=${events.length} rows=${rows.length}`)
-        return formatXml(rows)
-      }
+      const parsed = fromRingEvents(events, sessionId)
+      ringRows = parsed.rows
+      ringIds = parsed.ids
     }
   } catch (err) {
-    console.warn(`[bridge-in] sid=${sessionId.slice(0, 8)} ring buffer error:`, (err as Error).message)
+    console.warn(`[bridge-in] sid=${sessionId.slice(0, 8)} ring error:`, (err as Error).message)
   }
 
-  // Tier 2: DB (LIMIT 30, ~5ms)
+  // Cache satisfies the threshold → return without touching DB. Active
+  // chats with rich history hit this path and pay zero DB cost.
+  if (ringRows.length >= MIN_CONTEXT_ROWS) {
+    console.log(`[bridge-in] sid=${sessionId.slice(0, 8)} cache-hit rows=${ringRows.length} threshold=${MIN_CONTEXT_ROWS}`)
+    return formatXml(ringRows)
+  }
+
+  // ── Tier 2: DB complement ────────────────────────────────────────
+  // Ring had less than the threshold (or nothing). Pull up to
+  // MIN_CONTEXT_ROWS from DB, skipping rows whose ids are already in the
+  // ring. Dev-server restarts, gap >24h, and multi-instance all land here.
+  let dbRows: CanonicalRow[] = []
   try {
-    const dbRows = await prisma.chatMessage.findMany({
-      where: { sessionId, deletedAt: null },
+    const rawDb = await prisma.chatMessage.findMany({
+      where: {
+        sessionId,
+        deletedAt: null,
+        ...(ringIds.size > 0 && { id: { notIn: [...ringIds] } }),
+      },
       orderBy: { createdAt: 'desc' },
-      take: DB_LIMIT,
+      take: MIN_CONTEXT_ROWS,
       select: {
         role: true,
         content: true,
@@ -208,17 +233,15 @@ export async function buildBridgeInContext(sessionId: string, userId: string): P
         toolResult: true,
       },
     })
-    if (dbRows.length > 0) {
-      dbRows.reverse()
-      const rows = fromDbRows(dbRows)
-      console.log(`[bridge-in] sid=${sessionId.slice(0, 8)} source=db rows=${rows.length}`)
-      return formatXml(rows)
-    }
+    rawDb.reverse()
+    dbRows = fromDbRows(rawDb)
   } catch (err) {
     console.warn(`[bridge-in] sid=${sessionId.slice(0, 8)} DB error:`, (err as Error).message)
   }
 
-  // Tier 3: empty
-  console.log(`[bridge-in] sid=${sessionId.slice(0, 8)} source=empty`)
-  return ''
+  // DB rows are older (history); ring rows are fresher (live tip). Order
+  // matters for chronology in the rendered XML.
+  const merged = [...dbRows, ...ringRows]
+  console.log(`[bridge-in] sid=${sessionId.slice(0, 8)} complemented ring=${ringRows.length} db=${dbRows.length} total=${merged.length} threshold=${MIN_CONTEXT_ROWS}`)
+  return merged.length > 0 ? formatXml(merged) : ''
 }

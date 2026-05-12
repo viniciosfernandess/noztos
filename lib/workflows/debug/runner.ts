@@ -471,15 +471,28 @@ async function executeDebugRun(runId: string, input: StartDebugWorkflowInput): P
   let previousArchitectPlan: string | undefined
   let previousRejectionList: string | undefined
 
+  // Persisted audit trail for the fix loop. Each role on each attempt
+  // pushes its own StepState here (mirrors /build's block.steps[]). The
+  // live `currentStep` keeps driving the streaming card; this array is
+  // pure cold-load study material. Initialized lazily on first push.
+  if (!snapshot.fixAttempts) snapshot.fixAttempts = []
+
   fixLoop: while (true) {
     if (await isCancelled(runId)) { evictRunFromCache(input.sessionId, runId); return }
 
     // Architect
+    const archStep: StepState = {
+      role: 'architect',
+      attempt,
+      status: 'running',
+      startedAt: Date.now(),
+    }
+    snapshot.fixAttempts.push(archStep)
     snapshot.currentStep = {
       role: 'architect',
       blockIndex: 0,
       attempt,
-      startedAt: Date.now(),
+      startedAt: archStep.startedAt!,
       transcript: [],
     }
     await persistProgress(runId, snapshot)
@@ -502,7 +515,12 @@ async function executeDebugRun(runId: string, input: StartDebugWorkflowInput): P
       }),
     })
 
+    archStep.finishedAt = Date.now()
+    archStep.durationMs = archStep.finishedAt - archStep.startedAt!
     if (archResult.rawResult.error || !archResult.outputPath) {
+      archStep.status = 'failed'
+      archStep.errorReason = archResult.rawResult.error ?? 'architect produced no output'
+      await persistProgress(runId, snapshot)
       await prisma.workflowRun.updateMany({
         where: { id: runId, status: { not: 'cancelled' } },
         data: {
@@ -514,15 +532,26 @@ async function executeDebugRun(runId: string, input: StartDebugWorkflowInput): P
       evictRunFromCache(input.sessionId, runId)
       return
     }
+    archStep.status = 'completed'
+    archStep.outputPath = archResult.outputPath
+    archStep.output = archResult.rawResult.output
+    await persistProgress(runId, snapshot)
     const architectPlan = archResult.rawResult.output
 
     // Builder
     if (await isCancelled(runId)) { evictRunFromCache(input.sessionId, runId); return }
+    const buildStep: StepState = {
+      role: 'builder',
+      attempt,
+      status: 'running',
+      startedAt: Date.now(),
+    }
+    snapshot.fixAttempts.push(buildStep)
     snapshot.currentStep = {
       role: 'builder',
       blockIndex: 0,
       attempt,
-      startedAt: Date.now(),
+      startedAt: buildStep.startedAt!,
       transcript: [],
     }
     await persistProgress(runId, snapshot)
@@ -545,7 +574,12 @@ async function executeDebugRun(runId: string, input: StartDebugWorkflowInput): P
       }),
     })
 
+    buildStep.finishedAt = Date.now()
+    buildStep.durationMs = buildStep.finishedAt - buildStep.startedAt!
     if (buildResult.rawResult.error || !buildResult.outputPath) {
+      buildStep.status = 'failed'
+      buildStep.errorReason = buildResult.rawResult.error ?? 'builder produced no output'
+      await persistProgress(runId, snapshot)
       await prisma.workflowRun.updateMany({
         where: { id: runId, status: { not: 'cancelled' } },
         data: {
@@ -557,15 +591,26 @@ async function executeDebugRun(runId: string, input: StartDebugWorkflowInput): P
       evictRunFromCache(input.sessionId, runId)
       return
     }
+    buildStep.status = 'completed'
+    buildStep.outputPath = buildResult.outputPath
+    buildStep.output = buildResult.rawResult.output
+    await persistProgress(runId, snapshot)
     const builderReport = buildResult.rawResult.output
 
     // Reviewer
     if (await isCancelled(runId)) { evictRunFromCache(input.sessionId, runId); return }
+    const revStep: StepState = {
+      role: 'reviewer',
+      attempt,
+      status: 'running',
+      startedAt: Date.now(),
+    }
+    snapshot.fixAttempts.push(revStep)
     snapshot.currentStep = {
       role: 'reviewer',
       blockIndex: 0,
       attempt,
-      startedAt: Date.now(),
+      startedAt: revStep.startedAt!,
       transcript: [],
     }
     await persistProgress(runId, snapshot)
@@ -589,7 +634,12 @@ async function executeDebugRun(runId: string, input: StartDebugWorkflowInput): P
       }),
     })
 
+    revStep.finishedAt = Date.now()
+    revStep.durationMs = revStep.finishedAt - revStep.startedAt!
     if (revResult.rawResult.error || !revResult.decision) {
+      revStep.status = 'failed'
+      revStep.errorReason = revResult.rawResult.error ?? revResult.parseError ?? 'reviewer parse failed'
+      await persistProgress(runId, snapshot)
       await prisma.workflowRun.updateMany({
         where: { id: runId, status: { not: 'cancelled' } },
         data: {
@@ -601,6 +651,11 @@ async function executeDebugRun(runId: string, input: StartDebugWorkflowInput): P
       evictRunFromCache(input.sessionId, runId)
       return
     }
+    revStep.status = 'completed'
+    revStep.outputPath = revResult.outputPath
+    revStep.output = revResult.payload
+    revStep.decision = revResult.decision as ReviewerDecision
+    await persistProgress(runId, snapshot)
 
     if (revResult.decision === 'APPROVED' || revResult.decision === 'FORCED_APPROVAL') {
       snapshot.finalResponse = revResult.payload
@@ -706,6 +761,7 @@ async function postFinalResponseToChat(
     createdAt,
   }
 
+  // ── 1. Ring buffer + browser SSE ───────────────────────────────────
   try {
     const channel = getChannel(input.userId)
     channel.pushEvent({
@@ -720,13 +776,46 @@ async function postFinalResponseToChat(
     console.warn(`[wf-runner] final relay push failed: ${(err as Error).message}`)
   }
 
+  // ── 2. DB write-through ────────────────────────────────────────────
+  let claudeSessionId: string | null = null
   try {
     const ctx = await loadSessionContext(input.sessionId, input.userId)
-    if (!ctx) return
-    await persistRows([persistRow], ctx)
-    console.log(`[wf-runner] ✓ persisted final to DB sid=${input.sessionId.slice(0, 8)}`)
+    if (!ctx) {
+      console.warn(`[wf-runner] loadSessionContext null on final persist sid=${input.sessionId.slice(0, 8)} — skipping DB write`)
+    } else {
+      await persistRows([persistRow], ctx)
+      console.log(`[wf-runner] ✓ persisted final to DB sid=${input.sessionId.slice(0, 8)}`)
+    }
+    const session = await prisma.chatSession.findUnique({
+      where: { id: input.sessionId },
+      select: { claudeSessionId: true },
+    })
+    claudeSessionId = session?.claudeSessionId ?? null
   } catch (err) {
     console.warn(`[wf-runner] final DB persist failed: ${(err as Error).message}`)
+  }
+
+  // ── 3. Claude CLI JSONL append (via companion) ─────────────────────
+  // Closes the handshake daemon-side: appends the (user, assistant) pair
+  // to the local .jsonl so the next chat-normal turn under `claude --resume`
+  // sees this workflow run as part of the conversation. Best-effort; no-op
+  // when the chat never spoke to claude yet (no claudeSessionId).
+  if (!claudeSessionId) {
+    console.log(`[wf-runner] no claudeSessionId on chat (first turn?) — skipping JSONL append`)
+    return
+  }
+  try {
+    const channel = getChannel(input.userId)
+    channel.pushCommand({
+      type: 'append_claude_turn',
+      claudeSessionId,
+      worktreePath: input.projectPath,
+      userText: input.userMessage,
+      assistantText: content,
+    })
+    console.log(`[wf-runner] ✓ enqueued append_claude_turn cmd to companion claudeSid=${claudeSessionId.slice(0, 8)}`)
+  } catch (err) {
+    console.warn(`[wf-runner] JSONL append cmd push failed: ${(err as Error).message}`)
   }
 }
 

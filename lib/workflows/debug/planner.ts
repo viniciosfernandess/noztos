@@ -65,6 +65,18 @@ function extractTag(source: string, tag: string): string | null {
   return m ? m[1] : null
 }
 
+// Reverses the standard XML entity escapes the model emits when it
+// includes `&`, `<`, `>`, `"`, or `'` inside tag content. Without this,
+// users see `Auth &amp; Segurança` rendered literally in the workflow card.
+function decodeXmlEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+}
+
 function extractAllBlocks(source: string): string[] {
   const re = /<block\b[^>]*>([\s\S]*?)<\/block>/gi
   const blocks: string[] = []
@@ -84,10 +96,10 @@ function parsePlannerOutput(raw: string, _userMessage: string): { plan: DebugPla
   if (blockSources.length === 0) {
     return { plan: null, error: 'planner output has no <block> tags' }
   }
-  const rationale = (extractTag(planInner, 'rationale') ?? '').trim()
+  const rationale = decodeXmlEntities((extractTag(planInner, 'rationale') ?? '').trim())
   // The mission is a single planner-crafted hunt brief — shared by every
   // Detective. Required: without it the Detectives have nothing to hunt.
-  const mission = (extractTag(planInner, 'mission') ?? '').trim()
+  const mission = decodeXmlEntities((extractTag(planInner, 'mission') ?? '').trim())
   if (!mission) {
     return { plan: null, error: 'planner output missing <mission> tag' }
   }
@@ -95,8 +107,8 @@ function parsePlannerOutput(raw: string, _userMessage: string): { plan: DebugPla
   const blocks: DebugPlannerOutput['blocks'] = []
   for (let i = 0; i < blockSources.length; i++) {
     const src = blockSources[i]
-    const name = (extractTag(src, 'name') ?? '').trim()
-    const logicalArea = (extractTag(src, 'logical_area') ?? '').trim()
+    const name = decodeXmlEntities((extractTag(src, 'name') ?? '').trim())
+    const logicalArea = decodeXmlEntities((extractTag(src, 'logical_area') ?? '').trim())
     const pathsRaw = (extractTag(src, 'paths') ?? '').trim()
     if (!name || !logicalArea || !pathsRaw) {
       return { plan: null, error: `detective ${i + 1} missing <name> / <logical_area> / <paths>` }
