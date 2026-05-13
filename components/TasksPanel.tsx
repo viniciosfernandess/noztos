@@ -576,7 +576,7 @@ export function TasksPanel({ projectId }: { projectId: string }) {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Sub-navbar */}
-      <div className="flex shrink-0 items-center gap-2 border-b border-white/10 px-5 py-1.5" style={{ backgroundColor: '#1e1e28' }}>
+      <div className="flex shrink-0 items-center gap-2 border-b border-white/10 px-5 py-1.5" style={{ backgroundColor: '#1F1F1F' }}>
         {/* Create Task */}
         <div className="relative group">
           <button
@@ -767,17 +767,17 @@ export function TasksPanel({ projectId }: { projectId: string }) {
 
           {/* Column bodies */}
           <div className="flex min-h-0 flex-1 overflow-hidden">
-            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto border-r border-white/10 p-3" style={{ backgroundColor: '#1e1e28' }}>
+            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto border-r border-white/10 p-3" style={{ backgroundColor: '#1F1F1F' }}>
               {loading && <LoadingPlaceholder />}
               {!loading && doneTasks.length === 0 && <EmptyCol label="No tasks here yet" />}
               {doneTasks.map((t) => <DoneCard key={t.id} task={t} teams={teams} onClick={() => setSelectedTask(t)} />)}
             </div>
-            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto border-r border-white/10 p-3" style={{ backgroundColor: '#1e1e28' }}>
+            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto border-r border-white/10 p-3" style={{ backgroundColor: '#1F1F1F' }}>
               {loading && <LoadingPlaceholder />}
               {!loading && pendingTasks.length === 0 && <EmptyCol label="No pending tasks" />}
               {pendingTasks.map((t) => <TaskCard key={t.id} task={t} onClick={() => setSelectedTask(t)} />)}
             </div>
-            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3" style={{ backgroundColor: '#1e1e28' }}>
+            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3" style={{ backgroundColor: '#1F1F1F' }}>
               {loading && <LoadingPlaceholder />}
               {!loading && queueTasks.length === 0 && <EmptyCol label="No queued tasks" />}
               {queueTasks.map((t) => <QueueCard key={t.id} task={t} teams={teams} onClick={() => setSelectedTask(t)} />)}

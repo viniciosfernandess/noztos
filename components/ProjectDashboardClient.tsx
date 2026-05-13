@@ -81,7 +81,14 @@ export function ProjectDashboardClient({ project, teams, tasks }: Props) {
       sidebarOpen={sidebarOpen}
       onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
     >
-      {activeTab === 'overview' && (
+      {/* Keep-alive tabs: all panels stay mounted from first render so
+          switching between Overview/Work/Tasks/Team/Config is an instant
+          CSS swap instead of a remount. Component state, scroll positions,
+          SSE subscriptions, and any in-memory caches persist across the
+          entire session inside this project. Inactive panels are hidden
+          with the `hidden` attribute (display: none) which keeps them in
+          the React tree without rendering pixels. */}
+      <div className={activeTab === 'overview' ? 'contents' : 'hidden'}>
         <div className="flex-1 overflow-y-auto p-6" style={{ backgroundColor: '#1e1e28' }}>
           <div className="mx-auto max-w-3xl space-y-6">
             <h2 className="text-lg font-semibold text-zinc-200">Overview</h2>
@@ -93,26 +100,26 @@ export function ProjectDashboardClient({ project, teams, tasks }: Props) {
             <SourceControl projectId={project.id} />
           </div>
         </div>
-      )}
+      </div>
 
-      {activeTab === 'work' && (
+      <div className={activeTab === 'work' ? 'contents' : 'hidden'}>
         <WorkPanel
           projectId={project.id}
           hiredEmployees={hiredEmployees}
           teams={teamInfos}
           sidebarOpen={sidebarOpen}
         />
-      )}
+      </div>
 
-      {activeTab === 'tasks' && (
+      <div className={activeTab === 'tasks' ? 'contents' : 'hidden'}>
         <TasksPanel projectId={project.id} />
-      )}
+      </div>
 
-      {activeTab === 'team' && (
+      <div className={activeTab === 'team' ? 'contents' : 'hidden'}>
         <MyTeamPanel />
-      )}
+      </div>
 
-      {activeTab === 'config' && (
+      <div className={activeTab === 'config' ? 'contents' : 'hidden'}>
         <div className="flex-1 overflow-y-auto p-6" style={{ backgroundColor: '#1e1e28' }}>
           <div className="mx-auto max-w-3xl space-y-8">
             <div>
@@ -128,7 +135,7 @@ export function ProjectDashboardClient({ project, teams, tasks }: Props) {
             </div>
           </div>
         </div>
-      )}
+      </div>
     </ProjectLayout>
   )
 }
