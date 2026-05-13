@@ -41,17 +41,13 @@ export interface BuilderStepResult {
 }
 
 function buildBuilderSystemPrompt(skill: string, input: BuilderInput): { system: string; userText: string } {
+  // Builder works in strict isolation: skill (its role) + the Architect
+  // plan it must execute. Nothing else. No user message, no block info —
+  // the Architect already digested everything into the plan.
   const sections: string[] = [
     skill,
     '',
     '---',
-    '',
-    '## User task',
-    input.userMessage,
-    '',
-    `## Block atual (Block ${input.blockIndex + 1}/${input.totalBlocks}: ${input.block.name})`,
-    '',
-    `**Objective:** ${input.block.objective}`,
     '',
     '## Plano do Architect (siga exato)',
     '',

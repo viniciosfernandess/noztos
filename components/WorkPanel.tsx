@@ -1502,6 +1502,9 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
       const detail = (e as CustomEvent<{ source?: 'project' | 'worktrees'; paths?: string[] }>).detail
       const batch = { source: detail?.source ?? 'project', paths: detail?.paths ?? [] }
       if (batch.paths.length === 0) return
+      // ── DIAG (temp): log every fs-change event so we can correlate
+      // with cache writes when the "all yellow" bug surfaces.
+      console.log(`[cache-diag] fs-change source=${batch.source} paths=${batch.paths.length} sample=[${batch.paths.slice(0, 3).join(',')}${batch.paths.length > 3 ? ',…' : ''}]`)
       // Instant local guess: flip every cached path's isModified to true
       // so the FileTree yellow badge + Changes-list inclusion appear in
       // the current frame, before any network round-trip. The debounced
@@ -7345,7 +7348,7 @@ function ChatPanel({
                     the right edge. The MarkdownRenderer itself stays
                     width-agnostic so other consumers (admin panels,
                     docs viewers) keep their own layouts. */}
-                <div className="w-full max-w-2xl min-w-0">
+                <div className="w-full max-w-2xl min-w-0 overflow-hidden break-words">
                   <MarkdownRenderer content={msg.content} />
                 </div>
               </div>
@@ -7353,7 +7356,7 @@ function ChatPanel({
           })
         })()}
         {workflowRunId && (
-          <div className="w-full max-w-2xl min-w-0">
+          <div className="w-full max-w-2xl min-w-0 overflow-hidden break-words">
             <WorkflowRunCard sessionId={sessionId} runId={workflowRunId} />
           </div>
         )}

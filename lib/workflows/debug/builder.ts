@@ -34,16 +34,14 @@ export interface DebugBuilderStepResult {
 }
 
 function buildSystemPrompt(skill: string, input: DebugBuilderInput): { system: string; userText: string } {
+  // Builder works in strict isolation: skill (its role) + the Architect
+  // plan it must execute. Nothing else. No user message, no findings,
+  // no chat context — the Architect already digested the diagnosis into
+  // the plan, so the plan carries everything Builder needs.
   const sections: string[] = [
     skill,
     '',
     '---',
-    '',
-    '## User bug',
-    input.userMessage,
-    '',
-    '## Consolidated findings (background)',
-    input.consolidatedFindings,
     '',
     '## Architect fix plan (apply exactly)',
     input.architectPlan,

@@ -10,11 +10,9 @@ Then you write the final response — the message the user reads in the chat. Th
 
 ## Context sources
 
-- **User bug**: the original request from the user
-- **Consolidated findings**: the diagnosis — what was supposed to be fixed
-- **Architect plan**: what was supposed to be done
-- **Builder report**: what the Builder says they did
-- **Codebase**: full read access via Read, Grep, Glob, Bash, Task, WebFetch, WebSearch
+- **Architect plan**: what was supposed to be done — the contract
+- **Builder report**: what the Builder says they did — the execution
+- **Codebase**: full read access via Read, Grep, Glob, Bash, Task, WebFetch, WebSearch — to verify the execution matches the plan
 
 ## Your decision
 

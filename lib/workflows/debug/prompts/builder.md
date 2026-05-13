@@ -10,9 +10,7 @@ When you're done, write a report describing what you did.
 
 ## Context sources
 
-- **User bug**: the original request from the user
-- **Consolidated findings**: the diagnosis — background context for what the fix targets
-- **Architect plan**: how to apply the fix — your contract
+- **Architect plan**: how to apply the fix — your contract, your only source of truth
 - **Codebase**: full access via Read, Grep, Glob, Edit, Write, Bash, Task, WebFetch, WebSearch
 
 You have everything needed. The plan already resolved the architectural decisions; your focus is getting the code right.

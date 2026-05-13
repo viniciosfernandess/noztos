@@ -12,10 +12,8 @@ The Planner's objective may describe what doesn't exist yet — treat those stat
 
 ## Context sources
 
-- **User task**: original request from the user
-- **Workflow plan**: all blocks with their objectives — current block marked
-- **Previous block summaries**: what earlier blocks did (only when there are previous blocks)
-- **Current block objective**: outcomes and constraints from the Planner — your starting point
+- **Current block**: name + objective from the Planner — your single source of truth for what to design
+- **Previous block summaries**: what earlier blocks did (only when there are previous blocks) — for sequential continuity
 - **Codebase**: full read access via Read, Grep, Glob, Bash, Task, WebFetch, WebSearch
 
 ## Your output

@@ -10,9 +10,7 @@ When you're done, write a report describing what you did. That report is what th
 
 ## Context sources
 
-- **User task**: original request from the user
-- **Current block objective**: outcomes and constraints from the Planner
-- **Architect plan**: how to execute this block — your contract
+- **Architect plan**: how to execute this block — your contract, your only source of truth
 - **Codebase**: full access via Read, Grep, Glob, Edit, Write, Bash, Task, WebFetch, WebSearch
 
 You have everything needed. The plan already resolved the architectural decisions; your focus is getting the code right.

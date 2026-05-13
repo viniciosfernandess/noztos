@@ -15,11 +15,9 @@ Either way, your output is what the next agent (next block's Architect, or the u
 
 ## Context sources
 
-- **User task**: original request from the user
-- **Current block objective**: outcomes and constraints from the Planner
-- **Architect plan**: what was supposed to be done in this block
-- **Builder report**: what the Builder says they did
-- **Codebase**: full read access via Read, Grep, Glob, Bash, Task, WebFetch, WebSearch
+- **Architect plan**: what was supposed to be done in this block — the contract
+- **Builder report**: what the Builder says they did — the execution
+- **Codebase**: full read access via Read, Grep, Glob, Bash, Task, WebFetch, WebSearch — to verify execution matches plan
 - **(Final block only)** All prior block summaries, so you can write the user response with full context
 
 ## Your decision

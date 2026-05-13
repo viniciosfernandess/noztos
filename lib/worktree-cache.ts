@@ -262,6 +262,12 @@ export function getCachedGitStatus<T>(key: string): T | undefined {
 }
 
 export function setCachedGitStatus<T>(key: string, value: T): void {
+  // ── DIAG (temp): trace status writes during the "phantom uncommitted"
+  // bug. Logs uncommitted count + branch so we can spot suspicious
+  // jumps. Remove once the bug is pinned.
+  const v = value as unknown as { uncommitted?: number; branch?: string }
+  const uncommitted = typeof v?.uncommitted === 'number' ? v.uncommitted : '?'
+  console.log(`[cache-diag] setCachedGitStatus key=${key.slice(0, 8)} uncommitted=${uncommitted} branch=${v?.branch ?? '?'}`)
   gitStatusCache.set(key, value as unknown)
 }
 
@@ -334,6 +340,13 @@ export function getCachedFiles(key: string): FileEntry[] | undefined {
 }
 
 export function setCachedFiles(key: string, files: FileEntry[]): void {
+  // ── DIAG (temp): logs every files-cache write so we can trace the
+  // "all yellow / phantom uncommitted" bug. Look for entries where
+  // modified === total or where total spikes suddenly during a
+  // workflow. Remove once the bug is pinned.
+  const total = files.length
+  const modified = files.reduce((n, f) => n + (f.isModified ? 1 : 0), 0)
+  console.log(`[cache-diag] setCachedFiles key=${key.slice(0, 8)} total=${total} modified=${modified} suspicious=${total > 0 && modified === total}`)
   filesCache.set(key, files)
 }
 
@@ -444,6 +457,12 @@ export function markPathsDirty(batch: FsChangeBatch): Set<string> {
       return f
     })
     if (touched) {
+      // ── DIAG (temp): log every markPathsDirty write that actually
+      // flipped flags. Compare with setCachedFiles modified count
+      // right after to see if dirty is escalating beyond the batch.
+      const total = next.length
+      const modified = next.reduce((n, f) => n + (f.isModified ? 1 : 0), 0)
+      console.log(`[cache-diag] markPathsDirty wrote key=${key.slice(0, 8)} batchPaths=${dirtyRel.size} total=${total} modifiedAfter=${modified}`)
       filesCache.set(key, next)
       changed.add(key)
     }

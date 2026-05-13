@@ -54,16 +54,15 @@ function parseReviewerOutput(raw: string): { decision: ReviewerDecision | null; 
 }
 
 function buildSystemPrompt(skill: string, input: DebugReviewerInput): { system: string; userText: string } {
+  // Reviewer works in strict isolation: skill (its role) + the two
+  // artifacts directly under judgment — the Architect plan (what
+  // should have been done) and the Builder report (what was done).
+  // No user message, no findings, no chat context. Reviewer compares
+  // plan vs execution; everything else has been digested upstream.
   const sections: string[] = [
     skill,
     '',
     '---',
-    '',
-    '## User bug',
-    input.userMessage,
-    '',
-    '## Consolidated findings (what was diagnosed)',
-    input.consolidatedFindings,
     '',
     '## Architect fix plan',
     input.architectPlan,

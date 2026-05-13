@@ -87,19 +87,17 @@ que já está lá (não vai desfazer tudo).
 }
 
 async function buildArchitectSystemPrompt(skill: string, input: ArchitectInput): Promise<{ system: string; userText: string }> {
-  const planCtx = buildPlanContext(input.plan, input.blockIndex, input.totalBlocks)
   const summaries = await buildPreviousSummariesSection(input.projectPath, input.blockIndex)
   const retry = buildRetryContext(input)
 
+  // Architect works in strict isolation: skill (its role) + the Block
+  // the Planner assigned + summaries from previous-block Reviewers (so
+  // sequential blocks know what was already done). No user message, no
+  // full plan context — those have been digested upstream by the Planner.
   const sections: string[] = [
     skill,
     '',
     '---',
-    '',
-    '## User task',
-    input.userMessage,
-    '',
-    planCtx,
     '',
   ]
   if (summaries) sections.push(summaries)

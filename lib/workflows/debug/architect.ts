@@ -36,13 +36,14 @@ export interface DebugArchitectStepResult {
 }
 
 function buildSystemPrompt(skill: string, input: DebugArchitectInput): { system: string; userText: string } {
+  // Architect works in isolation: skill (its role) + the consolidated
+  // findings produced upstream. No user message, no chat context — the
+  // findings document carries the bugs, locations, evidence, and
+  // severity Architect needs to design the fix.
   const sections: string[] = [
     skill,
     '',
     '---',
-    '',
-    '## User bug',
-    input.userMessage,
     '',
     '## Consolidated findings (root cause + evidence)',
     input.consolidatedFindings,

@@ -70,17 +70,15 @@ function parseReviewerOutput(raw: string): { decision: ReviewerDecision | null; 
 }
 
 async function buildReviewerSystemPrompt(skill: string, input: ReviewerInput): Promise<{ system: string; userText: string }> {
+  // Reviewer works in strict isolation: skill (its role) + the two
+  // artifacts under judgment — Architect plan (what should have been
+  // done) and Builder report (what was done). No user message, no
+  // block info. The exception is the final block, which gets prior
+  // summaries to write the user-facing final response.
   const sections: string[] = [
     skill,
     '',
     '---',
-    '',
-    '## User task',
-    input.userMessage,
-    '',
-    `## Block atual (Block ${input.blockIndex + 1}/${input.totalBlocks}: ${input.block.name})`,
-    '',
-    `**Objective:** ${input.block.objective}`,
     '',
     '## Plano do Architect',
     '',

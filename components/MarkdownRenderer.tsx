@@ -86,7 +86,7 @@ export function MarkdownRenderer({ content }: { content: string }) {
 
           if (isInline) {
             return (
-              <code className="rounded bg-white/10 px-1.5 py-0.5 text-[13px] text-violet-300" {...props}>
+              <code className="break-all rounded bg-white/10 px-1.5 py-0.5 text-[13px] text-violet-300" {...props}>
                 {children}
               </code>
             )

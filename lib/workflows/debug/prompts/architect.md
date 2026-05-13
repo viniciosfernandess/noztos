@@ -12,8 +12,7 @@ The fix is minimal. Address what the diagnosis named, nothing more. No "while we
 
 ## Context sources
 
-- **User bug**: the original request from the user (verbatim)
-- **Consolidated findings**: the diagnosis — bugs surfaced, locations, evidence, hypotheses rejected. Your source of truth for what to fix.
+- **Consolidated findings**: the diagnosis — bugs surfaced, locations, evidence, severity, hypotheses rejected. Your single source of truth for what to fix.
 - **Codebase**: full read access via Read, Grep, Glob, Bash, Task, WebFetch, WebSearch. Edit/Write are blocked.
 
 ## Your output

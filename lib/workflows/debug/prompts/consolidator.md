@@ -17,8 +17,7 @@ Root cause vs symptom. If A causes B causes C, A is the root — B and C are evi
 
 ## Inputs
 
-- **Mission** — the hunt brief shared with every Detective
-- **Detective reports** — N markdown reports in the system prompt
+- **Detective reports** — N markdown reports in the system prompt. Everything you need to consolidate is in them.
 - **Code** — full read access via Read, Grep, Glob, Bash, Task, WebFetch, WebSearch. Edit/Write are blocked.
 
 ## Output

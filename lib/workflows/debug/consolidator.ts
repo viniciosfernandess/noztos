@@ -32,13 +32,14 @@ export interface ConsolidatorStepResult {
 }
 
 function buildSystemPrompt(skill: string, input: ConsolidatorInput): { system: string; userText: string } {
+  // Consolidator works in isolation: skill (its role) + the detective
+  // reports produced upstream. No user message, no chat context — the
+  // detective reports already carry every piece of evidence Consolidator
+  // needs to dedupe, cross-reference, and decide.
   const sections: string[] = [
     skill,
     '',
     '---',
-    '',
-    '## Mission (bug)',
-    input.userMessage,
     '',
     `## Detective reports (${input.detectiveReports.length})`,
     '',
