@@ -144,8 +144,12 @@ export async function runDebugPlannerStep(input: DebugPlannerInput): Promise<Deb
     cwd: input.projectPath,
     model: 'sonnet',
     runId: input.runId,
-    // Planner reads code freely to figure out regions but never mutates.
-    disallowedTools: ['Edit', 'Write', 'NotebookEdit', 'MultiEdit'],
+    // Planner only maps the structure to draw regions. Edit/Write are
+    // blocked at the SDK level; Bash is blocked too because earlier
+    // runs showed the model would `sed -i` the code into a fix when
+    // tempted by a narrow user request — closing that backdoor here.
+    // Read/Grep/Glob/LS are enough to walk the layout and read configs.
+    disallowedTools: ['Edit', 'Write', 'NotebookEdit', 'MultiEdit', 'Bash'],
     permissionMode: 'bypassPermissions',
     onChunk: input.onChunk,
   })
