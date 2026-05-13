@@ -143,23 +143,34 @@ export function useGitStatus(projectId: string, sessionId: string | null, worktr
         // Merge local fields into the existing snapshot — keeps the last-
         // known PR / CI / mainProtected state intact between polls. First
         // call after mount runs as 'full' so `prev` always has a base.
+        //
+        // Read `prev` from the cache, not from React state via a setStatus
+        // updater. The cache is the shared source-of-truth (subscribers
+        // re-sync from it on notify); reading from there matches the same
+        // last-writer-wins semantics React would give us, and — critically
+        // — avoids calling setCachedGitStatus inside a setStatus updater.
+        // That older pattern fired `notify` during the render commit, and
+        // subscribed components calling setState mid-render triggered the
+        // "Cannot update a component while rendering another" warning + a
+        // cascade of stale state (Explorer marked every file dirty, Checks
+        // panel showed phantom uncommitted, Changes panel saw nothing —
+        // because nothing actually was).
         const local = data as LocalGitStatus
-        setStatus((prev) => {
-          const merged: GitStatus = prev
-            ? { ...prev, ...local }
-            // No prior state yet (first event landed before the initial
-            // poll resolved): synthesise a partial. The next poll lands
-            // ~30s later and fills in the GitHub-side fields.
-            : {
-                ...local,
-                mainProtected: false,
-                mainProtectionChecked: 0,
-                pr: null,
-                githubConnected: false,
-              }
-          setCachedGitStatus(cacheKey, merged)
-          return merged
-        })
+        const prev = getCachedGitStatus<GitStatus>(cacheKey) ?? null
+        const merged: GitStatus = prev
+          ? { ...prev, ...local }
+          // No prior state yet (first event landed before the initial
+          // poll resolved): synthesise a partial. The next poll lands
+          // ~30s later and fills in the GitHub-side fields.
+          : {
+              ...local,
+              mainProtected: false,
+              mainProtectionChecked: 0,
+              pr: null,
+              githubConnected: false,
+            }
+        setCachedGitStatus(cacheKey, merged)
+        setStatus(merged)
       } else {
         const full = data as GitStatus
         setStatus(full)
