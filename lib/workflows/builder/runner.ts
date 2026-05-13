@@ -290,11 +290,23 @@ async function executeRun(runId: string, input: StartWorkflowInput): Promise<voi
 
   // ── Phase 0: Bridge IN + repo snapshot + Planner ─────────────────
 
+  // Persisted StepState slot for the Planner — same transcript array
+  // as currentStep so chunks land in both, and the slot survives when
+  // currentStep gets reassigned by the first block's architect.
+  const plannerStep: StepState = {
+    role: 'planner',
+    attempt: 1,
+    status: 'running',
+    startedAt: Date.now(),
+    transcript: [],
+  }
+  snapshot.plannerStep = plannerStep
   snapshot.currentStep = {
     role: 'planner',
     blockIndex: -1,
     attempt: 1,
-    startedAt: Date.now(),
+    startedAt: plannerStep.startedAt!,
+    transcript: plannerStep.transcript,
   }
   await persistProgress(runId, snapshot)
 
@@ -321,7 +333,11 @@ async function executeRun(runId: string, input: StartWorkflowInput): Promise<voi
     onChunk: makeLiveOnChunk(runId, snapshot, chunkCtx),
   })
 
+  plannerStep.finishedAt = Date.now()
+  plannerStep.durationMs = plannerStep.finishedAt - plannerStep.startedAt!
   if (!plannerResult.plan) {
+    plannerStep.status = 'failed'
+    plannerStep.errorReason = plannerResult.parseError ?? plannerResult.rawResult.error ?? 'unknown'
     snapshot.currentStep = null
     await persistProgress(runId, snapshot)
     await prisma.workflowRun.updateMany({
@@ -336,6 +352,8 @@ async function executeRun(runId: string, input: StartWorkflowInput): Promise<voi
     return
   }
 
+  plannerStep.status = 'completed'
+  plannerStep.output = plannerResult.rawResult.output
   snapshot.plan = plannerResult.plan
   snapshot.blocks = plannerResult.plan.blocks.map((b, i) => ({
     index: i,
@@ -468,9 +486,10 @@ async function runBlock(
       attempt,
       status: 'running',
       startedAt: Date.now(),
+      transcript: [],
     }
     block.steps.push(archStep)
-    snapshot.currentStep = { role: 'architect', blockIndex, attempt, startedAt: archStep.startedAt! }
+    snapshot.currentStep = { role: 'architect', blockIndex, attempt, startedAt: archStep.startedAt!, transcript: archStep.transcript }
     await persistProgress(runId, snapshot)
     console.log(`[wf-runner] run=${runId.slice(0, 8)} block=${blockIndex + 1} ▶ architect attempt=${attempt}${attempt > 1 ? ' (retry)' : ''}`)
 
@@ -512,9 +531,10 @@ async function runBlock(
       attempt,
       status: 'running',
       startedAt: Date.now(),
+      transcript: [],
     }
     block.steps.push(buildStep)
-    snapshot.currentStep = { role: 'builder', blockIndex, attempt, startedAt: buildStep.startedAt! }
+    snapshot.currentStep = { role: 'builder', blockIndex, attempt, startedAt: buildStep.startedAt!, transcript: buildStep.transcript }
     await persistProgress(runId, snapshot)
     console.log(`[wf-runner] run=${runId.slice(0, 8)} block=${blockIndex + 1} ▶ builder attempt=${attempt}${attempt > 1 ? ' (retry)' : ''} architectPlanBytes=${architectPlan.length}`)
 
@@ -557,9 +577,10 @@ async function runBlock(
       attempt,
       status: 'running',
       startedAt: Date.now(),
+      transcript: [],
     }
     block.steps.push(revStep)
-    snapshot.currentStep = { role: 'reviewer', blockIndex, attempt, startedAt: revStep.startedAt! }
+    snapshot.currentStep = { role: 'reviewer', blockIndex, attempt, startedAt: revStep.startedAt!, transcript: revStep.transcript }
     await persistProgress(runId, snapshot)
     console.log(`[wf-runner] run=${runId.slice(0, 8)} block=${blockIndex + 1} ▶ reviewer attempt=${attempt}${isFinalBlock ? ' (FINAL BLOCK)' : ''} builderReportBytes=${builderReport.length}`)
 
