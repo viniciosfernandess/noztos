@@ -103,6 +103,19 @@ export interface WorkflowRunUIState {
   completedAt: string | null
 }
 
+// Minimal shape returned by `GET /api/workflow?sessionId=X` — just
+// enough for the inline rendering decision (which card maps to which
+// user message) and the status badge. Heavy fields stay on the
+// per-run snapshot subscription that the card itself drives.
+export interface WorkflowRunListItem {
+  id: string
+  status: string
+  workflowType: string
+  triggerMessageId: string | null
+  createdAt: string
+  completedAt: string | null
+}
+
 function emptySlice(): ChatSlice {
   return {
     messages: new Map(),
@@ -201,6 +214,17 @@ class CompanionStore {
   private workflowSnapshots: Map<string, WorkflowRunUIState> = new Map()
   private workflowLastSeq: Map<string, number> = new Map()
   private workflowListeners: Map<string, Set<Listener>> = new Map()
+
+  // Per-session list of WorkflowRun summaries — drives the inline
+  // WorkflowRunCard rendering (one card per run, anchored to its
+  // triggerMessageId). Cached here so switching chats hits the list
+  // instantly instead of waiting for `GET /api/workflow?sessionId=`
+  // to round-trip. The HTTP fetch is the cold-load primer; SSE-driven
+  // events still flow into `workflowSnapshots`, and a setter below
+  // lets the WorkPanel refresh this map when a new run starts or a
+  // status changes.
+  private workflowRunsLists: Map<string, WorkflowRunListItem[]> = new Map()
+  private workflowRunsListeners: Map<string, Set<Listener>> = new Map()
 
   // ── Snapshot helpers (referentially stable between notifies) ──
 
@@ -747,6 +771,40 @@ class CompanionStore {
 
   private notifyWorkflow(runId: string): void {
     const set = this.workflowListeners.get(runId)
+    if (set) for (const l of set) l()
+  }
+
+  // ── Workflow runs list (per-session, for inline card rendering) ──
+  //
+  // Same cache-primary pattern as `getMessages`: returns the cached
+  // list synchronously on read (referentially stable between
+  // notifies so React's `useSyncExternalStore` doesn't loop), the
+  // caller primes the cache once via a fetch into `setWorkflowRunsList`.
+
+  private static EMPTY_RUNS_LIST: WorkflowRunListItem[] = []
+
+  getWorkflowRunsList(sessionId: string): WorkflowRunListItem[] {
+    return this.workflowRunsLists.get(sessionId) ?? CompanionStore.EMPTY_RUNS_LIST
+  }
+
+  setWorkflowRunsList(sessionId: string, runs: WorkflowRunListItem[]): void {
+    this.workflowRunsLists.set(sessionId, runs)
+    this.notifyWorkflowRunsList(sessionId)
+  }
+
+  subscribeWorkflowRunsList(sessionId: string, cb: Listener): () => void {
+    let set = this.workflowRunsListeners.get(sessionId)
+    if (!set) { set = new Set(); this.workflowRunsListeners.set(sessionId, set) }
+    set.add(cb)
+    return () => {
+      const s = this.workflowRunsListeners.get(sessionId)
+      s?.delete(cb)
+      if (s && s.size === 0) this.workflowRunsListeners.delete(sessionId)
+    }
+  }
+
+  private notifyWorkflowRunsList(sessionId: string): void {
+    const set = this.workflowRunsListeners.get(sessionId)
     if (set) for (const l of set) l()
   }
 

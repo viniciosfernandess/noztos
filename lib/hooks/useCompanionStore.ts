@@ -74,6 +74,22 @@ export function useWorkflowRunId(sessionId: string | null | undefined): string |
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 }
 
+// All WorkflowRun summaries for a session — drives inline rendering
+// of the per-run cards beneath their trigger user message. Cached in
+// the store so chat-switch reads from RAM (no API roundtrip flicker);
+// caller primes the cache via setWorkflowRunsList after a list fetch.
+export function useWorkflowRunsList(sessionId: string | null | undefined): import('@/lib/companion-store').WorkflowRunListItem[] {
+  const subscribe = useCallback(
+    (cb: () => void) => sessionId ? companionStore.subscribeWorkflowRunsList(sessionId, cb) : () => {},
+    [sessionId],
+  )
+  const getSnapshot = useCallback(
+    () => sessionId ? companionStore.getWorkflowRunsList(sessionId) : [],
+    [sessionId],
+  )
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
+}
+
 export function useUnreadSessions(): Set<string> {
   return useSyncExternalStore(
     (cb) => companionStore.subscribeUnread(cb),

@@ -26,7 +26,7 @@ import { XTermPanel } from './Terminal/XTermPanel'
 import { type ChatMessage } from '@/lib/hooks/useCompanionStream'
 import { companionStore } from '@/lib/companion-store'
 import {
-  useChatMessages, useChatIsRunning, useWorkflowRunId,
+  useChatMessages, useChatIsRunning, useWorkflowRunId, useWorkflowRunsList,
   useBusySessions, useUnreadSessions, useCompanionStatus, useCompanionInfo, usePendingSessions,
   usePendingAttachments,
 } from '@/lib/hooks/useCompanionStore'
@@ -6195,22 +6195,15 @@ function ChatPanel({
 
   // List of every workflow run that lived under this session — drives
   // the inline rendering of WorkflowRunCards anchored to the user
-  // message that triggered them (via triggerMessageId). Refetched when
-  // the session changes or when a new run attaches (workflowRunId
-  // flips), so newly-started runs land in the list quickly.
+  // message that triggered them (via triggerMessageId). Lives in the
+  // companion-store keyed by sessionId so chat-switch reads from RAM
+  // (no API flicker). The fetch below is just the cold-load primer —
+  // when a new run attaches (workflowRunId flips), we refetch to pick
+  // up the new entry; otherwise the cached list is returned to the UI.
   //
   // Heavy fields (progress, transcripts) stay on the per-run detail
-  // endpoint — the card component pulls them on demand via its own
-  // subscription. This list is just enough for positioning.
-  interface WorkflowRunListItem {
-    id: string
-    status: string
-    workflowType: string
-    triggerMessageId: string | null
-    createdAt: string
-    completedAt: string | null
-  }
-  const [workflowRunsList, setWorkflowRunsList] = useState<WorkflowRunListItem[]>([])
+  // endpoint; the card component subscribes to its own snapshot.
+  const workflowRunsList = useWorkflowRunsList(sessionId)
   useEffect(() => {
     if (!sessionId) return
     let cancelled = false
@@ -6218,8 +6211,8 @@ function ChatPanel({
       try {
         const res = await fetch(`/api/workflow?sessionId=${sessionId}`)
         if (!res.ok || cancelled) return
-        const data = await res.json() as { runs: WorkflowRunListItem[] }
-        setWorkflowRunsList(data.runs)
+        const data = await res.json() as { runs: import('@/lib/companion-store').WorkflowRunListItem[] }
+        companionStore.setWorkflowRunsList(sessionId!, data.runs)
       } catch { /* offline / transient — try again on next trigger */ }
     }
     void load()
