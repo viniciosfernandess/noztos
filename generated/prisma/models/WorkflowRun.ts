@@ -31,6 +31,7 @@ export type WorkflowRunMinAggregateOutputType = {
   userId: string | null
   workflowType: string | null
   userMessage: string | null
+  triggerMessageId: string | null
   status: string | null
   finalResponse: string | null
   errorReason: string | null
@@ -45,6 +46,7 @@ export type WorkflowRunMaxAggregateOutputType = {
   userId: string | null
   workflowType: string | null
   userMessage: string | null
+  triggerMessageId: string | null
   status: string | null
   finalResponse: string | null
   errorReason: string | null
@@ -59,6 +61,7 @@ export type WorkflowRunCountAggregateOutputType = {
   userId: number
   workflowType: number
   userMessage: number
+  triggerMessageId: number
   status: number
   plan: number
   progress: number
@@ -77,6 +80,7 @@ export type WorkflowRunMinAggregateInputType = {
   userId?: true
   workflowType?: true
   userMessage?: true
+  triggerMessageId?: true
   status?: true
   finalResponse?: true
   errorReason?: true
@@ -91,6 +95,7 @@ export type WorkflowRunMaxAggregateInputType = {
   userId?: true
   workflowType?: true
   userMessage?: true
+  triggerMessageId?: true
   status?: true
   finalResponse?: true
   errorReason?: true
@@ -105,6 +110,7 @@ export type WorkflowRunCountAggregateInputType = {
   userId?: true
   workflowType?: true
   userMessage?: true
+  triggerMessageId?: true
   status?: true
   plan?: true
   progress?: true
@@ -194,6 +200,7 @@ export type WorkflowRunGroupByOutputType = {
   userId: string
   workflowType: string
   userMessage: string
+  triggerMessageId: string | null
   status: string
   plan: runtime.JsonValue | null
   progress: runtime.JsonValue
@@ -231,6 +238,7 @@ export type WorkflowRunWhereInput = {
   userId?: Prisma.StringFilter<"WorkflowRun"> | string
   workflowType?: Prisma.StringFilter<"WorkflowRun"> | string
   userMessage?: Prisma.StringFilter<"WorkflowRun"> | string
+  triggerMessageId?: Prisma.StringNullableFilter<"WorkflowRun"> | string | null
   status?: Prisma.StringFilter<"WorkflowRun"> | string
   plan?: Prisma.JsonNullableFilter<"WorkflowRun">
   progress?: Prisma.JsonFilter<"WorkflowRun">
@@ -249,6 +257,7 @@ export type WorkflowRunOrderByWithRelationInput = {
   userId?: Prisma.SortOrder
   workflowType?: Prisma.SortOrder
   userMessage?: Prisma.SortOrder
+  triggerMessageId?: Prisma.SortOrderInput | Prisma.SortOrder
   status?: Prisma.SortOrder
   plan?: Prisma.SortOrderInput | Prisma.SortOrder
   progress?: Prisma.SortOrder
@@ -270,6 +279,7 @@ export type WorkflowRunWhereUniqueInput = Prisma.AtLeast<{
   userId?: Prisma.StringFilter<"WorkflowRun"> | string
   workflowType?: Prisma.StringFilter<"WorkflowRun"> | string
   userMessage?: Prisma.StringFilter<"WorkflowRun"> | string
+  triggerMessageId?: Prisma.StringNullableFilter<"WorkflowRun"> | string | null
   status?: Prisma.StringFilter<"WorkflowRun"> | string
   plan?: Prisma.JsonNullableFilter<"WorkflowRun">
   progress?: Prisma.JsonFilter<"WorkflowRun">
@@ -288,6 +298,7 @@ export type WorkflowRunOrderByWithAggregationInput = {
   userId?: Prisma.SortOrder
   workflowType?: Prisma.SortOrder
   userMessage?: Prisma.SortOrder
+  triggerMessageId?: Prisma.SortOrderInput | Prisma.SortOrder
   status?: Prisma.SortOrder
   plan?: Prisma.SortOrderInput | Prisma.SortOrder
   progress?: Prisma.SortOrder
@@ -310,6 +321,7 @@ export type WorkflowRunScalarWhereWithAggregatesInput = {
   userId?: Prisma.StringWithAggregatesFilter<"WorkflowRun"> | string
   workflowType?: Prisma.StringWithAggregatesFilter<"WorkflowRun"> | string
   userMessage?: Prisma.StringWithAggregatesFilter<"WorkflowRun"> | string
+  triggerMessageId?: Prisma.StringNullableWithAggregatesFilter<"WorkflowRun"> | string | null
   status?: Prisma.StringWithAggregatesFilter<"WorkflowRun"> | string
   plan?: Prisma.JsonNullableWithAggregatesFilter<"WorkflowRun">
   progress?: Prisma.JsonWithAggregatesFilter<"WorkflowRun">
@@ -324,6 +336,7 @@ export type WorkflowRunCreateInput = {
   userId: string
   workflowType: string
   userMessage: string
+  triggerMessageId?: string | null
   status?: string
   plan?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   progress?: Prisma.JsonNullValueInput | runtime.InputJsonValue
@@ -342,6 +355,7 @@ export type WorkflowRunUncheckedCreateInput = {
   userId: string
   workflowType: string
   userMessage: string
+  triggerMessageId?: string | null
   status?: string
   plan?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   progress?: Prisma.JsonNullValueInput | runtime.InputJsonValue
@@ -356,6 +370,7 @@ export type WorkflowRunUpdateInput = {
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   workflowType?: Prisma.StringFieldUpdateOperationsInput | string
   userMessage?: Prisma.StringFieldUpdateOperationsInput | string
+  triggerMessageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
   plan?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   progress?: Prisma.JsonNullValueInput | runtime.InputJsonValue
@@ -374,6 +389,7 @@ export type WorkflowRunUncheckedUpdateInput = {
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   workflowType?: Prisma.StringFieldUpdateOperationsInput | string
   userMessage?: Prisma.StringFieldUpdateOperationsInput | string
+  triggerMessageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
   plan?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   progress?: Prisma.JsonNullValueInput | runtime.InputJsonValue
@@ -390,6 +406,7 @@ export type WorkflowRunCreateManyInput = {
   userId: string
   workflowType: string
   userMessage: string
+  triggerMessageId?: string | null
   status?: string
   plan?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   progress?: Prisma.JsonNullValueInput | runtime.InputJsonValue
@@ -404,6 +421,7 @@ export type WorkflowRunUpdateManyMutationInput = {
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   workflowType?: Prisma.StringFieldUpdateOperationsInput | string
   userMessage?: Prisma.StringFieldUpdateOperationsInput | string
+  triggerMessageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
   plan?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   progress?: Prisma.JsonNullValueInput | runtime.InputJsonValue
@@ -420,6 +438,7 @@ export type WorkflowRunUncheckedUpdateManyInput = {
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   workflowType?: Prisma.StringFieldUpdateOperationsInput | string
   userMessage?: Prisma.StringFieldUpdateOperationsInput | string
+  triggerMessageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
   plan?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   progress?: Prisma.JsonNullValueInput | runtime.InputJsonValue
@@ -446,6 +465,7 @@ export type WorkflowRunCountOrderByAggregateInput = {
   userId?: Prisma.SortOrder
   workflowType?: Prisma.SortOrder
   userMessage?: Prisma.SortOrder
+  triggerMessageId?: Prisma.SortOrder
   status?: Prisma.SortOrder
   plan?: Prisma.SortOrder
   progress?: Prisma.SortOrder
@@ -462,6 +482,7 @@ export type WorkflowRunMaxOrderByAggregateInput = {
   userId?: Prisma.SortOrder
   workflowType?: Prisma.SortOrder
   userMessage?: Prisma.SortOrder
+  triggerMessageId?: Prisma.SortOrder
   status?: Prisma.SortOrder
   finalResponse?: Prisma.SortOrder
   errorReason?: Prisma.SortOrder
@@ -476,6 +497,7 @@ export type WorkflowRunMinOrderByAggregateInput = {
   userId?: Prisma.SortOrder
   workflowType?: Prisma.SortOrder
   userMessage?: Prisma.SortOrder
+  triggerMessageId?: Prisma.SortOrder
   status?: Prisma.SortOrder
   finalResponse?: Prisma.SortOrder
   errorReason?: Prisma.SortOrder
@@ -572,6 +594,7 @@ export type WorkflowRunCreateWithoutProjectInput = {
   userId: string
   workflowType: string
   userMessage: string
+  triggerMessageId?: string | null
   status?: string
   plan?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   progress?: Prisma.JsonNullValueInput | runtime.InputJsonValue
@@ -588,6 +611,7 @@ export type WorkflowRunUncheckedCreateWithoutProjectInput = {
   userId: string
   workflowType: string
   userMessage: string
+  triggerMessageId?: string | null
   status?: string
   plan?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   progress?: Prisma.JsonNullValueInput | runtime.InputJsonValue
@@ -633,6 +657,7 @@ export type WorkflowRunScalarWhereInput = {
   userId?: Prisma.StringFilter<"WorkflowRun"> | string
   workflowType?: Prisma.StringFilter<"WorkflowRun"> | string
   userMessage?: Prisma.StringFilter<"WorkflowRun"> | string
+  triggerMessageId?: Prisma.StringNullableFilter<"WorkflowRun"> | string | null
   status?: Prisma.StringFilter<"WorkflowRun"> | string
   plan?: Prisma.JsonNullableFilter<"WorkflowRun">
   progress?: Prisma.JsonFilter<"WorkflowRun">
@@ -647,6 +672,7 @@ export type WorkflowRunCreateWithoutSessionInput = {
   userId: string
   workflowType: string
   userMessage: string
+  triggerMessageId?: string | null
   status?: string
   plan?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   progress?: Prisma.JsonNullValueInput | runtime.InputJsonValue
@@ -663,6 +689,7 @@ export type WorkflowRunUncheckedCreateWithoutSessionInput = {
   userId: string
   workflowType: string
   userMessage: string
+  triggerMessageId?: string | null
   status?: string
   plan?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   progress?: Prisma.JsonNullValueInput | runtime.InputJsonValue
@@ -704,6 +731,7 @@ export type WorkflowRunCreateManyProjectInput = {
   userId: string
   workflowType: string
   userMessage: string
+  triggerMessageId?: string | null
   status?: string
   plan?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   progress?: Prisma.JsonNullValueInput | runtime.InputJsonValue
@@ -718,6 +746,7 @@ export type WorkflowRunUpdateWithoutProjectInput = {
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   workflowType?: Prisma.StringFieldUpdateOperationsInput | string
   userMessage?: Prisma.StringFieldUpdateOperationsInput | string
+  triggerMessageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
   plan?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   progress?: Prisma.JsonNullValueInput | runtime.InputJsonValue
@@ -734,6 +763,7 @@ export type WorkflowRunUncheckedUpdateWithoutProjectInput = {
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   workflowType?: Prisma.StringFieldUpdateOperationsInput | string
   userMessage?: Prisma.StringFieldUpdateOperationsInput | string
+  triggerMessageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
   plan?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   progress?: Prisma.JsonNullValueInput | runtime.InputJsonValue
@@ -749,6 +779,7 @@ export type WorkflowRunUncheckedUpdateManyWithoutProjectInput = {
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   workflowType?: Prisma.StringFieldUpdateOperationsInput | string
   userMessage?: Prisma.StringFieldUpdateOperationsInput | string
+  triggerMessageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
   plan?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   progress?: Prisma.JsonNullValueInput | runtime.InputJsonValue
@@ -764,6 +795,7 @@ export type WorkflowRunCreateManySessionInput = {
   userId: string
   workflowType: string
   userMessage: string
+  triggerMessageId?: string | null
   status?: string
   plan?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   progress?: Prisma.JsonNullValueInput | runtime.InputJsonValue
@@ -778,6 +810,7 @@ export type WorkflowRunUpdateWithoutSessionInput = {
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   workflowType?: Prisma.StringFieldUpdateOperationsInput | string
   userMessage?: Prisma.StringFieldUpdateOperationsInput | string
+  triggerMessageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
   plan?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   progress?: Prisma.JsonNullValueInput | runtime.InputJsonValue
@@ -794,6 +827,7 @@ export type WorkflowRunUncheckedUpdateWithoutSessionInput = {
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   workflowType?: Prisma.StringFieldUpdateOperationsInput | string
   userMessage?: Prisma.StringFieldUpdateOperationsInput | string
+  triggerMessageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
   plan?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   progress?: Prisma.JsonNullValueInput | runtime.InputJsonValue
@@ -809,6 +843,7 @@ export type WorkflowRunUncheckedUpdateManyWithoutSessionInput = {
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   workflowType?: Prisma.StringFieldUpdateOperationsInput | string
   userMessage?: Prisma.StringFieldUpdateOperationsInput | string
+  triggerMessageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.StringFieldUpdateOperationsInput | string
   plan?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   progress?: Prisma.JsonNullValueInput | runtime.InputJsonValue
@@ -827,6 +862,7 @@ export type WorkflowRunSelect<ExtArgs extends runtime.Types.Extensions.InternalA
   userId?: boolean
   workflowType?: boolean
   userMessage?: boolean
+  triggerMessageId?: boolean
   status?: boolean
   plan?: boolean
   progress?: boolean
@@ -845,6 +881,7 @@ export type WorkflowRunSelectCreateManyAndReturn<ExtArgs extends runtime.Types.E
   userId?: boolean
   workflowType?: boolean
   userMessage?: boolean
+  triggerMessageId?: boolean
   status?: boolean
   plan?: boolean
   progress?: boolean
@@ -863,6 +900,7 @@ export type WorkflowRunSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.E
   userId?: boolean
   workflowType?: boolean
   userMessage?: boolean
+  triggerMessageId?: boolean
   status?: boolean
   plan?: boolean
   progress?: boolean
@@ -881,6 +919,7 @@ export type WorkflowRunSelectScalar = {
   userId?: boolean
   workflowType?: boolean
   userMessage?: boolean
+  triggerMessageId?: boolean
   status?: boolean
   plan?: boolean
   progress?: boolean
@@ -890,7 +929,7 @@ export type WorkflowRunSelectScalar = {
   completedAt?: boolean
 }
 
-export type WorkflowRunOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "sessionId" | "projectId" | "userId" | "workflowType" | "userMessage" | "status" | "plan" | "progress" | "finalResponse" | "errorReason" | "createdAt" | "completedAt", ExtArgs["result"]["workflowRun"]>
+export type WorkflowRunOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "sessionId" | "projectId" | "userId" | "workflowType" | "userMessage" | "triggerMessageId" | "status" | "plan" | "progress" | "finalResponse" | "errorReason" | "createdAt" | "completedAt", ExtArgs["result"]["workflowRun"]>
 export type WorkflowRunInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   session?: boolean | Prisma.ChatSessionDefaultArgs<ExtArgs>
   project?: boolean | Prisma.ProjectDefaultArgs<ExtArgs>
@@ -917,6 +956,7 @@ export type $WorkflowRunPayload<ExtArgs extends runtime.Types.Extensions.Interna
     userId: string
     workflowType: string
     userMessage: string
+    triggerMessageId: string | null
     status: string
     plan: runtime.JsonValue | null
     progress: runtime.JsonValue
@@ -1355,6 +1395,7 @@ export interface WorkflowRunFieldRefs {
   readonly userId: Prisma.FieldRef<"WorkflowRun", 'String'>
   readonly workflowType: Prisma.FieldRef<"WorkflowRun", 'String'>
   readonly userMessage: Prisma.FieldRef<"WorkflowRun", 'String'>
+  readonly triggerMessageId: Prisma.FieldRef<"WorkflowRun", 'String'>
   readonly status: Prisma.FieldRef<"WorkflowRun", 'String'>
   readonly plan: Prisma.FieldRef<"WorkflowRun", 'Json'>
   readonly progress: Prisma.FieldRef<"WorkflowRun", 'Json'>

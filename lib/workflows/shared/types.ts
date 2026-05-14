@@ -48,7 +48,7 @@ export interface DebugPlannerOutput {
 
 export type StepRole = 'surveyor' | 'planner' | 'architect' | 'builder' | 'reviewer' | 'detective' | 'consolidator'
 
-export type StepStatus = 'pending' | 'running' | 'completed' | 'failed'
+export type StepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
 
 // Live transcript chunk for an in-flight agent step. Same shape the
 // chat normal already renders via ClaudeToolCard — text grows

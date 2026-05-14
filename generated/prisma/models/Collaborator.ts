@@ -207,7 +207,6 @@ export type CollaboratorWhereInput = {
   isActive?: Prisma.BoolFilter<"Collaborator"> | boolean
   createdAt?: Prisma.DateTimeFilter<"Collaborator"> | Date | string
   project?: Prisma.XOR<Prisma.ProjectNullableScalarRelationFilter, Prisma.ProjectWhereInput> | null
-  taskSkillLogs?: Prisma.TaskSkillLogListRelationFilter
 }
 
 export type CollaboratorOrderByWithRelationInput = {
@@ -220,7 +219,6 @@ export type CollaboratorOrderByWithRelationInput = {
   isActive?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   project?: Prisma.ProjectOrderByWithRelationInput
-  taskSkillLogs?: Prisma.TaskSkillLogOrderByRelationAggregateInput
 }
 
 export type CollaboratorWhereUniqueInput = Prisma.AtLeast<{
@@ -237,7 +235,6 @@ export type CollaboratorWhereUniqueInput = Prisma.AtLeast<{
   isActive?: Prisma.BoolFilter<"Collaborator"> | boolean
   createdAt?: Prisma.DateTimeFilter<"Collaborator"> | Date | string
   project?: Prisma.XOR<Prisma.ProjectNullableScalarRelationFilter, Prisma.ProjectWhereInput> | null
-  taskSkillLogs?: Prisma.TaskSkillLogListRelationFilter
 }, "id" | "name_projectId">
 
 export type CollaboratorOrderByWithAggregationInput = {
@@ -277,7 +274,6 @@ export type CollaboratorCreateInput = {
   isActive?: boolean
   createdAt?: Date | string
   project?: Prisma.ProjectCreateNestedOneWithoutCollaboratorsInput
-  taskSkillLogs?: Prisma.TaskSkillLogCreateNestedManyWithoutCollaboratorInput
 }
 
 export type CollaboratorUncheckedCreateInput = {
@@ -289,7 +285,6 @@ export type CollaboratorUncheckedCreateInput = {
   isPlatformDefault?: boolean
   isActive?: boolean
   createdAt?: Date | string
-  taskSkillLogs?: Prisma.TaskSkillLogUncheckedCreateNestedManyWithoutCollaboratorInput
 }
 
 export type CollaboratorUpdateInput = {
@@ -301,7 +296,6 @@ export type CollaboratorUpdateInput = {
   isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   project?: Prisma.ProjectUpdateOneWithoutCollaboratorsNestedInput
-  taskSkillLogs?: Prisma.TaskSkillLogUpdateManyWithoutCollaboratorNestedInput
 }
 
 export type CollaboratorUncheckedUpdateInput = {
@@ -313,7 +307,6 @@ export type CollaboratorUncheckedUpdateInput = {
   isPlatformDefault?: Prisma.BoolFieldUpdateOperationsInput | boolean
   isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  taskSkillLogs?: Prisma.TaskSkillLogUncheckedUpdateManyWithoutCollaboratorNestedInput
 }
 
 export type CollaboratorCreateManyInput = {
@@ -396,11 +389,6 @@ export type CollaboratorMinOrderByAggregateInput = {
   createdAt?: Prisma.SortOrder
 }
 
-export type CollaboratorNullableScalarRelationFilter = {
-  is?: Prisma.CollaboratorWhereInput | null
-  isNot?: Prisma.CollaboratorWhereInput | null
-}
-
 export type CollaboratorCreateNestedManyWithoutProjectInput = {
   create?: Prisma.XOR<Prisma.CollaboratorCreateWithoutProjectInput, Prisma.CollaboratorUncheckedCreateWithoutProjectInput> | Prisma.CollaboratorCreateWithoutProjectInput[] | Prisma.CollaboratorUncheckedCreateWithoutProjectInput[]
   connectOrCreate?: Prisma.CollaboratorCreateOrConnectWithoutProjectInput | Prisma.CollaboratorCreateOrConnectWithoutProjectInput[]
@@ -443,22 +431,6 @@ export type CollaboratorUncheckedUpdateManyWithoutProjectNestedInput = {
   deleteMany?: Prisma.CollaboratorScalarWhereInput | Prisma.CollaboratorScalarWhereInput[]
 }
 
-export type CollaboratorCreateNestedOneWithoutTaskSkillLogsInput = {
-  create?: Prisma.XOR<Prisma.CollaboratorCreateWithoutTaskSkillLogsInput, Prisma.CollaboratorUncheckedCreateWithoutTaskSkillLogsInput>
-  connectOrCreate?: Prisma.CollaboratorCreateOrConnectWithoutTaskSkillLogsInput
-  connect?: Prisma.CollaboratorWhereUniqueInput
-}
-
-export type CollaboratorUpdateOneWithoutTaskSkillLogsNestedInput = {
-  create?: Prisma.XOR<Prisma.CollaboratorCreateWithoutTaskSkillLogsInput, Prisma.CollaboratorUncheckedCreateWithoutTaskSkillLogsInput>
-  connectOrCreate?: Prisma.CollaboratorCreateOrConnectWithoutTaskSkillLogsInput
-  upsert?: Prisma.CollaboratorUpsertWithoutTaskSkillLogsInput
-  disconnect?: Prisma.CollaboratorWhereInput | boolean
-  delete?: Prisma.CollaboratorWhereInput | boolean
-  connect?: Prisma.CollaboratorWhereUniqueInput
-  update?: Prisma.XOR<Prisma.XOR<Prisma.CollaboratorUpdateToOneWithWhereWithoutTaskSkillLogsInput, Prisma.CollaboratorUpdateWithoutTaskSkillLogsInput>, Prisma.CollaboratorUncheckedUpdateWithoutTaskSkillLogsInput>
-}
-
 export type CollaboratorCreateWithoutProjectInput = {
   id?: string
   name: string
@@ -467,7 +439,6 @@ export type CollaboratorCreateWithoutProjectInput = {
   isPlatformDefault?: boolean
   isActive?: boolean
   createdAt?: Date | string
-  taskSkillLogs?: Prisma.TaskSkillLogCreateNestedManyWithoutCollaboratorInput
 }
 
 export type CollaboratorUncheckedCreateWithoutProjectInput = {
@@ -478,7 +449,6 @@ export type CollaboratorUncheckedCreateWithoutProjectInput = {
   isPlatformDefault?: boolean
   isActive?: boolean
   createdAt?: Date | string
-  taskSkillLogs?: Prisma.TaskSkillLogUncheckedCreateNestedManyWithoutCollaboratorInput
 }
 
 export type CollaboratorCreateOrConnectWithoutProjectInput = {
@@ -521,66 +491,6 @@ export type CollaboratorScalarWhereInput = {
   createdAt?: Prisma.DateTimeFilter<"Collaborator"> | Date | string
 }
 
-export type CollaboratorCreateWithoutTaskSkillLogsInput = {
-  id?: string
-  name: string
-  description: string
-  skillMd?: string
-  isPlatformDefault?: boolean
-  isActive?: boolean
-  createdAt?: Date | string
-  project?: Prisma.ProjectCreateNestedOneWithoutCollaboratorsInput
-}
-
-export type CollaboratorUncheckedCreateWithoutTaskSkillLogsInput = {
-  id?: string
-  projectId?: string | null
-  name: string
-  description: string
-  skillMd?: string
-  isPlatformDefault?: boolean
-  isActive?: boolean
-  createdAt?: Date | string
-}
-
-export type CollaboratorCreateOrConnectWithoutTaskSkillLogsInput = {
-  where: Prisma.CollaboratorWhereUniqueInput
-  create: Prisma.XOR<Prisma.CollaboratorCreateWithoutTaskSkillLogsInput, Prisma.CollaboratorUncheckedCreateWithoutTaskSkillLogsInput>
-}
-
-export type CollaboratorUpsertWithoutTaskSkillLogsInput = {
-  update: Prisma.XOR<Prisma.CollaboratorUpdateWithoutTaskSkillLogsInput, Prisma.CollaboratorUncheckedUpdateWithoutTaskSkillLogsInput>
-  create: Prisma.XOR<Prisma.CollaboratorCreateWithoutTaskSkillLogsInput, Prisma.CollaboratorUncheckedCreateWithoutTaskSkillLogsInput>
-  where?: Prisma.CollaboratorWhereInput
-}
-
-export type CollaboratorUpdateToOneWithWhereWithoutTaskSkillLogsInput = {
-  where?: Prisma.CollaboratorWhereInput
-  data: Prisma.XOR<Prisma.CollaboratorUpdateWithoutTaskSkillLogsInput, Prisma.CollaboratorUncheckedUpdateWithoutTaskSkillLogsInput>
-}
-
-export type CollaboratorUpdateWithoutTaskSkillLogsInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string
-  name?: Prisma.StringFieldUpdateOperationsInput | string
-  description?: Prisma.StringFieldUpdateOperationsInput | string
-  skillMd?: Prisma.StringFieldUpdateOperationsInput | string
-  isPlatformDefault?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  project?: Prisma.ProjectUpdateOneWithoutCollaboratorsNestedInput
-}
-
-export type CollaboratorUncheckedUpdateWithoutTaskSkillLogsInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string
-  projectId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  name?: Prisma.StringFieldUpdateOperationsInput | string
-  description?: Prisma.StringFieldUpdateOperationsInput | string
-  skillMd?: Prisma.StringFieldUpdateOperationsInput | string
-  isPlatformDefault?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-}
-
 export type CollaboratorCreateManyProjectInput = {
   id?: string
   name: string
@@ -599,7 +509,6 @@ export type CollaboratorUpdateWithoutProjectInput = {
   isPlatformDefault?: Prisma.BoolFieldUpdateOperationsInput | boolean
   isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  taskSkillLogs?: Prisma.TaskSkillLogUpdateManyWithoutCollaboratorNestedInput
 }
 
 export type CollaboratorUncheckedUpdateWithoutProjectInput = {
@@ -610,7 +519,6 @@ export type CollaboratorUncheckedUpdateWithoutProjectInput = {
   isPlatformDefault?: Prisma.BoolFieldUpdateOperationsInput | boolean
   isActive?: Prisma.BoolFieldUpdateOperationsInput | boolean
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  taskSkillLogs?: Prisma.TaskSkillLogUncheckedUpdateManyWithoutCollaboratorNestedInput
 }
 
 export type CollaboratorUncheckedUpdateManyWithoutProjectInput = {
@@ -624,35 +532,6 @@ export type CollaboratorUncheckedUpdateManyWithoutProjectInput = {
 }
 
 
-/**
- * Count Type CollaboratorCountOutputType
- */
-
-export type CollaboratorCountOutputType = {
-  taskSkillLogs: number
-}
-
-export type CollaboratorCountOutputTypeSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  taskSkillLogs?: boolean | CollaboratorCountOutputTypeCountTaskSkillLogsArgs
-}
-
-/**
- * CollaboratorCountOutputType without action
- */
-export type CollaboratorCountOutputTypeDefaultArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  /**
-   * Select specific fields to fetch from the CollaboratorCountOutputType
-   */
-  select?: Prisma.CollaboratorCountOutputTypeSelect<ExtArgs> | null
-}
-
-/**
- * CollaboratorCountOutputType without action
- */
-export type CollaboratorCountOutputTypeCountTaskSkillLogsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  where?: Prisma.TaskSkillLogWhereInput
-}
-
 
 export type CollaboratorSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
   id?: boolean
@@ -664,8 +543,6 @@ export type CollaboratorSelect<ExtArgs extends runtime.Types.Extensions.Internal
   isActive?: boolean
   createdAt?: boolean
   project?: boolean | Prisma.Collaborator$projectArgs<ExtArgs>
-  taskSkillLogs?: boolean | Prisma.Collaborator$taskSkillLogsArgs<ExtArgs>
-  _count?: boolean | Prisma.CollaboratorCountOutputTypeDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["collaborator"]>
 
 export type CollaboratorSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -706,8 +583,6 @@ export type CollaboratorSelectScalar = {
 export type CollaboratorOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "projectId" | "name" | "description" | "skillMd" | "isPlatformDefault" | "isActive" | "createdAt", ExtArgs["result"]["collaborator"]>
 export type CollaboratorInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   project?: boolean | Prisma.Collaborator$projectArgs<ExtArgs>
-  taskSkillLogs?: boolean | Prisma.Collaborator$taskSkillLogsArgs<ExtArgs>
-  _count?: boolean | Prisma.CollaboratorCountOutputTypeDefaultArgs<ExtArgs>
 }
 export type CollaboratorIncludeCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   project?: boolean | Prisma.Collaborator$projectArgs<ExtArgs>
@@ -720,7 +595,6 @@ export type $CollaboratorPayload<ExtArgs extends runtime.Types.Extensions.Intern
   name: "Collaborator"
   objects: {
     project: Prisma.$ProjectPayload<ExtArgs> | null
-    taskSkillLogs: Prisma.$TaskSkillLogPayload<ExtArgs>[]
   }
   scalars: runtime.Types.Extensions.GetPayloadResult<{
     id: string
@@ -1126,7 +1000,6 @@ readonly fields: CollaboratorFieldRefs;
 export interface Prisma__CollaboratorClient<T, Null = never, ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs, GlobalOmitOptions = {}> extends Prisma.PrismaPromise<T> {
   readonly [Symbol.toStringTag]: "PrismaPromise"
   project<T extends Prisma.Collaborator$projectArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Collaborator$projectArgs<ExtArgs>>): Prisma.Prisma__ProjectClient<runtime.Types.Result.GetResult<Prisma.$ProjectPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
-  taskSkillLogs<T extends Prisma.Collaborator$taskSkillLogsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Collaborator$taskSkillLogsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$TaskSkillLogPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   /**
    * Attaches callbacks for the resolution and/or rejection of the Promise.
    * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -1581,30 +1454,6 @@ export type Collaborator$projectArgs<ExtArgs extends runtime.Types.Extensions.In
    */
   include?: Prisma.ProjectInclude<ExtArgs> | null
   where?: Prisma.ProjectWhereInput
-}
-
-/**
- * Collaborator.taskSkillLogs
- */
-export type Collaborator$taskSkillLogsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  /**
-   * Select specific fields to fetch from the TaskSkillLog
-   */
-  select?: Prisma.TaskSkillLogSelect<ExtArgs> | null
-  /**
-   * Omit specific fields from the TaskSkillLog
-   */
-  omit?: Prisma.TaskSkillLogOmit<ExtArgs> | null
-  /**
-   * Choose, which related nodes to fetch as well
-   */
-  include?: Prisma.TaskSkillLogInclude<ExtArgs> | null
-  where?: Prisma.TaskSkillLogWhereInput
-  orderBy?: Prisma.TaskSkillLogOrderByWithRelationInput | Prisma.TaskSkillLogOrderByWithRelationInput[]
-  cursor?: Prisma.TaskSkillLogWhereUniqueInput
-  take?: number
-  skip?: number
-  distinct?: Prisma.TaskSkillLogScalarFieldEnum | Prisma.TaskSkillLogScalarFieldEnum[]
 }
 
 /**

@@ -11,22 +11,13 @@
 
 export const TaskStatus = {
   pending: 'pending',
-  queue: 'queue',
-  progress: 'progress',
-  completed: 'completed',
-  done: 'done'
+  scheduled: 'scheduled',
+  running: 'running',
+  done: 'done',
+  failed: 'failed'
 } as const
 
 export type TaskStatus = (typeof TaskStatus)[keyof typeof TaskStatus]
-
-
-export const ExecutorType = {
-  no_skill: 'no_skill',
-  skill: 'skill',
-  team: 'team'
-} as const
-
-export type ExecutorType = (typeof ExecutorType)[keyof typeof ExecutorType]
 
 
 export const PermissionMode = {

@@ -20,186 +20,126 @@ export type TaskModel = runtime.Types.Result.DefaultSelection<Prisma.$TaskPayloa
 
 export type AggregateTask = {
   _count: TaskCountAggregateOutputType | null
-  _avg: TaskAvgAggregateOutputType | null
-  _sum: TaskSumAggregateOutputType | null
   _min: TaskMinAggregateOutputType | null
   _max: TaskMaxAggregateOutputType | null
-}
-
-export type TaskAvgAggregateOutputType = {
-  pausedAtIteration: number | null
-  queuePosition: number | null
-  rescheduledCount: number | null
-}
-
-export type TaskSumAggregateOutputType = {
-  pausedAtIteration: number | null
-  queuePosition: number | null
-  rescheduledCount: number | null
 }
 
 export type TaskMinAggregateOutputType = {
   id: string | null
   projectId: string | null
+  worktreeId: string | null
   userId: string | null
   name: string | null
   instruction: string | null
-  canModifyRepo: boolean | null
-  permissionMode: $Enums.PermissionMode | null
-  executorType: $Enums.ExecutorType | null
+  contextSnapshot: string | null
+  executorKind: string | null
   executorId: string | null
+  chatMode: string | null
   status: $Enums.TaskStatus | null
-  isRecurring: boolean | null
   scheduledAt: Date | null
-  pausedAt: Date | null
-  pausedAtIteration: number | null
-  pausedAtEmployee: string | null
+  reviewedAt: Date | null
+  sourceTaskId: string | null
   createdAt: Date | null
   updatedAt: Date | null
-  queuePosition: number | null
-  originalScheduledAt: Date | null
-  rescheduledCount: number | null
-  rescheduledReason: string | null
 }
 
 export type TaskMaxAggregateOutputType = {
   id: string | null
   projectId: string | null
+  worktreeId: string | null
   userId: string | null
   name: string | null
   instruction: string | null
-  canModifyRepo: boolean | null
-  permissionMode: $Enums.PermissionMode | null
-  executorType: $Enums.ExecutorType | null
+  contextSnapshot: string | null
+  executorKind: string | null
   executorId: string | null
+  chatMode: string | null
   status: $Enums.TaskStatus | null
-  isRecurring: boolean | null
   scheduledAt: Date | null
-  pausedAt: Date | null
-  pausedAtIteration: number | null
-  pausedAtEmployee: string | null
+  reviewedAt: Date | null
+  sourceTaskId: string | null
   createdAt: Date | null
   updatedAt: Date | null
-  queuePosition: number | null
-  originalScheduledAt: Date | null
-  rescheduledCount: number | null
-  rescheduledReason: string | null
 }
 
 export type TaskCountAggregateOutputType = {
   id: number
   projectId: number
+  worktreeId: number
   userId: number
   name: number
   instruction: number
-  context: number
-  accumulatedContext: number
-  canModifyRepo: number
-  permissionMode: number
-  executorType: number
+  contextSource: number
+  contextSnapshot: number
+  executorKind: number
   executorId: number
+  chatMode: number
   status: number
-  isRecurring: number
-  recurrenceConfig: number
   scheduledAt: number
-  pausedAt: number
-  pausedAtIteration: number
-  pausedAtEmployee: number
+  reviewedAt: number
+  sourceTaskId: number
   createdAt: number
   updatedAt: number
-  queuePosition: number
-  originalScheduledAt: number
-  rescheduledCount: number
-  rescheduledReason: number
   _all: number
 }
 
 
-export type TaskAvgAggregateInputType = {
-  pausedAtIteration?: true
-  queuePosition?: true
-  rescheduledCount?: true
-}
-
-export type TaskSumAggregateInputType = {
-  pausedAtIteration?: true
-  queuePosition?: true
-  rescheduledCount?: true
-}
-
 export type TaskMinAggregateInputType = {
   id?: true
   projectId?: true
+  worktreeId?: true
   userId?: true
   name?: true
   instruction?: true
-  canModifyRepo?: true
-  permissionMode?: true
-  executorType?: true
+  contextSnapshot?: true
+  executorKind?: true
   executorId?: true
+  chatMode?: true
   status?: true
-  isRecurring?: true
   scheduledAt?: true
-  pausedAt?: true
-  pausedAtIteration?: true
-  pausedAtEmployee?: true
+  reviewedAt?: true
+  sourceTaskId?: true
   createdAt?: true
   updatedAt?: true
-  queuePosition?: true
-  originalScheduledAt?: true
-  rescheduledCount?: true
-  rescheduledReason?: true
 }
 
 export type TaskMaxAggregateInputType = {
   id?: true
   projectId?: true
+  worktreeId?: true
   userId?: true
   name?: true
   instruction?: true
-  canModifyRepo?: true
-  permissionMode?: true
-  executorType?: true
+  contextSnapshot?: true
+  executorKind?: true
   executorId?: true
+  chatMode?: true
   status?: true
-  isRecurring?: true
   scheduledAt?: true
-  pausedAt?: true
-  pausedAtIteration?: true
-  pausedAtEmployee?: true
+  reviewedAt?: true
+  sourceTaskId?: true
   createdAt?: true
   updatedAt?: true
-  queuePosition?: true
-  originalScheduledAt?: true
-  rescheduledCount?: true
-  rescheduledReason?: true
 }
 
 export type TaskCountAggregateInputType = {
   id?: true
   projectId?: true
+  worktreeId?: true
   userId?: true
   name?: true
   instruction?: true
-  context?: true
-  accumulatedContext?: true
-  canModifyRepo?: true
-  permissionMode?: true
-  executorType?: true
+  contextSource?: true
+  contextSnapshot?: true
+  executorKind?: true
   executorId?: true
+  chatMode?: true
   status?: true
-  isRecurring?: true
-  recurrenceConfig?: true
   scheduledAt?: true
-  pausedAt?: true
-  pausedAtIteration?: true
-  pausedAtEmployee?: true
+  reviewedAt?: true
+  sourceTaskId?: true
   createdAt?: true
   updatedAt?: true
-  queuePosition?: true
-  originalScheduledAt?: true
-  rescheduledCount?: true
-  rescheduledReason?: true
   _all?: true
 }
 
@@ -241,18 +181,6 @@ export type TaskAggregateArgs<ExtArgs extends runtime.Types.Extensions.InternalA
   /**
    * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
    * 
-   * Select which fields to average
-  **/
-  _avg?: TaskAvgAggregateInputType
-  /**
-   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
-   * 
-   * Select which fields to sum
-  **/
-  _sum?: TaskSumAggregateInputType
-  /**
-   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
-   * 
    * Select which fields to find the minimum value
   **/
   _min?: TaskMinAggregateInputType
@@ -283,8 +211,6 @@ export type TaskGroupByArgs<ExtArgs extends runtime.Types.Extensions.InternalArg
   take?: number
   skip?: number
   _count?: TaskCountAggregateInputType | true
-  _avg?: TaskAvgAggregateInputType
-  _sum?: TaskSumAggregateInputType
   _min?: TaskMinAggregateInputType
   _max?: TaskMaxAggregateInputType
 }
@@ -292,31 +218,22 @@ export type TaskGroupByArgs<ExtArgs extends runtime.Types.Extensions.InternalArg
 export type TaskGroupByOutputType = {
   id: string
   projectId: string
+  worktreeId: string
   userId: string
   name: string
   instruction: string | null
-  context: runtime.JsonValue
-  accumulatedContext: runtime.JsonValue
-  canModifyRepo: boolean
-  permissionMode: $Enums.PermissionMode
-  executorType: $Enums.ExecutorType
+  contextSource: runtime.JsonValue
+  contextSnapshot: string
+  executorKind: string | null
   executorId: string | null
+  chatMode: string | null
   status: $Enums.TaskStatus
-  isRecurring: boolean
-  recurrenceConfig: runtime.JsonValue | null
   scheduledAt: Date | null
-  pausedAt: Date | null
-  pausedAtIteration: number | null
-  pausedAtEmployee: string | null
+  reviewedAt: Date | null
+  sourceTaskId: string | null
   createdAt: Date
   updatedAt: Date
-  queuePosition: number | null
-  originalScheduledAt: Date | null
-  rescheduledCount: number
-  rescheduledReason: string | null
   _count: TaskCountAggregateOutputType | null
-  _avg: TaskAvgAggregateOutputType | null
-  _sum: TaskSumAggregateOutputType | null
   _min: TaskMinAggregateOutputType | null
   _max: TaskMaxAggregateOutputType | null
 }
@@ -342,73 +259,53 @@ export type TaskWhereInput = {
   NOT?: Prisma.TaskWhereInput | Prisma.TaskWhereInput[]
   id?: Prisma.StringFilter<"Task"> | string
   projectId?: Prisma.StringFilter<"Task"> | string
+  worktreeId?: Prisma.StringFilter<"Task"> | string
   userId?: Prisma.StringFilter<"Task"> | string
   name?: Prisma.StringFilter<"Task"> | string
   instruction?: Prisma.StringNullableFilter<"Task"> | string | null
-  context?: Prisma.JsonFilter<"Task">
-  accumulatedContext?: Prisma.JsonFilter<"Task">
-  canModifyRepo?: Prisma.BoolFilter<"Task"> | boolean
-  permissionMode?: Prisma.EnumPermissionModeFilter<"Task"> | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFilter<"Task"> | $Enums.ExecutorType
+  contextSource?: Prisma.JsonFilter<"Task">
+  contextSnapshot?: Prisma.StringFilter<"Task"> | string
+  executorKind?: Prisma.StringNullableFilter<"Task"> | string | null
   executorId?: Prisma.StringNullableFilter<"Task"> | string | null
+  chatMode?: Prisma.StringNullableFilter<"Task"> | string | null
   status?: Prisma.EnumTaskStatusFilter<"Task"> | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFilter<"Task"> | boolean
-  recurrenceConfig?: Prisma.JsonNullableFilter<"Task">
   scheduledAt?: Prisma.DateTimeNullableFilter<"Task"> | Date | string | null
-  pausedAt?: Prisma.DateTimeNullableFilter<"Task"> | Date | string | null
-  pausedAtIteration?: Prisma.IntNullableFilter<"Task"> | number | null
-  pausedAtEmployee?: Prisma.StringNullableFilter<"Task"> | string | null
+  reviewedAt?: Prisma.DateTimeNullableFilter<"Task"> | Date | string | null
+  sourceTaskId?: Prisma.StringNullableFilter<"Task"> | string | null
   createdAt?: Prisma.DateTimeFilter<"Task"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Task"> | Date | string
-  queuePosition?: Prisma.IntNullableFilter<"Task"> | number | null
-  originalScheduledAt?: Prisma.DateTimeNullableFilter<"Task"> | Date | string | null
-  rescheduledCount?: Prisma.IntFilter<"Task"> | number
-  rescheduledReason?: Prisma.StringNullableFilter<"Task"> | string | null
+  iterations?: Prisma.TaskIterationListRelationFilter
   resourceUsage?: Prisma.ResourceUsageListRelationFilter
   slackLogs?: Prisma.SlackLogListRelationFilter
-  buildLogs?: Prisma.TaskBuildLogListRelationFilter
-  iterations?: Prisma.TaskIterationListRelationFilter
-  skillLogs?: Prisma.TaskSkillLogListRelationFilter
-  suggestions?: Prisma.TaskSuggestionListRelationFilter
-  team?: Prisma.XOR<Prisma.TeamNullableScalarRelationFilter, Prisma.TeamWhereInput> | null
   project?: Prisma.XOR<Prisma.ProjectScalarRelationFilter, Prisma.ProjectWhereInput>
   user?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>
+  worktree?: Prisma.XOR<Prisma.WorktreeScalarRelationFilter, Prisma.WorktreeWhereInput>
 }
 
 export type TaskOrderByWithRelationInput = {
   id?: Prisma.SortOrder
   projectId?: Prisma.SortOrder
+  worktreeId?: Prisma.SortOrder
   userId?: Prisma.SortOrder
   name?: Prisma.SortOrder
   instruction?: Prisma.SortOrderInput | Prisma.SortOrder
-  context?: Prisma.SortOrder
-  accumulatedContext?: Prisma.SortOrder
-  canModifyRepo?: Prisma.SortOrder
-  permissionMode?: Prisma.SortOrder
-  executorType?: Prisma.SortOrder
+  contextSource?: Prisma.SortOrder
+  contextSnapshot?: Prisma.SortOrder
+  executorKind?: Prisma.SortOrderInput | Prisma.SortOrder
   executorId?: Prisma.SortOrderInput | Prisma.SortOrder
+  chatMode?: Prisma.SortOrderInput | Prisma.SortOrder
   status?: Prisma.SortOrder
-  isRecurring?: Prisma.SortOrder
-  recurrenceConfig?: Prisma.SortOrderInput | Prisma.SortOrder
   scheduledAt?: Prisma.SortOrderInput | Prisma.SortOrder
-  pausedAt?: Prisma.SortOrderInput | Prisma.SortOrder
-  pausedAtIteration?: Prisma.SortOrderInput | Prisma.SortOrder
-  pausedAtEmployee?: Prisma.SortOrderInput | Prisma.SortOrder
+  reviewedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  sourceTaskId?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
-  queuePosition?: Prisma.SortOrderInput | Prisma.SortOrder
-  originalScheduledAt?: Prisma.SortOrderInput | Prisma.SortOrder
-  rescheduledCount?: Prisma.SortOrder
-  rescheduledReason?: Prisma.SortOrderInput | Prisma.SortOrder
+  iterations?: Prisma.TaskIterationOrderByRelationAggregateInput
   resourceUsage?: Prisma.ResourceUsageOrderByRelationAggregateInput
   slackLogs?: Prisma.SlackLogOrderByRelationAggregateInput
-  buildLogs?: Prisma.TaskBuildLogOrderByRelationAggregateInput
-  iterations?: Prisma.TaskIterationOrderByRelationAggregateInput
-  skillLogs?: Prisma.TaskSkillLogOrderByRelationAggregateInput
-  suggestions?: Prisma.TaskSuggestionOrderByRelationAggregateInput
-  team?: Prisma.TeamOrderByWithRelationInput
   project?: Prisma.ProjectOrderByWithRelationInput
   user?: Prisma.UserOrderByWithRelationInput
+  worktree?: Prisma.WorktreeOrderByWithRelationInput
 }
 
 export type TaskWhereUniqueInput = Prisma.AtLeast<{
@@ -417,69 +314,50 @@ export type TaskWhereUniqueInput = Prisma.AtLeast<{
   OR?: Prisma.TaskWhereInput[]
   NOT?: Prisma.TaskWhereInput | Prisma.TaskWhereInput[]
   projectId?: Prisma.StringFilter<"Task"> | string
+  worktreeId?: Prisma.StringFilter<"Task"> | string
   userId?: Prisma.StringFilter<"Task"> | string
   name?: Prisma.StringFilter<"Task"> | string
   instruction?: Prisma.StringNullableFilter<"Task"> | string | null
-  context?: Prisma.JsonFilter<"Task">
-  accumulatedContext?: Prisma.JsonFilter<"Task">
-  canModifyRepo?: Prisma.BoolFilter<"Task"> | boolean
-  permissionMode?: Prisma.EnumPermissionModeFilter<"Task"> | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFilter<"Task"> | $Enums.ExecutorType
+  contextSource?: Prisma.JsonFilter<"Task">
+  contextSnapshot?: Prisma.StringFilter<"Task"> | string
+  executorKind?: Prisma.StringNullableFilter<"Task"> | string | null
   executorId?: Prisma.StringNullableFilter<"Task"> | string | null
+  chatMode?: Prisma.StringNullableFilter<"Task"> | string | null
   status?: Prisma.EnumTaskStatusFilter<"Task"> | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFilter<"Task"> | boolean
-  recurrenceConfig?: Prisma.JsonNullableFilter<"Task">
   scheduledAt?: Prisma.DateTimeNullableFilter<"Task"> | Date | string | null
-  pausedAt?: Prisma.DateTimeNullableFilter<"Task"> | Date | string | null
-  pausedAtIteration?: Prisma.IntNullableFilter<"Task"> | number | null
-  pausedAtEmployee?: Prisma.StringNullableFilter<"Task"> | string | null
+  reviewedAt?: Prisma.DateTimeNullableFilter<"Task"> | Date | string | null
+  sourceTaskId?: Prisma.StringNullableFilter<"Task"> | string | null
   createdAt?: Prisma.DateTimeFilter<"Task"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Task"> | Date | string
-  queuePosition?: Prisma.IntNullableFilter<"Task"> | number | null
-  originalScheduledAt?: Prisma.DateTimeNullableFilter<"Task"> | Date | string | null
-  rescheduledCount?: Prisma.IntFilter<"Task"> | number
-  rescheduledReason?: Prisma.StringNullableFilter<"Task"> | string | null
+  iterations?: Prisma.TaskIterationListRelationFilter
   resourceUsage?: Prisma.ResourceUsageListRelationFilter
   slackLogs?: Prisma.SlackLogListRelationFilter
-  buildLogs?: Prisma.TaskBuildLogListRelationFilter
-  iterations?: Prisma.TaskIterationListRelationFilter
-  skillLogs?: Prisma.TaskSkillLogListRelationFilter
-  suggestions?: Prisma.TaskSuggestionListRelationFilter
-  team?: Prisma.XOR<Prisma.TeamNullableScalarRelationFilter, Prisma.TeamWhereInput> | null
   project?: Prisma.XOR<Prisma.ProjectScalarRelationFilter, Prisma.ProjectWhereInput>
   user?: Prisma.XOR<Prisma.UserScalarRelationFilter, Prisma.UserWhereInput>
+  worktree?: Prisma.XOR<Prisma.WorktreeScalarRelationFilter, Prisma.WorktreeWhereInput>
 }, "id">
 
 export type TaskOrderByWithAggregationInput = {
   id?: Prisma.SortOrder
   projectId?: Prisma.SortOrder
+  worktreeId?: Prisma.SortOrder
   userId?: Prisma.SortOrder
   name?: Prisma.SortOrder
   instruction?: Prisma.SortOrderInput | Prisma.SortOrder
-  context?: Prisma.SortOrder
-  accumulatedContext?: Prisma.SortOrder
-  canModifyRepo?: Prisma.SortOrder
-  permissionMode?: Prisma.SortOrder
-  executorType?: Prisma.SortOrder
+  contextSource?: Prisma.SortOrder
+  contextSnapshot?: Prisma.SortOrder
+  executorKind?: Prisma.SortOrderInput | Prisma.SortOrder
   executorId?: Prisma.SortOrderInput | Prisma.SortOrder
+  chatMode?: Prisma.SortOrderInput | Prisma.SortOrder
   status?: Prisma.SortOrder
-  isRecurring?: Prisma.SortOrder
-  recurrenceConfig?: Prisma.SortOrderInput | Prisma.SortOrder
   scheduledAt?: Prisma.SortOrderInput | Prisma.SortOrder
-  pausedAt?: Prisma.SortOrderInput | Prisma.SortOrder
-  pausedAtIteration?: Prisma.SortOrderInput | Prisma.SortOrder
-  pausedAtEmployee?: Prisma.SortOrderInput | Prisma.SortOrder
+  reviewedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  sourceTaskId?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
-  queuePosition?: Prisma.SortOrderInput | Prisma.SortOrder
-  originalScheduledAt?: Prisma.SortOrderInput | Prisma.SortOrder
-  rescheduledCount?: Prisma.SortOrder
-  rescheduledReason?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.TaskCountOrderByAggregateInput
-  _avg?: Prisma.TaskAvgOrderByAggregateInput
   _max?: Prisma.TaskMaxOrderByAggregateInput
   _min?: Prisma.TaskMinOrderByAggregateInput
-  _sum?: Prisma.TaskSumOrderByAggregateInput
 }
 
 export type TaskScalarWhereWithAggregatesInput = {
@@ -488,238 +366,170 @@ export type TaskScalarWhereWithAggregatesInput = {
   NOT?: Prisma.TaskScalarWhereWithAggregatesInput | Prisma.TaskScalarWhereWithAggregatesInput[]
   id?: Prisma.StringWithAggregatesFilter<"Task"> | string
   projectId?: Prisma.StringWithAggregatesFilter<"Task"> | string
+  worktreeId?: Prisma.StringWithAggregatesFilter<"Task"> | string
   userId?: Prisma.StringWithAggregatesFilter<"Task"> | string
   name?: Prisma.StringWithAggregatesFilter<"Task"> | string
   instruction?: Prisma.StringNullableWithAggregatesFilter<"Task"> | string | null
-  context?: Prisma.JsonWithAggregatesFilter<"Task">
-  accumulatedContext?: Prisma.JsonWithAggregatesFilter<"Task">
-  canModifyRepo?: Prisma.BoolWithAggregatesFilter<"Task"> | boolean
-  permissionMode?: Prisma.EnumPermissionModeWithAggregatesFilter<"Task"> | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeWithAggregatesFilter<"Task"> | $Enums.ExecutorType
+  contextSource?: Prisma.JsonWithAggregatesFilter<"Task">
+  contextSnapshot?: Prisma.StringWithAggregatesFilter<"Task"> | string
+  executorKind?: Prisma.StringNullableWithAggregatesFilter<"Task"> | string | null
   executorId?: Prisma.StringNullableWithAggregatesFilter<"Task"> | string | null
+  chatMode?: Prisma.StringNullableWithAggregatesFilter<"Task"> | string | null
   status?: Prisma.EnumTaskStatusWithAggregatesFilter<"Task"> | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolWithAggregatesFilter<"Task"> | boolean
-  recurrenceConfig?: Prisma.JsonNullableWithAggregatesFilter<"Task">
   scheduledAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Task"> | Date | string | null
-  pausedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Task"> | Date | string | null
-  pausedAtIteration?: Prisma.IntNullableWithAggregatesFilter<"Task"> | number | null
-  pausedAtEmployee?: Prisma.StringNullableWithAggregatesFilter<"Task"> | string | null
+  reviewedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Task"> | Date | string | null
+  sourceTaskId?: Prisma.StringNullableWithAggregatesFilter<"Task"> | string | null
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"Task"> | Date | string
   updatedAt?: Prisma.DateTimeWithAggregatesFilter<"Task"> | Date | string
-  queuePosition?: Prisma.IntNullableWithAggregatesFilter<"Task"> | number | null
-  originalScheduledAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Task"> | Date | string | null
-  rescheduledCount?: Prisma.IntWithAggregatesFilter<"Task"> | number
-  rescheduledReason?: Prisma.StringNullableWithAggregatesFilter<"Task"> | string | null
 }
 
 export type TaskCreateInput = {
   id?: string
   name: string
   instruction?: string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: boolean
-  permissionMode?: $Enums.PermissionMode
-  executorType?: $Enums.ExecutorType
+  contextSource: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot: string
+  executorKind?: string | null
+  executorId?: string | null
+  chatMode?: string | null
   status?: $Enums.TaskStatus
-  isRecurring?: boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
-  pausedAt?: Date | string | null
-  pausedAtIteration?: number | null
-  pausedAtEmployee?: string | null
+  reviewedAt?: Date | string | null
+  sourceTaskId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
-  queuePosition?: number | null
-  originalScheduledAt?: Date | string | null
-  rescheduledCount?: number
-  rescheduledReason?: string | null
+  iterations?: Prisma.TaskIterationCreateNestedManyWithoutTaskInput
   resourceUsage?: Prisma.ResourceUsageCreateNestedManyWithoutTaskInput
   slackLogs?: Prisma.SlackLogCreateNestedManyWithoutTaskInput
-  buildLogs?: Prisma.TaskBuildLogCreateNestedManyWithoutTaskInput
-  iterations?: Prisma.TaskIterationCreateNestedManyWithoutTaskInput
-  skillLogs?: Prisma.TaskSkillLogCreateNestedManyWithoutTaskInput
-  suggestions?: Prisma.TaskSuggestionCreateNestedManyWithoutTaskInput
-  team?: Prisma.TeamCreateNestedOneWithoutTasksInput
   project: Prisma.ProjectCreateNestedOneWithoutTasksInput
   user: Prisma.UserCreateNestedOneWithoutTasksInput
+  worktree: Prisma.WorktreeCreateNestedOneWithoutTasksInput
 }
 
 export type TaskUncheckedCreateInput = {
   id?: string
   projectId: string
+  worktreeId: string
   userId: string
   name: string
   instruction?: string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: boolean
-  permissionMode?: $Enums.PermissionMode
-  executorType?: $Enums.ExecutorType
+  contextSource: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot: string
+  executorKind?: string | null
   executorId?: string | null
+  chatMode?: string | null
   status?: $Enums.TaskStatus
-  isRecurring?: boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
-  pausedAt?: Date | string | null
-  pausedAtIteration?: number | null
-  pausedAtEmployee?: string | null
+  reviewedAt?: Date | string | null
+  sourceTaskId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
-  queuePosition?: number | null
-  originalScheduledAt?: Date | string | null
-  rescheduledCount?: number
-  rescheduledReason?: string | null
+  iterations?: Prisma.TaskIterationUncheckedCreateNestedManyWithoutTaskInput
   resourceUsage?: Prisma.ResourceUsageUncheckedCreateNestedManyWithoutTaskInput
   slackLogs?: Prisma.SlackLogUncheckedCreateNestedManyWithoutTaskInput
-  buildLogs?: Prisma.TaskBuildLogUncheckedCreateNestedManyWithoutTaskInput
-  iterations?: Prisma.TaskIterationUncheckedCreateNestedManyWithoutTaskInput
-  skillLogs?: Prisma.TaskSkillLogUncheckedCreateNestedManyWithoutTaskInput
-  suggestions?: Prisma.TaskSuggestionUncheckedCreateNestedManyWithoutTaskInput
 }
 
 export type TaskUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   instruction?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFieldUpdateOperationsInput | $Enums.ExecutorType
+  contextSource?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  executorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  chatMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumTaskStatusFieldUpdateOperationsInput | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  reviewedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sourceTaskId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
-  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  iterations?: Prisma.TaskIterationUpdateManyWithoutTaskNestedInput
   resourceUsage?: Prisma.ResourceUsageUpdateManyWithoutTaskNestedInput
   slackLogs?: Prisma.SlackLogUpdateManyWithoutTaskNestedInput
-  buildLogs?: Prisma.TaskBuildLogUpdateManyWithoutTaskNestedInput
-  iterations?: Prisma.TaskIterationUpdateManyWithoutTaskNestedInput
-  skillLogs?: Prisma.TaskSkillLogUpdateManyWithoutTaskNestedInput
-  suggestions?: Prisma.TaskSuggestionUpdateManyWithoutTaskNestedInput
-  team?: Prisma.TeamUpdateOneWithoutTasksNestedInput
   project?: Prisma.ProjectUpdateOneRequiredWithoutTasksNestedInput
   user?: Prisma.UserUpdateOneRequiredWithoutTasksNestedInput
+  worktree?: Prisma.WorktreeUpdateOneRequiredWithoutTasksNestedInput
 }
 
 export type TaskUncheckedUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   projectId?: Prisma.StringFieldUpdateOperationsInput | string
+  worktreeId?: Prisma.StringFieldUpdateOperationsInput | string
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   instruction?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFieldUpdateOperationsInput | $Enums.ExecutorType
+  contextSource?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   executorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  chatMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumTaskStatusFieldUpdateOperationsInput | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  reviewedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sourceTaskId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
-  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  iterations?: Prisma.TaskIterationUncheckedUpdateManyWithoutTaskNestedInput
   resourceUsage?: Prisma.ResourceUsageUncheckedUpdateManyWithoutTaskNestedInput
   slackLogs?: Prisma.SlackLogUncheckedUpdateManyWithoutTaskNestedInput
-  buildLogs?: Prisma.TaskBuildLogUncheckedUpdateManyWithoutTaskNestedInput
-  iterations?: Prisma.TaskIterationUncheckedUpdateManyWithoutTaskNestedInput
-  skillLogs?: Prisma.TaskSkillLogUncheckedUpdateManyWithoutTaskNestedInput
-  suggestions?: Prisma.TaskSuggestionUncheckedUpdateManyWithoutTaskNestedInput
 }
 
 export type TaskCreateManyInput = {
   id?: string
   projectId: string
+  worktreeId: string
   userId: string
   name: string
   instruction?: string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: boolean
-  permissionMode?: $Enums.PermissionMode
-  executorType?: $Enums.ExecutorType
+  contextSource: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot: string
+  executorKind?: string | null
   executorId?: string | null
+  chatMode?: string | null
   status?: $Enums.TaskStatus
-  isRecurring?: boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
-  pausedAt?: Date | string | null
-  pausedAtIteration?: number | null
-  pausedAtEmployee?: string | null
+  reviewedAt?: Date | string | null
+  sourceTaskId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
-  queuePosition?: number | null
-  originalScheduledAt?: Date | string | null
-  rescheduledCount?: number
-  rescheduledReason?: string | null
 }
 
 export type TaskUpdateManyMutationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   instruction?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFieldUpdateOperationsInput | $Enums.ExecutorType
+  contextSource?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  executorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  chatMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumTaskStatusFieldUpdateOperationsInput | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  reviewedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sourceTaskId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
-  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type TaskUncheckedUpdateManyInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   projectId?: Prisma.StringFieldUpdateOperationsInput | string
+  worktreeId?: Prisma.StringFieldUpdateOperationsInput | string
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   instruction?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFieldUpdateOperationsInput | $Enums.ExecutorType
+  contextSource?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   executorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  chatMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumTaskStatusFieldUpdateOperationsInput | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  reviewedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sourceTaskId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
-  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type TaskListRelationFilter = {
@@ -735,88 +545,59 @@ export type TaskOrderByRelationAggregateInput = {
 export type TaskCountOrderByAggregateInput = {
   id?: Prisma.SortOrder
   projectId?: Prisma.SortOrder
+  worktreeId?: Prisma.SortOrder
   userId?: Prisma.SortOrder
   name?: Prisma.SortOrder
   instruction?: Prisma.SortOrder
-  context?: Prisma.SortOrder
-  accumulatedContext?: Prisma.SortOrder
-  canModifyRepo?: Prisma.SortOrder
-  permissionMode?: Prisma.SortOrder
-  executorType?: Prisma.SortOrder
+  contextSource?: Prisma.SortOrder
+  contextSnapshot?: Prisma.SortOrder
+  executorKind?: Prisma.SortOrder
   executorId?: Prisma.SortOrder
+  chatMode?: Prisma.SortOrder
   status?: Prisma.SortOrder
-  isRecurring?: Prisma.SortOrder
-  recurrenceConfig?: Prisma.SortOrder
   scheduledAt?: Prisma.SortOrder
-  pausedAt?: Prisma.SortOrder
-  pausedAtIteration?: Prisma.SortOrder
-  pausedAtEmployee?: Prisma.SortOrder
+  reviewedAt?: Prisma.SortOrder
+  sourceTaskId?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
-  queuePosition?: Prisma.SortOrder
-  originalScheduledAt?: Prisma.SortOrder
-  rescheduledCount?: Prisma.SortOrder
-  rescheduledReason?: Prisma.SortOrder
-}
-
-export type TaskAvgOrderByAggregateInput = {
-  pausedAtIteration?: Prisma.SortOrder
-  queuePosition?: Prisma.SortOrder
-  rescheduledCount?: Prisma.SortOrder
 }
 
 export type TaskMaxOrderByAggregateInput = {
   id?: Prisma.SortOrder
   projectId?: Prisma.SortOrder
+  worktreeId?: Prisma.SortOrder
   userId?: Prisma.SortOrder
   name?: Prisma.SortOrder
   instruction?: Prisma.SortOrder
-  canModifyRepo?: Prisma.SortOrder
-  permissionMode?: Prisma.SortOrder
-  executorType?: Prisma.SortOrder
+  contextSnapshot?: Prisma.SortOrder
+  executorKind?: Prisma.SortOrder
   executorId?: Prisma.SortOrder
+  chatMode?: Prisma.SortOrder
   status?: Prisma.SortOrder
-  isRecurring?: Prisma.SortOrder
   scheduledAt?: Prisma.SortOrder
-  pausedAt?: Prisma.SortOrder
-  pausedAtIteration?: Prisma.SortOrder
-  pausedAtEmployee?: Prisma.SortOrder
+  reviewedAt?: Prisma.SortOrder
+  sourceTaskId?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
-  queuePosition?: Prisma.SortOrder
-  originalScheduledAt?: Prisma.SortOrder
-  rescheduledCount?: Prisma.SortOrder
-  rescheduledReason?: Prisma.SortOrder
 }
 
 export type TaskMinOrderByAggregateInput = {
   id?: Prisma.SortOrder
   projectId?: Prisma.SortOrder
+  worktreeId?: Prisma.SortOrder
   userId?: Prisma.SortOrder
   name?: Prisma.SortOrder
   instruction?: Prisma.SortOrder
-  canModifyRepo?: Prisma.SortOrder
-  permissionMode?: Prisma.SortOrder
-  executorType?: Prisma.SortOrder
+  contextSnapshot?: Prisma.SortOrder
+  executorKind?: Prisma.SortOrder
   executorId?: Prisma.SortOrder
+  chatMode?: Prisma.SortOrder
   status?: Prisma.SortOrder
-  isRecurring?: Prisma.SortOrder
   scheduledAt?: Prisma.SortOrder
-  pausedAt?: Prisma.SortOrder
-  pausedAtIteration?: Prisma.SortOrder
-  pausedAtEmployee?: Prisma.SortOrder
+  reviewedAt?: Prisma.SortOrder
+  sourceTaskId?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
-  queuePosition?: Prisma.SortOrder
-  originalScheduledAt?: Prisma.SortOrder
-  rescheduledCount?: Prisma.SortOrder
-  rescheduledReason?: Prisma.SortOrder
-}
-
-export type TaskSumOrderByAggregateInput = {
-  pausedAtIteration?: Prisma.SortOrder
-  queuePosition?: Prisma.SortOrder
-  rescheduledCount?: Prisma.SortOrder
 }
 
 export type TaskScalarRelationFilter = {
@@ -913,50 +694,46 @@ export type TaskUncheckedUpdateManyWithoutProjectNestedInput = {
   deleteMany?: Prisma.TaskScalarWhereInput | Prisma.TaskScalarWhereInput[]
 }
 
-export type TaskCreateNestedManyWithoutTeamInput = {
-  create?: Prisma.XOR<Prisma.TaskCreateWithoutTeamInput, Prisma.TaskUncheckedCreateWithoutTeamInput> | Prisma.TaskCreateWithoutTeamInput[] | Prisma.TaskUncheckedCreateWithoutTeamInput[]
-  connectOrCreate?: Prisma.TaskCreateOrConnectWithoutTeamInput | Prisma.TaskCreateOrConnectWithoutTeamInput[]
-  createMany?: Prisma.TaskCreateManyTeamInputEnvelope
+export type TaskCreateNestedManyWithoutWorktreeInput = {
+  create?: Prisma.XOR<Prisma.TaskCreateWithoutWorktreeInput, Prisma.TaskUncheckedCreateWithoutWorktreeInput> | Prisma.TaskCreateWithoutWorktreeInput[] | Prisma.TaskUncheckedCreateWithoutWorktreeInput[]
+  connectOrCreate?: Prisma.TaskCreateOrConnectWithoutWorktreeInput | Prisma.TaskCreateOrConnectWithoutWorktreeInput[]
+  createMany?: Prisma.TaskCreateManyWorktreeInputEnvelope
   connect?: Prisma.TaskWhereUniqueInput | Prisma.TaskWhereUniqueInput[]
 }
 
-export type TaskUncheckedCreateNestedManyWithoutTeamInput = {
-  create?: Prisma.XOR<Prisma.TaskCreateWithoutTeamInput, Prisma.TaskUncheckedCreateWithoutTeamInput> | Prisma.TaskCreateWithoutTeamInput[] | Prisma.TaskUncheckedCreateWithoutTeamInput[]
-  connectOrCreate?: Prisma.TaskCreateOrConnectWithoutTeamInput | Prisma.TaskCreateOrConnectWithoutTeamInput[]
-  createMany?: Prisma.TaskCreateManyTeamInputEnvelope
+export type TaskUncheckedCreateNestedManyWithoutWorktreeInput = {
+  create?: Prisma.XOR<Prisma.TaskCreateWithoutWorktreeInput, Prisma.TaskUncheckedCreateWithoutWorktreeInput> | Prisma.TaskCreateWithoutWorktreeInput[] | Prisma.TaskUncheckedCreateWithoutWorktreeInput[]
+  connectOrCreate?: Prisma.TaskCreateOrConnectWithoutWorktreeInput | Prisma.TaskCreateOrConnectWithoutWorktreeInput[]
+  createMany?: Prisma.TaskCreateManyWorktreeInputEnvelope
   connect?: Prisma.TaskWhereUniqueInput | Prisma.TaskWhereUniqueInput[]
 }
 
-export type TaskUpdateManyWithoutTeamNestedInput = {
-  create?: Prisma.XOR<Prisma.TaskCreateWithoutTeamInput, Prisma.TaskUncheckedCreateWithoutTeamInput> | Prisma.TaskCreateWithoutTeamInput[] | Prisma.TaskUncheckedCreateWithoutTeamInput[]
-  connectOrCreate?: Prisma.TaskCreateOrConnectWithoutTeamInput | Prisma.TaskCreateOrConnectWithoutTeamInput[]
-  upsert?: Prisma.TaskUpsertWithWhereUniqueWithoutTeamInput | Prisma.TaskUpsertWithWhereUniqueWithoutTeamInput[]
-  createMany?: Prisma.TaskCreateManyTeamInputEnvelope
+export type TaskUpdateManyWithoutWorktreeNestedInput = {
+  create?: Prisma.XOR<Prisma.TaskCreateWithoutWorktreeInput, Prisma.TaskUncheckedCreateWithoutWorktreeInput> | Prisma.TaskCreateWithoutWorktreeInput[] | Prisma.TaskUncheckedCreateWithoutWorktreeInput[]
+  connectOrCreate?: Prisma.TaskCreateOrConnectWithoutWorktreeInput | Prisma.TaskCreateOrConnectWithoutWorktreeInput[]
+  upsert?: Prisma.TaskUpsertWithWhereUniqueWithoutWorktreeInput | Prisma.TaskUpsertWithWhereUniqueWithoutWorktreeInput[]
+  createMany?: Prisma.TaskCreateManyWorktreeInputEnvelope
   set?: Prisma.TaskWhereUniqueInput | Prisma.TaskWhereUniqueInput[]
   disconnect?: Prisma.TaskWhereUniqueInput | Prisma.TaskWhereUniqueInput[]
   delete?: Prisma.TaskWhereUniqueInput | Prisma.TaskWhereUniqueInput[]
   connect?: Prisma.TaskWhereUniqueInput | Prisma.TaskWhereUniqueInput[]
-  update?: Prisma.TaskUpdateWithWhereUniqueWithoutTeamInput | Prisma.TaskUpdateWithWhereUniqueWithoutTeamInput[]
-  updateMany?: Prisma.TaskUpdateManyWithWhereWithoutTeamInput | Prisma.TaskUpdateManyWithWhereWithoutTeamInput[]
+  update?: Prisma.TaskUpdateWithWhereUniqueWithoutWorktreeInput | Prisma.TaskUpdateWithWhereUniqueWithoutWorktreeInput[]
+  updateMany?: Prisma.TaskUpdateManyWithWhereWithoutWorktreeInput | Prisma.TaskUpdateManyWithWhereWithoutWorktreeInput[]
   deleteMany?: Prisma.TaskScalarWhereInput | Prisma.TaskScalarWhereInput[]
 }
 
-export type TaskUncheckedUpdateManyWithoutTeamNestedInput = {
-  create?: Prisma.XOR<Prisma.TaskCreateWithoutTeamInput, Prisma.TaskUncheckedCreateWithoutTeamInput> | Prisma.TaskCreateWithoutTeamInput[] | Prisma.TaskUncheckedCreateWithoutTeamInput[]
-  connectOrCreate?: Prisma.TaskCreateOrConnectWithoutTeamInput | Prisma.TaskCreateOrConnectWithoutTeamInput[]
-  upsert?: Prisma.TaskUpsertWithWhereUniqueWithoutTeamInput | Prisma.TaskUpsertWithWhereUniqueWithoutTeamInput[]
-  createMany?: Prisma.TaskCreateManyTeamInputEnvelope
+export type TaskUncheckedUpdateManyWithoutWorktreeNestedInput = {
+  create?: Prisma.XOR<Prisma.TaskCreateWithoutWorktreeInput, Prisma.TaskUncheckedCreateWithoutWorktreeInput> | Prisma.TaskCreateWithoutWorktreeInput[] | Prisma.TaskUncheckedCreateWithoutWorktreeInput[]
+  connectOrCreate?: Prisma.TaskCreateOrConnectWithoutWorktreeInput | Prisma.TaskCreateOrConnectWithoutWorktreeInput[]
+  upsert?: Prisma.TaskUpsertWithWhereUniqueWithoutWorktreeInput | Prisma.TaskUpsertWithWhereUniqueWithoutWorktreeInput[]
+  createMany?: Prisma.TaskCreateManyWorktreeInputEnvelope
   set?: Prisma.TaskWhereUniqueInput | Prisma.TaskWhereUniqueInput[]
   disconnect?: Prisma.TaskWhereUniqueInput | Prisma.TaskWhereUniqueInput[]
   delete?: Prisma.TaskWhereUniqueInput | Prisma.TaskWhereUniqueInput[]
   connect?: Prisma.TaskWhereUniqueInput | Prisma.TaskWhereUniqueInput[]
-  update?: Prisma.TaskUpdateWithWhereUniqueWithoutTeamInput | Prisma.TaskUpdateWithWhereUniqueWithoutTeamInput[]
-  updateMany?: Prisma.TaskUpdateManyWithWhereWithoutTeamInput | Prisma.TaskUpdateManyWithWhereWithoutTeamInput[]
+  update?: Prisma.TaskUpdateWithWhereUniqueWithoutWorktreeInput | Prisma.TaskUpdateWithWhereUniqueWithoutWorktreeInput[]
+  updateMany?: Prisma.TaskUpdateManyWithWhereWithoutWorktreeInput | Prisma.TaskUpdateManyWithWhereWithoutWorktreeInput[]
   deleteMany?: Prisma.TaskScalarWhereInput | Prisma.TaskScalarWhereInput[]
-}
-
-export type EnumExecutorTypeFieldUpdateOperationsInput = {
-  set?: $Enums.ExecutorType
 }
 
 export type EnumTaskStatusFieldUpdateOperationsInput = {
@@ -975,48 +752,6 @@ export type TaskUpdateOneRequiredWithoutIterationsNestedInput = {
   upsert?: Prisma.TaskUpsertWithoutIterationsInput
   connect?: Prisma.TaskWhereUniqueInput
   update?: Prisma.XOR<Prisma.XOR<Prisma.TaskUpdateToOneWithWhereWithoutIterationsInput, Prisma.TaskUpdateWithoutIterationsInput>, Prisma.TaskUncheckedUpdateWithoutIterationsInput>
-}
-
-export type TaskCreateNestedOneWithoutSkillLogsInput = {
-  create?: Prisma.XOR<Prisma.TaskCreateWithoutSkillLogsInput, Prisma.TaskUncheckedCreateWithoutSkillLogsInput>
-  connectOrCreate?: Prisma.TaskCreateOrConnectWithoutSkillLogsInput
-  connect?: Prisma.TaskWhereUniqueInput
-}
-
-export type TaskUpdateOneRequiredWithoutSkillLogsNestedInput = {
-  create?: Prisma.XOR<Prisma.TaskCreateWithoutSkillLogsInput, Prisma.TaskUncheckedCreateWithoutSkillLogsInput>
-  connectOrCreate?: Prisma.TaskCreateOrConnectWithoutSkillLogsInput
-  upsert?: Prisma.TaskUpsertWithoutSkillLogsInput
-  connect?: Prisma.TaskWhereUniqueInput
-  update?: Prisma.XOR<Prisma.XOR<Prisma.TaskUpdateToOneWithWhereWithoutSkillLogsInput, Prisma.TaskUpdateWithoutSkillLogsInput>, Prisma.TaskUncheckedUpdateWithoutSkillLogsInput>
-}
-
-export type TaskCreateNestedOneWithoutBuildLogsInput = {
-  create?: Prisma.XOR<Prisma.TaskCreateWithoutBuildLogsInput, Prisma.TaskUncheckedCreateWithoutBuildLogsInput>
-  connectOrCreate?: Prisma.TaskCreateOrConnectWithoutBuildLogsInput
-  connect?: Prisma.TaskWhereUniqueInput
-}
-
-export type TaskUpdateOneRequiredWithoutBuildLogsNestedInput = {
-  create?: Prisma.XOR<Prisma.TaskCreateWithoutBuildLogsInput, Prisma.TaskUncheckedCreateWithoutBuildLogsInput>
-  connectOrCreate?: Prisma.TaskCreateOrConnectWithoutBuildLogsInput
-  upsert?: Prisma.TaskUpsertWithoutBuildLogsInput
-  connect?: Prisma.TaskWhereUniqueInput
-  update?: Prisma.XOR<Prisma.XOR<Prisma.TaskUpdateToOneWithWhereWithoutBuildLogsInput, Prisma.TaskUpdateWithoutBuildLogsInput>, Prisma.TaskUncheckedUpdateWithoutBuildLogsInput>
-}
-
-export type TaskCreateNestedOneWithoutSuggestionsInput = {
-  create?: Prisma.XOR<Prisma.TaskCreateWithoutSuggestionsInput, Prisma.TaskUncheckedCreateWithoutSuggestionsInput>
-  connectOrCreate?: Prisma.TaskCreateOrConnectWithoutSuggestionsInput
-  connect?: Prisma.TaskWhereUniqueInput
-}
-
-export type TaskUpdateOneRequiredWithoutSuggestionsNestedInput = {
-  create?: Prisma.XOR<Prisma.TaskCreateWithoutSuggestionsInput, Prisma.TaskUncheckedCreateWithoutSuggestionsInput>
-  connectOrCreate?: Prisma.TaskCreateOrConnectWithoutSuggestionsInput
-  upsert?: Prisma.TaskUpsertWithoutSuggestionsInput
-  connect?: Prisma.TaskWhereUniqueInput
-  update?: Prisma.XOR<Prisma.XOR<Prisma.TaskUpdateToOneWithWhereWithoutSuggestionsInput, Prisma.TaskUpdateWithoutSuggestionsInput>, Prisma.TaskUncheckedUpdateWithoutSuggestionsInput>
 }
 
 export type TaskCreateNestedOneWithoutSlackLogsInput = {
@@ -1055,64 +790,44 @@ export type TaskCreateWithoutUserInput = {
   id?: string
   name: string
   instruction?: string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: boolean
-  permissionMode?: $Enums.PermissionMode
-  executorType?: $Enums.ExecutorType
+  contextSource: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot: string
+  executorKind?: string | null
+  executorId?: string | null
+  chatMode?: string | null
   status?: $Enums.TaskStatus
-  isRecurring?: boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
-  pausedAt?: Date | string | null
-  pausedAtIteration?: number | null
-  pausedAtEmployee?: string | null
+  reviewedAt?: Date | string | null
+  sourceTaskId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
-  queuePosition?: number | null
-  originalScheduledAt?: Date | string | null
-  rescheduledCount?: number
-  rescheduledReason?: string | null
+  iterations?: Prisma.TaskIterationCreateNestedManyWithoutTaskInput
   resourceUsage?: Prisma.ResourceUsageCreateNestedManyWithoutTaskInput
   slackLogs?: Prisma.SlackLogCreateNestedManyWithoutTaskInput
-  buildLogs?: Prisma.TaskBuildLogCreateNestedManyWithoutTaskInput
-  iterations?: Prisma.TaskIterationCreateNestedManyWithoutTaskInput
-  skillLogs?: Prisma.TaskSkillLogCreateNestedManyWithoutTaskInput
-  suggestions?: Prisma.TaskSuggestionCreateNestedManyWithoutTaskInput
-  team?: Prisma.TeamCreateNestedOneWithoutTasksInput
   project: Prisma.ProjectCreateNestedOneWithoutTasksInput
+  worktree: Prisma.WorktreeCreateNestedOneWithoutTasksInput
 }
 
 export type TaskUncheckedCreateWithoutUserInput = {
   id?: string
   projectId: string
+  worktreeId: string
   name: string
   instruction?: string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: boolean
-  permissionMode?: $Enums.PermissionMode
-  executorType?: $Enums.ExecutorType
+  contextSource: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot: string
+  executorKind?: string | null
   executorId?: string | null
+  chatMode?: string | null
   status?: $Enums.TaskStatus
-  isRecurring?: boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
-  pausedAt?: Date | string | null
-  pausedAtIteration?: number | null
-  pausedAtEmployee?: string | null
+  reviewedAt?: Date | string | null
+  sourceTaskId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
-  queuePosition?: number | null
-  originalScheduledAt?: Date | string | null
-  rescheduledCount?: number
-  rescheduledReason?: string | null
+  iterations?: Prisma.TaskIterationUncheckedCreateNestedManyWithoutTaskInput
   resourceUsage?: Prisma.ResourceUsageUncheckedCreateNestedManyWithoutTaskInput
   slackLogs?: Prisma.SlackLogUncheckedCreateNestedManyWithoutTaskInput
-  buildLogs?: Prisma.TaskBuildLogUncheckedCreateNestedManyWithoutTaskInput
-  iterations?: Prisma.TaskIterationUncheckedCreateNestedManyWithoutTaskInput
-  skillLogs?: Prisma.TaskSkillLogUncheckedCreateNestedManyWithoutTaskInput
-  suggestions?: Prisma.TaskSuggestionUncheckedCreateNestedManyWithoutTaskInput
 }
 
 export type TaskCreateOrConnectWithoutUserInput = {
@@ -1147,92 +862,65 @@ export type TaskScalarWhereInput = {
   NOT?: Prisma.TaskScalarWhereInput | Prisma.TaskScalarWhereInput[]
   id?: Prisma.StringFilter<"Task"> | string
   projectId?: Prisma.StringFilter<"Task"> | string
+  worktreeId?: Prisma.StringFilter<"Task"> | string
   userId?: Prisma.StringFilter<"Task"> | string
   name?: Prisma.StringFilter<"Task"> | string
   instruction?: Prisma.StringNullableFilter<"Task"> | string | null
-  context?: Prisma.JsonFilter<"Task">
-  accumulatedContext?: Prisma.JsonFilter<"Task">
-  canModifyRepo?: Prisma.BoolFilter<"Task"> | boolean
-  permissionMode?: Prisma.EnumPermissionModeFilter<"Task"> | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFilter<"Task"> | $Enums.ExecutorType
+  contextSource?: Prisma.JsonFilter<"Task">
+  contextSnapshot?: Prisma.StringFilter<"Task"> | string
+  executorKind?: Prisma.StringNullableFilter<"Task"> | string | null
   executorId?: Prisma.StringNullableFilter<"Task"> | string | null
+  chatMode?: Prisma.StringNullableFilter<"Task"> | string | null
   status?: Prisma.EnumTaskStatusFilter<"Task"> | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFilter<"Task"> | boolean
-  recurrenceConfig?: Prisma.JsonNullableFilter<"Task">
   scheduledAt?: Prisma.DateTimeNullableFilter<"Task"> | Date | string | null
-  pausedAt?: Prisma.DateTimeNullableFilter<"Task"> | Date | string | null
-  pausedAtIteration?: Prisma.IntNullableFilter<"Task"> | number | null
-  pausedAtEmployee?: Prisma.StringNullableFilter<"Task"> | string | null
+  reviewedAt?: Prisma.DateTimeNullableFilter<"Task"> | Date | string | null
+  sourceTaskId?: Prisma.StringNullableFilter<"Task"> | string | null
   createdAt?: Prisma.DateTimeFilter<"Task"> | Date | string
   updatedAt?: Prisma.DateTimeFilter<"Task"> | Date | string
-  queuePosition?: Prisma.IntNullableFilter<"Task"> | number | null
-  originalScheduledAt?: Prisma.DateTimeNullableFilter<"Task"> | Date | string | null
-  rescheduledCount?: Prisma.IntFilter<"Task"> | number
-  rescheduledReason?: Prisma.StringNullableFilter<"Task"> | string | null
 }
 
 export type TaskCreateWithoutProjectInput = {
   id?: string
   name: string
   instruction?: string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: boolean
-  permissionMode?: $Enums.PermissionMode
-  executorType?: $Enums.ExecutorType
+  contextSource: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot: string
+  executorKind?: string | null
+  executorId?: string | null
+  chatMode?: string | null
   status?: $Enums.TaskStatus
-  isRecurring?: boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
-  pausedAt?: Date | string | null
-  pausedAtIteration?: number | null
-  pausedAtEmployee?: string | null
+  reviewedAt?: Date | string | null
+  sourceTaskId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
-  queuePosition?: number | null
-  originalScheduledAt?: Date | string | null
-  rescheduledCount?: number
-  rescheduledReason?: string | null
+  iterations?: Prisma.TaskIterationCreateNestedManyWithoutTaskInput
   resourceUsage?: Prisma.ResourceUsageCreateNestedManyWithoutTaskInput
   slackLogs?: Prisma.SlackLogCreateNestedManyWithoutTaskInput
-  buildLogs?: Prisma.TaskBuildLogCreateNestedManyWithoutTaskInput
-  iterations?: Prisma.TaskIterationCreateNestedManyWithoutTaskInput
-  skillLogs?: Prisma.TaskSkillLogCreateNestedManyWithoutTaskInput
-  suggestions?: Prisma.TaskSuggestionCreateNestedManyWithoutTaskInput
-  team?: Prisma.TeamCreateNestedOneWithoutTasksInput
   user: Prisma.UserCreateNestedOneWithoutTasksInput
+  worktree: Prisma.WorktreeCreateNestedOneWithoutTasksInput
 }
 
 export type TaskUncheckedCreateWithoutProjectInput = {
   id?: string
+  worktreeId: string
   userId: string
   name: string
   instruction?: string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: boolean
-  permissionMode?: $Enums.PermissionMode
-  executorType?: $Enums.ExecutorType
+  contextSource: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot: string
+  executorKind?: string | null
   executorId?: string | null
+  chatMode?: string | null
   status?: $Enums.TaskStatus
-  isRecurring?: boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
-  pausedAt?: Date | string | null
-  pausedAtIteration?: number | null
-  pausedAtEmployee?: string | null
+  reviewedAt?: Date | string | null
+  sourceTaskId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
-  queuePosition?: number | null
-  originalScheduledAt?: Date | string | null
-  rescheduledCount?: number
-  rescheduledReason?: string | null
+  iterations?: Prisma.TaskIterationUncheckedCreateNestedManyWithoutTaskInput
   resourceUsage?: Prisma.ResourceUsageUncheckedCreateNestedManyWithoutTaskInput
   slackLogs?: Prisma.SlackLogUncheckedCreateNestedManyWithoutTaskInput
-  buildLogs?: Prisma.TaskBuildLogUncheckedCreateNestedManyWithoutTaskInput
-  iterations?: Prisma.TaskIterationUncheckedCreateNestedManyWithoutTaskInput
-  skillLogs?: Prisma.TaskSkillLogUncheckedCreateNestedManyWithoutTaskInput
-  suggestions?: Prisma.TaskSuggestionUncheckedCreateNestedManyWithoutTaskInput
 }
 
 export type TaskCreateOrConnectWithoutProjectInput = {
@@ -1261,158 +949,118 @@ export type TaskUpdateManyWithWhereWithoutProjectInput = {
   data: Prisma.XOR<Prisma.TaskUpdateManyMutationInput, Prisma.TaskUncheckedUpdateManyWithoutProjectInput>
 }
 
-export type TaskCreateWithoutTeamInput = {
+export type TaskCreateWithoutWorktreeInput = {
   id?: string
   name: string
   instruction?: string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: boolean
-  permissionMode?: $Enums.PermissionMode
-  executorType?: $Enums.ExecutorType
+  contextSource: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot: string
+  executorKind?: string | null
+  executorId?: string | null
+  chatMode?: string | null
   status?: $Enums.TaskStatus
-  isRecurring?: boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
-  pausedAt?: Date | string | null
-  pausedAtIteration?: number | null
-  pausedAtEmployee?: string | null
+  reviewedAt?: Date | string | null
+  sourceTaskId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
-  queuePosition?: number | null
-  originalScheduledAt?: Date | string | null
-  rescheduledCount?: number
-  rescheduledReason?: string | null
+  iterations?: Prisma.TaskIterationCreateNestedManyWithoutTaskInput
   resourceUsage?: Prisma.ResourceUsageCreateNestedManyWithoutTaskInput
   slackLogs?: Prisma.SlackLogCreateNestedManyWithoutTaskInput
-  buildLogs?: Prisma.TaskBuildLogCreateNestedManyWithoutTaskInput
-  iterations?: Prisma.TaskIterationCreateNestedManyWithoutTaskInput
-  skillLogs?: Prisma.TaskSkillLogCreateNestedManyWithoutTaskInput
-  suggestions?: Prisma.TaskSuggestionCreateNestedManyWithoutTaskInput
   project: Prisma.ProjectCreateNestedOneWithoutTasksInput
   user: Prisma.UserCreateNestedOneWithoutTasksInput
 }
 
-export type TaskUncheckedCreateWithoutTeamInput = {
+export type TaskUncheckedCreateWithoutWorktreeInput = {
   id?: string
   projectId: string
   userId: string
   name: string
   instruction?: string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: boolean
-  permissionMode?: $Enums.PermissionMode
-  executorType?: $Enums.ExecutorType
+  contextSource: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot: string
+  executorKind?: string | null
+  executorId?: string | null
+  chatMode?: string | null
   status?: $Enums.TaskStatus
-  isRecurring?: boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
-  pausedAt?: Date | string | null
-  pausedAtIteration?: number | null
-  pausedAtEmployee?: string | null
+  reviewedAt?: Date | string | null
+  sourceTaskId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
-  queuePosition?: number | null
-  originalScheduledAt?: Date | string | null
-  rescheduledCount?: number
-  rescheduledReason?: string | null
+  iterations?: Prisma.TaskIterationUncheckedCreateNestedManyWithoutTaskInput
   resourceUsage?: Prisma.ResourceUsageUncheckedCreateNestedManyWithoutTaskInput
   slackLogs?: Prisma.SlackLogUncheckedCreateNestedManyWithoutTaskInput
-  buildLogs?: Prisma.TaskBuildLogUncheckedCreateNestedManyWithoutTaskInput
-  iterations?: Prisma.TaskIterationUncheckedCreateNestedManyWithoutTaskInput
-  skillLogs?: Prisma.TaskSkillLogUncheckedCreateNestedManyWithoutTaskInput
-  suggestions?: Prisma.TaskSuggestionUncheckedCreateNestedManyWithoutTaskInput
 }
 
-export type TaskCreateOrConnectWithoutTeamInput = {
+export type TaskCreateOrConnectWithoutWorktreeInput = {
   where: Prisma.TaskWhereUniqueInput
-  create: Prisma.XOR<Prisma.TaskCreateWithoutTeamInput, Prisma.TaskUncheckedCreateWithoutTeamInput>
+  create: Prisma.XOR<Prisma.TaskCreateWithoutWorktreeInput, Prisma.TaskUncheckedCreateWithoutWorktreeInput>
 }
 
-export type TaskCreateManyTeamInputEnvelope = {
-  data: Prisma.TaskCreateManyTeamInput | Prisma.TaskCreateManyTeamInput[]
+export type TaskCreateManyWorktreeInputEnvelope = {
+  data: Prisma.TaskCreateManyWorktreeInput | Prisma.TaskCreateManyWorktreeInput[]
   skipDuplicates?: boolean
 }
 
-export type TaskUpsertWithWhereUniqueWithoutTeamInput = {
+export type TaskUpsertWithWhereUniqueWithoutWorktreeInput = {
   where: Prisma.TaskWhereUniqueInput
-  update: Prisma.XOR<Prisma.TaskUpdateWithoutTeamInput, Prisma.TaskUncheckedUpdateWithoutTeamInput>
-  create: Prisma.XOR<Prisma.TaskCreateWithoutTeamInput, Prisma.TaskUncheckedCreateWithoutTeamInput>
+  update: Prisma.XOR<Prisma.TaskUpdateWithoutWorktreeInput, Prisma.TaskUncheckedUpdateWithoutWorktreeInput>
+  create: Prisma.XOR<Prisma.TaskCreateWithoutWorktreeInput, Prisma.TaskUncheckedCreateWithoutWorktreeInput>
 }
 
-export type TaskUpdateWithWhereUniqueWithoutTeamInput = {
+export type TaskUpdateWithWhereUniqueWithoutWorktreeInput = {
   where: Prisma.TaskWhereUniqueInput
-  data: Prisma.XOR<Prisma.TaskUpdateWithoutTeamInput, Prisma.TaskUncheckedUpdateWithoutTeamInput>
+  data: Prisma.XOR<Prisma.TaskUpdateWithoutWorktreeInput, Prisma.TaskUncheckedUpdateWithoutWorktreeInput>
 }
 
-export type TaskUpdateManyWithWhereWithoutTeamInput = {
+export type TaskUpdateManyWithWhereWithoutWorktreeInput = {
   where: Prisma.TaskScalarWhereInput
-  data: Prisma.XOR<Prisma.TaskUpdateManyMutationInput, Prisma.TaskUncheckedUpdateManyWithoutTeamInput>
+  data: Prisma.XOR<Prisma.TaskUpdateManyMutationInput, Prisma.TaskUncheckedUpdateManyWithoutWorktreeInput>
 }
 
 export type TaskCreateWithoutIterationsInput = {
   id?: string
   name: string
   instruction?: string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: boolean
-  permissionMode?: $Enums.PermissionMode
-  executorType?: $Enums.ExecutorType
+  contextSource: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot: string
+  executorKind?: string | null
+  executorId?: string | null
+  chatMode?: string | null
   status?: $Enums.TaskStatus
-  isRecurring?: boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
-  pausedAt?: Date | string | null
-  pausedAtIteration?: number | null
-  pausedAtEmployee?: string | null
+  reviewedAt?: Date | string | null
+  sourceTaskId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
-  queuePosition?: number | null
-  originalScheduledAt?: Date | string | null
-  rescheduledCount?: number
-  rescheduledReason?: string | null
   resourceUsage?: Prisma.ResourceUsageCreateNestedManyWithoutTaskInput
   slackLogs?: Prisma.SlackLogCreateNestedManyWithoutTaskInput
-  buildLogs?: Prisma.TaskBuildLogCreateNestedManyWithoutTaskInput
-  skillLogs?: Prisma.TaskSkillLogCreateNestedManyWithoutTaskInput
-  suggestions?: Prisma.TaskSuggestionCreateNestedManyWithoutTaskInput
-  team?: Prisma.TeamCreateNestedOneWithoutTasksInput
   project: Prisma.ProjectCreateNestedOneWithoutTasksInput
   user: Prisma.UserCreateNestedOneWithoutTasksInput
+  worktree: Prisma.WorktreeCreateNestedOneWithoutTasksInput
 }
 
 export type TaskUncheckedCreateWithoutIterationsInput = {
   id?: string
   projectId: string
+  worktreeId: string
   userId: string
   name: string
   instruction?: string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: boolean
-  permissionMode?: $Enums.PermissionMode
-  executorType?: $Enums.ExecutorType
+  contextSource: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot: string
+  executorKind?: string | null
   executorId?: string | null
+  chatMode?: string | null
   status?: $Enums.TaskStatus
-  isRecurring?: boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
-  pausedAt?: Date | string | null
-  pausedAtIteration?: number | null
-  pausedAtEmployee?: string | null
+  reviewedAt?: Date | string | null
+  sourceTaskId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
-  queuePosition?: number | null
-  originalScheduledAt?: Date | string | null
-  rescheduledCount?: number
-  rescheduledReason?: string | null
   resourceUsage?: Prisma.ResourceUsageUncheckedCreateNestedManyWithoutTaskInput
   slackLogs?: Prisma.SlackLogUncheckedCreateNestedManyWithoutTaskInput
-  buildLogs?: Prisma.TaskBuildLogUncheckedCreateNestedManyWithoutTaskInput
-  skillLogs?: Prisma.TaskSkillLogUncheckedCreateNestedManyWithoutTaskInput
-  suggestions?: Prisma.TaskSuggestionUncheckedCreateNestedManyWithoutTaskInput
 }
 
 export type TaskCreateOrConnectWithoutIterationsInput = {
@@ -1435,560 +1083,88 @@ export type TaskUpdateWithoutIterationsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   instruction?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFieldUpdateOperationsInput | $Enums.ExecutorType
+  contextSource?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  executorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  chatMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumTaskStatusFieldUpdateOperationsInput | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  reviewedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sourceTaskId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
-  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resourceUsage?: Prisma.ResourceUsageUpdateManyWithoutTaskNestedInput
   slackLogs?: Prisma.SlackLogUpdateManyWithoutTaskNestedInput
-  buildLogs?: Prisma.TaskBuildLogUpdateManyWithoutTaskNestedInput
-  skillLogs?: Prisma.TaskSkillLogUpdateManyWithoutTaskNestedInput
-  suggestions?: Prisma.TaskSuggestionUpdateManyWithoutTaskNestedInput
-  team?: Prisma.TeamUpdateOneWithoutTasksNestedInput
   project?: Prisma.ProjectUpdateOneRequiredWithoutTasksNestedInput
   user?: Prisma.UserUpdateOneRequiredWithoutTasksNestedInput
+  worktree?: Prisma.WorktreeUpdateOneRequiredWithoutTasksNestedInput
 }
 
 export type TaskUncheckedUpdateWithoutIterationsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   projectId?: Prisma.StringFieldUpdateOperationsInput | string
+  worktreeId?: Prisma.StringFieldUpdateOperationsInput | string
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   instruction?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFieldUpdateOperationsInput | $Enums.ExecutorType
+  contextSource?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   executorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  chatMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumTaskStatusFieldUpdateOperationsInput | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  reviewedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sourceTaskId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
-  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   resourceUsage?: Prisma.ResourceUsageUncheckedUpdateManyWithoutTaskNestedInput
   slackLogs?: Prisma.SlackLogUncheckedUpdateManyWithoutTaskNestedInput
-  buildLogs?: Prisma.TaskBuildLogUncheckedUpdateManyWithoutTaskNestedInput
-  skillLogs?: Prisma.TaskSkillLogUncheckedUpdateManyWithoutTaskNestedInput
-  suggestions?: Prisma.TaskSuggestionUncheckedUpdateManyWithoutTaskNestedInput
-}
-
-export type TaskCreateWithoutSkillLogsInput = {
-  id?: string
-  name: string
-  instruction?: string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: boolean
-  permissionMode?: $Enums.PermissionMode
-  executorType?: $Enums.ExecutorType
-  status?: $Enums.TaskStatus
-  isRecurring?: boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
-  scheduledAt?: Date | string | null
-  pausedAt?: Date | string | null
-  pausedAtIteration?: number | null
-  pausedAtEmployee?: string | null
-  createdAt?: Date | string
-  updatedAt?: Date | string
-  queuePosition?: number | null
-  originalScheduledAt?: Date | string | null
-  rescheduledCount?: number
-  rescheduledReason?: string | null
-  resourceUsage?: Prisma.ResourceUsageCreateNestedManyWithoutTaskInput
-  slackLogs?: Prisma.SlackLogCreateNestedManyWithoutTaskInput
-  buildLogs?: Prisma.TaskBuildLogCreateNestedManyWithoutTaskInput
-  iterations?: Prisma.TaskIterationCreateNestedManyWithoutTaskInput
-  suggestions?: Prisma.TaskSuggestionCreateNestedManyWithoutTaskInput
-  team?: Prisma.TeamCreateNestedOneWithoutTasksInput
-  project: Prisma.ProjectCreateNestedOneWithoutTasksInput
-  user: Prisma.UserCreateNestedOneWithoutTasksInput
-}
-
-export type TaskUncheckedCreateWithoutSkillLogsInput = {
-  id?: string
-  projectId: string
-  userId: string
-  name: string
-  instruction?: string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: boolean
-  permissionMode?: $Enums.PermissionMode
-  executorType?: $Enums.ExecutorType
-  executorId?: string | null
-  status?: $Enums.TaskStatus
-  isRecurring?: boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
-  scheduledAt?: Date | string | null
-  pausedAt?: Date | string | null
-  pausedAtIteration?: number | null
-  pausedAtEmployee?: string | null
-  createdAt?: Date | string
-  updatedAt?: Date | string
-  queuePosition?: number | null
-  originalScheduledAt?: Date | string | null
-  rescheduledCount?: number
-  rescheduledReason?: string | null
-  resourceUsage?: Prisma.ResourceUsageUncheckedCreateNestedManyWithoutTaskInput
-  slackLogs?: Prisma.SlackLogUncheckedCreateNestedManyWithoutTaskInput
-  buildLogs?: Prisma.TaskBuildLogUncheckedCreateNestedManyWithoutTaskInput
-  iterations?: Prisma.TaskIterationUncheckedCreateNestedManyWithoutTaskInput
-  suggestions?: Prisma.TaskSuggestionUncheckedCreateNestedManyWithoutTaskInput
-}
-
-export type TaskCreateOrConnectWithoutSkillLogsInput = {
-  where: Prisma.TaskWhereUniqueInput
-  create: Prisma.XOR<Prisma.TaskCreateWithoutSkillLogsInput, Prisma.TaskUncheckedCreateWithoutSkillLogsInput>
-}
-
-export type TaskUpsertWithoutSkillLogsInput = {
-  update: Prisma.XOR<Prisma.TaskUpdateWithoutSkillLogsInput, Prisma.TaskUncheckedUpdateWithoutSkillLogsInput>
-  create: Prisma.XOR<Prisma.TaskCreateWithoutSkillLogsInput, Prisma.TaskUncheckedCreateWithoutSkillLogsInput>
-  where?: Prisma.TaskWhereInput
-}
-
-export type TaskUpdateToOneWithWhereWithoutSkillLogsInput = {
-  where?: Prisma.TaskWhereInput
-  data: Prisma.XOR<Prisma.TaskUpdateWithoutSkillLogsInput, Prisma.TaskUncheckedUpdateWithoutSkillLogsInput>
-}
-
-export type TaskUpdateWithoutSkillLogsInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string
-  name?: Prisma.StringFieldUpdateOperationsInput | string
-  instruction?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFieldUpdateOperationsInput | $Enums.ExecutorType
-  status?: Prisma.EnumTaskStatusFieldUpdateOperationsInput | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
-  scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
-  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  resourceUsage?: Prisma.ResourceUsageUpdateManyWithoutTaskNestedInput
-  slackLogs?: Prisma.SlackLogUpdateManyWithoutTaskNestedInput
-  buildLogs?: Prisma.TaskBuildLogUpdateManyWithoutTaskNestedInput
-  iterations?: Prisma.TaskIterationUpdateManyWithoutTaskNestedInput
-  suggestions?: Prisma.TaskSuggestionUpdateManyWithoutTaskNestedInput
-  team?: Prisma.TeamUpdateOneWithoutTasksNestedInput
-  project?: Prisma.ProjectUpdateOneRequiredWithoutTasksNestedInput
-  user?: Prisma.UserUpdateOneRequiredWithoutTasksNestedInput
-}
-
-export type TaskUncheckedUpdateWithoutSkillLogsInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string
-  projectId?: Prisma.StringFieldUpdateOperationsInput | string
-  userId?: Prisma.StringFieldUpdateOperationsInput | string
-  name?: Prisma.StringFieldUpdateOperationsInput | string
-  instruction?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFieldUpdateOperationsInput | $Enums.ExecutorType
-  executorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  status?: Prisma.EnumTaskStatusFieldUpdateOperationsInput | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
-  scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
-  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  resourceUsage?: Prisma.ResourceUsageUncheckedUpdateManyWithoutTaskNestedInput
-  slackLogs?: Prisma.SlackLogUncheckedUpdateManyWithoutTaskNestedInput
-  buildLogs?: Prisma.TaskBuildLogUncheckedUpdateManyWithoutTaskNestedInput
-  iterations?: Prisma.TaskIterationUncheckedUpdateManyWithoutTaskNestedInput
-  suggestions?: Prisma.TaskSuggestionUncheckedUpdateManyWithoutTaskNestedInput
-}
-
-export type TaskCreateWithoutBuildLogsInput = {
-  id?: string
-  name: string
-  instruction?: string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: boolean
-  permissionMode?: $Enums.PermissionMode
-  executorType?: $Enums.ExecutorType
-  status?: $Enums.TaskStatus
-  isRecurring?: boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
-  scheduledAt?: Date | string | null
-  pausedAt?: Date | string | null
-  pausedAtIteration?: number | null
-  pausedAtEmployee?: string | null
-  createdAt?: Date | string
-  updatedAt?: Date | string
-  queuePosition?: number | null
-  originalScheduledAt?: Date | string | null
-  rescheduledCount?: number
-  rescheduledReason?: string | null
-  resourceUsage?: Prisma.ResourceUsageCreateNestedManyWithoutTaskInput
-  slackLogs?: Prisma.SlackLogCreateNestedManyWithoutTaskInput
-  iterations?: Prisma.TaskIterationCreateNestedManyWithoutTaskInput
-  skillLogs?: Prisma.TaskSkillLogCreateNestedManyWithoutTaskInput
-  suggestions?: Prisma.TaskSuggestionCreateNestedManyWithoutTaskInput
-  team?: Prisma.TeamCreateNestedOneWithoutTasksInput
-  project: Prisma.ProjectCreateNestedOneWithoutTasksInput
-  user: Prisma.UserCreateNestedOneWithoutTasksInput
-}
-
-export type TaskUncheckedCreateWithoutBuildLogsInput = {
-  id?: string
-  projectId: string
-  userId: string
-  name: string
-  instruction?: string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: boolean
-  permissionMode?: $Enums.PermissionMode
-  executorType?: $Enums.ExecutorType
-  executorId?: string | null
-  status?: $Enums.TaskStatus
-  isRecurring?: boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
-  scheduledAt?: Date | string | null
-  pausedAt?: Date | string | null
-  pausedAtIteration?: number | null
-  pausedAtEmployee?: string | null
-  createdAt?: Date | string
-  updatedAt?: Date | string
-  queuePosition?: number | null
-  originalScheduledAt?: Date | string | null
-  rescheduledCount?: number
-  rescheduledReason?: string | null
-  resourceUsage?: Prisma.ResourceUsageUncheckedCreateNestedManyWithoutTaskInput
-  slackLogs?: Prisma.SlackLogUncheckedCreateNestedManyWithoutTaskInput
-  iterations?: Prisma.TaskIterationUncheckedCreateNestedManyWithoutTaskInput
-  skillLogs?: Prisma.TaskSkillLogUncheckedCreateNestedManyWithoutTaskInput
-  suggestions?: Prisma.TaskSuggestionUncheckedCreateNestedManyWithoutTaskInput
-}
-
-export type TaskCreateOrConnectWithoutBuildLogsInput = {
-  where: Prisma.TaskWhereUniqueInput
-  create: Prisma.XOR<Prisma.TaskCreateWithoutBuildLogsInput, Prisma.TaskUncheckedCreateWithoutBuildLogsInput>
-}
-
-export type TaskUpsertWithoutBuildLogsInput = {
-  update: Prisma.XOR<Prisma.TaskUpdateWithoutBuildLogsInput, Prisma.TaskUncheckedUpdateWithoutBuildLogsInput>
-  create: Prisma.XOR<Prisma.TaskCreateWithoutBuildLogsInput, Prisma.TaskUncheckedCreateWithoutBuildLogsInput>
-  where?: Prisma.TaskWhereInput
-}
-
-export type TaskUpdateToOneWithWhereWithoutBuildLogsInput = {
-  where?: Prisma.TaskWhereInput
-  data: Prisma.XOR<Prisma.TaskUpdateWithoutBuildLogsInput, Prisma.TaskUncheckedUpdateWithoutBuildLogsInput>
-}
-
-export type TaskUpdateWithoutBuildLogsInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string
-  name?: Prisma.StringFieldUpdateOperationsInput | string
-  instruction?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFieldUpdateOperationsInput | $Enums.ExecutorType
-  status?: Prisma.EnumTaskStatusFieldUpdateOperationsInput | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
-  scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
-  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  resourceUsage?: Prisma.ResourceUsageUpdateManyWithoutTaskNestedInput
-  slackLogs?: Prisma.SlackLogUpdateManyWithoutTaskNestedInput
-  iterations?: Prisma.TaskIterationUpdateManyWithoutTaskNestedInput
-  skillLogs?: Prisma.TaskSkillLogUpdateManyWithoutTaskNestedInput
-  suggestions?: Prisma.TaskSuggestionUpdateManyWithoutTaskNestedInput
-  team?: Prisma.TeamUpdateOneWithoutTasksNestedInput
-  project?: Prisma.ProjectUpdateOneRequiredWithoutTasksNestedInput
-  user?: Prisma.UserUpdateOneRequiredWithoutTasksNestedInput
-}
-
-export type TaskUncheckedUpdateWithoutBuildLogsInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string
-  projectId?: Prisma.StringFieldUpdateOperationsInput | string
-  userId?: Prisma.StringFieldUpdateOperationsInput | string
-  name?: Prisma.StringFieldUpdateOperationsInput | string
-  instruction?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFieldUpdateOperationsInput | $Enums.ExecutorType
-  executorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  status?: Prisma.EnumTaskStatusFieldUpdateOperationsInput | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
-  scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
-  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  resourceUsage?: Prisma.ResourceUsageUncheckedUpdateManyWithoutTaskNestedInput
-  slackLogs?: Prisma.SlackLogUncheckedUpdateManyWithoutTaskNestedInput
-  iterations?: Prisma.TaskIterationUncheckedUpdateManyWithoutTaskNestedInput
-  skillLogs?: Prisma.TaskSkillLogUncheckedUpdateManyWithoutTaskNestedInput
-  suggestions?: Prisma.TaskSuggestionUncheckedUpdateManyWithoutTaskNestedInput
-}
-
-export type TaskCreateWithoutSuggestionsInput = {
-  id?: string
-  name: string
-  instruction?: string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: boolean
-  permissionMode?: $Enums.PermissionMode
-  executorType?: $Enums.ExecutorType
-  status?: $Enums.TaskStatus
-  isRecurring?: boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
-  scheduledAt?: Date | string | null
-  pausedAt?: Date | string | null
-  pausedAtIteration?: number | null
-  pausedAtEmployee?: string | null
-  createdAt?: Date | string
-  updatedAt?: Date | string
-  queuePosition?: number | null
-  originalScheduledAt?: Date | string | null
-  rescheduledCount?: number
-  rescheduledReason?: string | null
-  resourceUsage?: Prisma.ResourceUsageCreateNestedManyWithoutTaskInput
-  slackLogs?: Prisma.SlackLogCreateNestedManyWithoutTaskInput
-  buildLogs?: Prisma.TaskBuildLogCreateNestedManyWithoutTaskInput
-  iterations?: Prisma.TaskIterationCreateNestedManyWithoutTaskInput
-  skillLogs?: Prisma.TaskSkillLogCreateNestedManyWithoutTaskInput
-  team?: Prisma.TeamCreateNestedOneWithoutTasksInput
-  project: Prisma.ProjectCreateNestedOneWithoutTasksInput
-  user: Prisma.UserCreateNestedOneWithoutTasksInput
-}
-
-export type TaskUncheckedCreateWithoutSuggestionsInput = {
-  id?: string
-  projectId: string
-  userId: string
-  name: string
-  instruction?: string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: boolean
-  permissionMode?: $Enums.PermissionMode
-  executorType?: $Enums.ExecutorType
-  executorId?: string | null
-  status?: $Enums.TaskStatus
-  isRecurring?: boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
-  scheduledAt?: Date | string | null
-  pausedAt?: Date | string | null
-  pausedAtIteration?: number | null
-  pausedAtEmployee?: string | null
-  createdAt?: Date | string
-  updatedAt?: Date | string
-  queuePosition?: number | null
-  originalScheduledAt?: Date | string | null
-  rescheduledCount?: number
-  rescheduledReason?: string | null
-  resourceUsage?: Prisma.ResourceUsageUncheckedCreateNestedManyWithoutTaskInput
-  slackLogs?: Prisma.SlackLogUncheckedCreateNestedManyWithoutTaskInput
-  buildLogs?: Prisma.TaskBuildLogUncheckedCreateNestedManyWithoutTaskInput
-  iterations?: Prisma.TaskIterationUncheckedCreateNestedManyWithoutTaskInput
-  skillLogs?: Prisma.TaskSkillLogUncheckedCreateNestedManyWithoutTaskInput
-}
-
-export type TaskCreateOrConnectWithoutSuggestionsInput = {
-  where: Prisma.TaskWhereUniqueInput
-  create: Prisma.XOR<Prisma.TaskCreateWithoutSuggestionsInput, Prisma.TaskUncheckedCreateWithoutSuggestionsInput>
-}
-
-export type TaskUpsertWithoutSuggestionsInput = {
-  update: Prisma.XOR<Prisma.TaskUpdateWithoutSuggestionsInput, Prisma.TaskUncheckedUpdateWithoutSuggestionsInput>
-  create: Prisma.XOR<Prisma.TaskCreateWithoutSuggestionsInput, Prisma.TaskUncheckedCreateWithoutSuggestionsInput>
-  where?: Prisma.TaskWhereInput
-}
-
-export type TaskUpdateToOneWithWhereWithoutSuggestionsInput = {
-  where?: Prisma.TaskWhereInput
-  data: Prisma.XOR<Prisma.TaskUpdateWithoutSuggestionsInput, Prisma.TaskUncheckedUpdateWithoutSuggestionsInput>
-}
-
-export type TaskUpdateWithoutSuggestionsInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string
-  name?: Prisma.StringFieldUpdateOperationsInput | string
-  instruction?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFieldUpdateOperationsInput | $Enums.ExecutorType
-  status?: Prisma.EnumTaskStatusFieldUpdateOperationsInput | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
-  scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
-  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  resourceUsage?: Prisma.ResourceUsageUpdateManyWithoutTaskNestedInput
-  slackLogs?: Prisma.SlackLogUpdateManyWithoutTaskNestedInput
-  buildLogs?: Prisma.TaskBuildLogUpdateManyWithoutTaskNestedInput
-  iterations?: Prisma.TaskIterationUpdateManyWithoutTaskNestedInput
-  skillLogs?: Prisma.TaskSkillLogUpdateManyWithoutTaskNestedInput
-  team?: Prisma.TeamUpdateOneWithoutTasksNestedInput
-  project?: Prisma.ProjectUpdateOneRequiredWithoutTasksNestedInput
-  user?: Prisma.UserUpdateOneRequiredWithoutTasksNestedInput
-}
-
-export type TaskUncheckedUpdateWithoutSuggestionsInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string
-  projectId?: Prisma.StringFieldUpdateOperationsInput | string
-  userId?: Prisma.StringFieldUpdateOperationsInput | string
-  name?: Prisma.StringFieldUpdateOperationsInput | string
-  instruction?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFieldUpdateOperationsInput | $Enums.ExecutorType
-  executorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  status?: Prisma.EnumTaskStatusFieldUpdateOperationsInput | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
-  scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
-  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  resourceUsage?: Prisma.ResourceUsageUncheckedUpdateManyWithoutTaskNestedInput
-  slackLogs?: Prisma.SlackLogUncheckedUpdateManyWithoutTaskNestedInput
-  buildLogs?: Prisma.TaskBuildLogUncheckedUpdateManyWithoutTaskNestedInput
-  iterations?: Prisma.TaskIterationUncheckedUpdateManyWithoutTaskNestedInput
-  skillLogs?: Prisma.TaskSkillLogUncheckedUpdateManyWithoutTaskNestedInput
 }
 
 export type TaskCreateWithoutSlackLogsInput = {
   id?: string
   name: string
   instruction?: string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: boolean
-  permissionMode?: $Enums.PermissionMode
-  executorType?: $Enums.ExecutorType
+  contextSource: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot: string
+  executorKind?: string | null
+  executorId?: string | null
+  chatMode?: string | null
   status?: $Enums.TaskStatus
-  isRecurring?: boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
-  pausedAt?: Date | string | null
-  pausedAtIteration?: number | null
-  pausedAtEmployee?: string | null
+  reviewedAt?: Date | string | null
+  sourceTaskId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
-  queuePosition?: number | null
-  originalScheduledAt?: Date | string | null
-  rescheduledCount?: number
-  rescheduledReason?: string | null
-  resourceUsage?: Prisma.ResourceUsageCreateNestedManyWithoutTaskInput
-  buildLogs?: Prisma.TaskBuildLogCreateNestedManyWithoutTaskInput
   iterations?: Prisma.TaskIterationCreateNestedManyWithoutTaskInput
-  skillLogs?: Prisma.TaskSkillLogCreateNestedManyWithoutTaskInput
-  suggestions?: Prisma.TaskSuggestionCreateNestedManyWithoutTaskInput
-  team?: Prisma.TeamCreateNestedOneWithoutTasksInput
+  resourceUsage?: Prisma.ResourceUsageCreateNestedManyWithoutTaskInput
   project: Prisma.ProjectCreateNestedOneWithoutTasksInput
   user: Prisma.UserCreateNestedOneWithoutTasksInput
+  worktree: Prisma.WorktreeCreateNestedOneWithoutTasksInput
 }
 
 export type TaskUncheckedCreateWithoutSlackLogsInput = {
   id?: string
   projectId: string
+  worktreeId: string
   userId: string
   name: string
   instruction?: string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: boolean
-  permissionMode?: $Enums.PermissionMode
-  executorType?: $Enums.ExecutorType
+  contextSource: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot: string
+  executorKind?: string | null
   executorId?: string | null
+  chatMode?: string | null
   status?: $Enums.TaskStatus
-  isRecurring?: boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
-  pausedAt?: Date | string | null
-  pausedAtIteration?: number | null
-  pausedAtEmployee?: string | null
+  reviewedAt?: Date | string | null
+  sourceTaskId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
-  queuePosition?: number | null
-  originalScheduledAt?: Date | string | null
-  rescheduledCount?: number
-  rescheduledReason?: string | null
-  resourceUsage?: Prisma.ResourceUsageUncheckedCreateNestedManyWithoutTaskInput
-  buildLogs?: Prisma.TaskBuildLogUncheckedCreateNestedManyWithoutTaskInput
   iterations?: Prisma.TaskIterationUncheckedCreateNestedManyWithoutTaskInput
-  skillLogs?: Prisma.TaskSkillLogUncheckedCreateNestedManyWithoutTaskInput
-  suggestions?: Prisma.TaskSuggestionUncheckedCreateNestedManyWithoutTaskInput
+  resourceUsage?: Prisma.ResourceUsageUncheckedCreateNestedManyWithoutTaskInput
 }
 
 export type TaskCreateOrConnectWithoutSlackLogsInput = {
@@ -2011,128 +1187,88 @@ export type TaskUpdateWithoutSlackLogsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   instruction?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFieldUpdateOperationsInput | $Enums.ExecutorType
+  contextSource?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  executorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  chatMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumTaskStatusFieldUpdateOperationsInput | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  reviewedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sourceTaskId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
-  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  resourceUsage?: Prisma.ResourceUsageUpdateManyWithoutTaskNestedInput
-  buildLogs?: Prisma.TaskBuildLogUpdateManyWithoutTaskNestedInput
   iterations?: Prisma.TaskIterationUpdateManyWithoutTaskNestedInput
-  skillLogs?: Prisma.TaskSkillLogUpdateManyWithoutTaskNestedInput
-  suggestions?: Prisma.TaskSuggestionUpdateManyWithoutTaskNestedInput
-  team?: Prisma.TeamUpdateOneWithoutTasksNestedInput
+  resourceUsage?: Prisma.ResourceUsageUpdateManyWithoutTaskNestedInput
   project?: Prisma.ProjectUpdateOneRequiredWithoutTasksNestedInput
   user?: Prisma.UserUpdateOneRequiredWithoutTasksNestedInput
+  worktree?: Prisma.WorktreeUpdateOneRequiredWithoutTasksNestedInput
 }
 
 export type TaskUncheckedUpdateWithoutSlackLogsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   projectId?: Prisma.StringFieldUpdateOperationsInput | string
+  worktreeId?: Prisma.StringFieldUpdateOperationsInput | string
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   instruction?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFieldUpdateOperationsInput | $Enums.ExecutorType
+  contextSource?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   executorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  chatMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumTaskStatusFieldUpdateOperationsInput | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  reviewedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sourceTaskId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
-  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  resourceUsage?: Prisma.ResourceUsageUncheckedUpdateManyWithoutTaskNestedInput
-  buildLogs?: Prisma.TaskBuildLogUncheckedUpdateManyWithoutTaskNestedInput
   iterations?: Prisma.TaskIterationUncheckedUpdateManyWithoutTaskNestedInput
-  skillLogs?: Prisma.TaskSkillLogUncheckedUpdateManyWithoutTaskNestedInput
-  suggestions?: Prisma.TaskSuggestionUncheckedUpdateManyWithoutTaskNestedInput
+  resourceUsage?: Prisma.ResourceUsageUncheckedUpdateManyWithoutTaskNestedInput
 }
 
 export type TaskCreateWithoutResourceUsageInput = {
   id?: string
   name: string
   instruction?: string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: boolean
-  permissionMode?: $Enums.PermissionMode
-  executorType?: $Enums.ExecutorType
+  contextSource: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot: string
+  executorKind?: string | null
+  executorId?: string | null
+  chatMode?: string | null
   status?: $Enums.TaskStatus
-  isRecurring?: boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
-  pausedAt?: Date | string | null
-  pausedAtIteration?: number | null
-  pausedAtEmployee?: string | null
+  reviewedAt?: Date | string | null
+  sourceTaskId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
-  queuePosition?: number | null
-  originalScheduledAt?: Date | string | null
-  rescheduledCount?: number
-  rescheduledReason?: string | null
-  slackLogs?: Prisma.SlackLogCreateNestedManyWithoutTaskInput
-  buildLogs?: Prisma.TaskBuildLogCreateNestedManyWithoutTaskInput
   iterations?: Prisma.TaskIterationCreateNestedManyWithoutTaskInput
-  skillLogs?: Prisma.TaskSkillLogCreateNestedManyWithoutTaskInput
-  suggestions?: Prisma.TaskSuggestionCreateNestedManyWithoutTaskInput
-  team?: Prisma.TeamCreateNestedOneWithoutTasksInput
+  slackLogs?: Prisma.SlackLogCreateNestedManyWithoutTaskInput
   project: Prisma.ProjectCreateNestedOneWithoutTasksInput
   user: Prisma.UserCreateNestedOneWithoutTasksInput
+  worktree: Prisma.WorktreeCreateNestedOneWithoutTasksInput
 }
 
 export type TaskUncheckedCreateWithoutResourceUsageInput = {
   id?: string
   projectId: string
+  worktreeId: string
   userId: string
   name: string
   instruction?: string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: boolean
-  permissionMode?: $Enums.PermissionMode
-  executorType?: $Enums.ExecutorType
+  contextSource: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot: string
+  executorKind?: string | null
   executorId?: string | null
+  chatMode?: string | null
   status?: $Enums.TaskStatus
-  isRecurring?: boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
-  pausedAt?: Date | string | null
-  pausedAtIteration?: number | null
-  pausedAtEmployee?: string | null
+  reviewedAt?: Date | string | null
+  sourceTaskId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
-  queuePosition?: number | null
-  originalScheduledAt?: Date | string | null
-  rescheduledCount?: number
-  rescheduledReason?: string | null
-  slackLogs?: Prisma.SlackLogUncheckedCreateNestedManyWithoutTaskInput
-  buildLogs?: Prisma.TaskBuildLogUncheckedCreateNestedManyWithoutTaskInput
   iterations?: Prisma.TaskIterationUncheckedCreateNestedManyWithoutTaskInput
-  skillLogs?: Prisma.TaskSkillLogUncheckedCreateNestedManyWithoutTaskInput
-  suggestions?: Prisma.TaskSuggestionUncheckedCreateNestedManyWithoutTaskInput
+  slackLogs?: Prisma.SlackLogUncheckedCreateNestedManyWithoutTaskInput
 }
 
 export type TaskCreateOrConnectWithoutResourceUsageInput = {
@@ -2155,412 +1291,290 @@ export type TaskUpdateWithoutResourceUsageInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   instruction?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFieldUpdateOperationsInput | $Enums.ExecutorType
+  contextSource?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  executorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  chatMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumTaskStatusFieldUpdateOperationsInput | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  reviewedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sourceTaskId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
-  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  slackLogs?: Prisma.SlackLogUpdateManyWithoutTaskNestedInput
-  buildLogs?: Prisma.TaskBuildLogUpdateManyWithoutTaskNestedInput
   iterations?: Prisma.TaskIterationUpdateManyWithoutTaskNestedInput
-  skillLogs?: Prisma.TaskSkillLogUpdateManyWithoutTaskNestedInput
-  suggestions?: Prisma.TaskSuggestionUpdateManyWithoutTaskNestedInput
-  team?: Prisma.TeamUpdateOneWithoutTasksNestedInput
+  slackLogs?: Prisma.SlackLogUpdateManyWithoutTaskNestedInput
   project?: Prisma.ProjectUpdateOneRequiredWithoutTasksNestedInput
   user?: Prisma.UserUpdateOneRequiredWithoutTasksNestedInput
+  worktree?: Prisma.WorktreeUpdateOneRequiredWithoutTasksNestedInput
 }
 
 export type TaskUncheckedUpdateWithoutResourceUsageInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   projectId?: Prisma.StringFieldUpdateOperationsInput | string
+  worktreeId?: Prisma.StringFieldUpdateOperationsInput | string
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   instruction?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFieldUpdateOperationsInput | $Enums.ExecutorType
+  contextSource?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   executorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  chatMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumTaskStatusFieldUpdateOperationsInput | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  reviewedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sourceTaskId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
-  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  slackLogs?: Prisma.SlackLogUncheckedUpdateManyWithoutTaskNestedInput
-  buildLogs?: Prisma.TaskBuildLogUncheckedUpdateManyWithoutTaskNestedInput
   iterations?: Prisma.TaskIterationUncheckedUpdateManyWithoutTaskNestedInput
-  skillLogs?: Prisma.TaskSkillLogUncheckedUpdateManyWithoutTaskNestedInput
-  suggestions?: Prisma.TaskSuggestionUncheckedUpdateManyWithoutTaskNestedInput
+  slackLogs?: Prisma.SlackLogUncheckedUpdateManyWithoutTaskNestedInput
 }
 
 export type TaskCreateManyUserInput = {
   id?: string
   projectId: string
+  worktreeId: string
   name: string
   instruction?: string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: boolean
-  permissionMode?: $Enums.PermissionMode
-  executorType?: $Enums.ExecutorType
+  contextSource: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot: string
+  executorKind?: string | null
   executorId?: string | null
+  chatMode?: string | null
   status?: $Enums.TaskStatus
-  isRecurring?: boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
-  pausedAt?: Date | string | null
-  pausedAtIteration?: number | null
-  pausedAtEmployee?: string | null
+  reviewedAt?: Date | string | null
+  sourceTaskId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
-  queuePosition?: number | null
-  originalScheduledAt?: Date | string | null
-  rescheduledCount?: number
-  rescheduledReason?: string | null
 }
 
 export type TaskUpdateWithoutUserInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   instruction?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFieldUpdateOperationsInput | $Enums.ExecutorType
+  contextSource?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  executorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  chatMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumTaskStatusFieldUpdateOperationsInput | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  reviewedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sourceTaskId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
-  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  iterations?: Prisma.TaskIterationUpdateManyWithoutTaskNestedInput
   resourceUsage?: Prisma.ResourceUsageUpdateManyWithoutTaskNestedInput
   slackLogs?: Prisma.SlackLogUpdateManyWithoutTaskNestedInput
-  buildLogs?: Prisma.TaskBuildLogUpdateManyWithoutTaskNestedInput
-  iterations?: Prisma.TaskIterationUpdateManyWithoutTaskNestedInput
-  skillLogs?: Prisma.TaskSkillLogUpdateManyWithoutTaskNestedInput
-  suggestions?: Prisma.TaskSuggestionUpdateManyWithoutTaskNestedInput
-  team?: Prisma.TeamUpdateOneWithoutTasksNestedInput
   project?: Prisma.ProjectUpdateOneRequiredWithoutTasksNestedInput
+  worktree?: Prisma.WorktreeUpdateOneRequiredWithoutTasksNestedInput
 }
 
 export type TaskUncheckedUpdateWithoutUserInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   projectId?: Prisma.StringFieldUpdateOperationsInput | string
+  worktreeId?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   instruction?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFieldUpdateOperationsInput | $Enums.ExecutorType
+  contextSource?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   executorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  chatMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumTaskStatusFieldUpdateOperationsInput | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  reviewedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sourceTaskId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
-  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  iterations?: Prisma.TaskIterationUncheckedUpdateManyWithoutTaskNestedInput
   resourceUsage?: Prisma.ResourceUsageUncheckedUpdateManyWithoutTaskNestedInput
   slackLogs?: Prisma.SlackLogUncheckedUpdateManyWithoutTaskNestedInput
-  buildLogs?: Prisma.TaskBuildLogUncheckedUpdateManyWithoutTaskNestedInput
-  iterations?: Prisma.TaskIterationUncheckedUpdateManyWithoutTaskNestedInput
-  skillLogs?: Prisma.TaskSkillLogUncheckedUpdateManyWithoutTaskNestedInput
-  suggestions?: Prisma.TaskSuggestionUncheckedUpdateManyWithoutTaskNestedInput
 }
 
 export type TaskUncheckedUpdateManyWithoutUserInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   projectId?: Prisma.StringFieldUpdateOperationsInput | string
+  worktreeId?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   instruction?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFieldUpdateOperationsInput | $Enums.ExecutorType
+  contextSource?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   executorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  chatMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumTaskStatusFieldUpdateOperationsInput | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  reviewedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sourceTaskId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
-  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type TaskCreateManyProjectInput = {
   id?: string
+  worktreeId: string
   userId: string
   name: string
   instruction?: string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: boolean
-  permissionMode?: $Enums.PermissionMode
-  executorType?: $Enums.ExecutorType
+  contextSource: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot: string
+  executorKind?: string | null
   executorId?: string | null
+  chatMode?: string | null
   status?: $Enums.TaskStatus
-  isRecurring?: boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
-  pausedAt?: Date | string | null
-  pausedAtIteration?: number | null
-  pausedAtEmployee?: string | null
+  reviewedAt?: Date | string | null
+  sourceTaskId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
-  queuePosition?: number | null
-  originalScheduledAt?: Date | string | null
-  rescheduledCount?: number
-  rescheduledReason?: string | null
 }
 
 export type TaskUpdateWithoutProjectInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   instruction?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFieldUpdateOperationsInput | $Enums.ExecutorType
+  contextSource?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  executorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  chatMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumTaskStatusFieldUpdateOperationsInput | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  reviewedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sourceTaskId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
-  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  iterations?: Prisma.TaskIterationUpdateManyWithoutTaskNestedInput
   resourceUsage?: Prisma.ResourceUsageUpdateManyWithoutTaskNestedInput
   slackLogs?: Prisma.SlackLogUpdateManyWithoutTaskNestedInput
-  buildLogs?: Prisma.TaskBuildLogUpdateManyWithoutTaskNestedInput
-  iterations?: Prisma.TaskIterationUpdateManyWithoutTaskNestedInput
-  skillLogs?: Prisma.TaskSkillLogUpdateManyWithoutTaskNestedInput
-  suggestions?: Prisma.TaskSuggestionUpdateManyWithoutTaskNestedInput
-  team?: Prisma.TeamUpdateOneWithoutTasksNestedInput
   user?: Prisma.UserUpdateOneRequiredWithoutTasksNestedInput
+  worktree?: Prisma.WorktreeUpdateOneRequiredWithoutTasksNestedInput
 }
 
 export type TaskUncheckedUpdateWithoutProjectInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
+  worktreeId?: Prisma.StringFieldUpdateOperationsInput | string
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   instruction?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFieldUpdateOperationsInput | $Enums.ExecutorType
+  contextSource?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   executorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  chatMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumTaskStatusFieldUpdateOperationsInput | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  reviewedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sourceTaskId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
-  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  iterations?: Prisma.TaskIterationUncheckedUpdateManyWithoutTaskNestedInput
   resourceUsage?: Prisma.ResourceUsageUncheckedUpdateManyWithoutTaskNestedInput
   slackLogs?: Prisma.SlackLogUncheckedUpdateManyWithoutTaskNestedInput
-  buildLogs?: Prisma.TaskBuildLogUncheckedUpdateManyWithoutTaskNestedInput
-  iterations?: Prisma.TaskIterationUncheckedUpdateManyWithoutTaskNestedInput
-  skillLogs?: Prisma.TaskSkillLogUncheckedUpdateManyWithoutTaskNestedInput
-  suggestions?: Prisma.TaskSuggestionUncheckedUpdateManyWithoutTaskNestedInput
 }
 
 export type TaskUncheckedUpdateManyWithoutProjectInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
+  worktreeId?: Prisma.StringFieldUpdateOperationsInput | string
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   instruction?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFieldUpdateOperationsInput | $Enums.ExecutorType
+  contextSource?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   executorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  chatMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumTaskStatusFieldUpdateOperationsInput | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  reviewedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sourceTaskId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
-  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
-export type TaskCreateManyTeamInput = {
+export type TaskCreateManyWorktreeInput = {
   id?: string
   projectId: string
   userId: string
   name: string
   instruction?: string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: boolean
-  permissionMode?: $Enums.PermissionMode
-  executorType?: $Enums.ExecutorType
+  contextSource: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot: string
+  executorKind?: string | null
+  executorId?: string | null
+  chatMode?: string | null
   status?: $Enums.TaskStatus
-  isRecurring?: boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Date | string | null
-  pausedAt?: Date | string | null
-  pausedAtIteration?: number | null
-  pausedAtEmployee?: string | null
+  reviewedAt?: Date | string | null
+  sourceTaskId?: string | null
   createdAt?: Date | string
   updatedAt?: Date | string
-  queuePosition?: number | null
-  originalScheduledAt?: Date | string | null
-  rescheduledCount?: number
-  rescheduledReason?: string | null
 }
 
-export type TaskUpdateWithoutTeamInput = {
+export type TaskUpdateWithoutWorktreeInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   instruction?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFieldUpdateOperationsInput | $Enums.ExecutorType
+  contextSource?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  executorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  chatMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumTaskStatusFieldUpdateOperationsInput | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  reviewedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sourceTaskId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
-  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  iterations?: Prisma.TaskIterationUpdateManyWithoutTaskNestedInput
   resourceUsage?: Prisma.ResourceUsageUpdateManyWithoutTaskNestedInput
   slackLogs?: Prisma.SlackLogUpdateManyWithoutTaskNestedInput
-  buildLogs?: Prisma.TaskBuildLogUpdateManyWithoutTaskNestedInput
-  iterations?: Prisma.TaskIterationUpdateManyWithoutTaskNestedInput
-  skillLogs?: Prisma.TaskSkillLogUpdateManyWithoutTaskNestedInput
-  suggestions?: Prisma.TaskSuggestionUpdateManyWithoutTaskNestedInput
   project?: Prisma.ProjectUpdateOneRequiredWithoutTasksNestedInput
   user?: Prisma.UserUpdateOneRequiredWithoutTasksNestedInput
 }
 
-export type TaskUncheckedUpdateWithoutTeamInput = {
+export type TaskUncheckedUpdateWithoutWorktreeInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   projectId?: Prisma.StringFieldUpdateOperationsInput | string
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   instruction?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFieldUpdateOperationsInput | $Enums.ExecutorType
+  contextSource?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  executorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  chatMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumTaskStatusFieldUpdateOperationsInput | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  reviewedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sourceTaskId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
-  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  iterations?: Prisma.TaskIterationUncheckedUpdateManyWithoutTaskNestedInput
   resourceUsage?: Prisma.ResourceUsageUncheckedUpdateManyWithoutTaskNestedInput
   slackLogs?: Prisma.SlackLogUncheckedUpdateManyWithoutTaskNestedInput
-  buildLogs?: Prisma.TaskBuildLogUncheckedUpdateManyWithoutTaskNestedInput
-  iterations?: Prisma.TaskIterationUncheckedUpdateManyWithoutTaskNestedInput
-  skillLogs?: Prisma.TaskSkillLogUncheckedUpdateManyWithoutTaskNestedInput
-  suggestions?: Prisma.TaskSuggestionUncheckedUpdateManyWithoutTaskNestedInput
 }
 
-export type TaskUncheckedUpdateManyWithoutTeamInput = {
+export type TaskUncheckedUpdateManyWithoutWorktreeInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   projectId?: Prisma.StringFieldUpdateOperationsInput | string
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   name?: Prisma.StringFieldUpdateOperationsInput | string
   instruction?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  context?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  accumulatedContext?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  canModifyRepo?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  permissionMode?: Prisma.EnumPermissionModeFieldUpdateOperationsInput | $Enums.PermissionMode
-  executorType?: Prisma.EnumExecutorTypeFieldUpdateOperationsInput | $Enums.ExecutorType
+  contextSource?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  contextSnapshot?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  executorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  chatMode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.EnumTaskStatusFieldUpdateOperationsInput | $Enums.TaskStatus
-  isRecurring?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  recurrenceConfig?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   scheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  pausedAtIteration?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pausedAtEmployee?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  reviewedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sourceTaskId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updatedAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  queuePosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  originalScheduledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
-  rescheduledCount?: Prisma.IntFieldUpdateOperationsInput | number
-  rescheduledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 
@@ -2569,21 +1583,15 @@ export type TaskUncheckedUpdateManyWithoutTeamInput = {
  */
 
 export type TaskCountOutputType = {
+  iterations: number
   resourceUsage: number
   slackLogs: number
-  buildLogs: number
-  iterations: number
-  skillLogs: number
-  suggestions: number
 }
 
 export type TaskCountOutputTypeSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  iterations?: boolean | TaskCountOutputTypeCountIterationsArgs
   resourceUsage?: boolean | TaskCountOutputTypeCountResourceUsageArgs
   slackLogs?: boolean | TaskCountOutputTypeCountSlackLogsArgs
-  buildLogs?: boolean | TaskCountOutputTypeCountBuildLogsArgs
-  iterations?: boolean | TaskCountOutputTypeCountIterationsArgs
-  skillLogs?: boolean | TaskCountOutputTypeCountSkillLogsArgs
-  suggestions?: boolean | TaskCountOutputTypeCountSuggestionsArgs
 }
 
 /**
@@ -2594,6 +1602,13 @@ export type TaskCountOutputTypeDefaultArgs<ExtArgs extends runtime.Types.Extensi
    * Select specific fields to fetch from the TaskCountOutputType
    */
   select?: Prisma.TaskCountOutputTypeSelect<ExtArgs> | null
+}
+
+/**
+ * TaskCountOutputType without action
+ */
+export type TaskCountOutputTypeCountIterationsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  where?: Prisma.TaskIterationWhereInput
 }
 
 /**
@@ -2610,221 +1625,149 @@ export type TaskCountOutputTypeCountSlackLogsArgs<ExtArgs extends runtime.Types.
   where?: Prisma.SlackLogWhereInput
 }
 
-/**
- * TaskCountOutputType without action
- */
-export type TaskCountOutputTypeCountBuildLogsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  where?: Prisma.TaskBuildLogWhereInput
-}
-
-/**
- * TaskCountOutputType without action
- */
-export type TaskCountOutputTypeCountIterationsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  where?: Prisma.TaskIterationWhereInput
-}
-
-/**
- * TaskCountOutputType without action
- */
-export type TaskCountOutputTypeCountSkillLogsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  where?: Prisma.TaskSkillLogWhereInput
-}
-
-/**
- * TaskCountOutputType without action
- */
-export type TaskCountOutputTypeCountSuggestionsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  where?: Prisma.TaskSuggestionWhereInput
-}
-
 
 export type TaskSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
   id?: boolean
   projectId?: boolean
+  worktreeId?: boolean
   userId?: boolean
   name?: boolean
   instruction?: boolean
-  context?: boolean
-  accumulatedContext?: boolean
-  canModifyRepo?: boolean
-  permissionMode?: boolean
-  executorType?: boolean
+  contextSource?: boolean
+  contextSnapshot?: boolean
+  executorKind?: boolean
   executorId?: boolean
+  chatMode?: boolean
   status?: boolean
-  isRecurring?: boolean
-  recurrenceConfig?: boolean
   scheduledAt?: boolean
-  pausedAt?: boolean
-  pausedAtIteration?: boolean
-  pausedAtEmployee?: boolean
+  reviewedAt?: boolean
+  sourceTaskId?: boolean
   createdAt?: boolean
   updatedAt?: boolean
-  queuePosition?: boolean
-  originalScheduledAt?: boolean
-  rescheduledCount?: boolean
-  rescheduledReason?: boolean
+  iterations?: boolean | Prisma.Task$iterationsArgs<ExtArgs>
   resourceUsage?: boolean | Prisma.Task$resourceUsageArgs<ExtArgs>
   slackLogs?: boolean | Prisma.Task$slackLogsArgs<ExtArgs>
-  buildLogs?: boolean | Prisma.Task$buildLogsArgs<ExtArgs>
-  iterations?: boolean | Prisma.Task$iterationsArgs<ExtArgs>
-  skillLogs?: boolean | Prisma.Task$skillLogsArgs<ExtArgs>
-  suggestions?: boolean | Prisma.Task$suggestionsArgs<ExtArgs>
-  team?: boolean | Prisma.Task$teamArgs<ExtArgs>
   project?: boolean | Prisma.ProjectDefaultArgs<ExtArgs>
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
+  worktree?: boolean | Prisma.WorktreeDefaultArgs<ExtArgs>
   _count?: boolean | Prisma.TaskCountOutputTypeDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["task"]>
 
 export type TaskSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
   id?: boolean
   projectId?: boolean
+  worktreeId?: boolean
   userId?: boolean
   name?: boolean
   instruction?: boolean
-  context?: boolean
-  accumulatedContext?: boolean
-  canModifyRepo?: boolean
-  permissionMode?: boolean
-  executorType?: boolean
+  contextSource?: boolean
+  contextSnapshot?: boolean
+  executorKind?: boolean
   executorId?: boolean
+  chatMode?: boolean
   status?: boolean
-  isRecurring?: boolean
-  recurrenceConfig?: boolean
   scheduledAt?: boolean
-  pausedAt?: boolean
-  pausedAtIteration?: boolean
-  pausedAtEmployee?: boolean
+  reviewedAt?: boolean
+  sourceTaskId?: boolean
   createdAt?: boolean
   updatedAt?: boolean
-  queuePosition?: boolean
-  originalScheduledAt?: boolean
-  rescheduledCount?: boolean
-  rescheduledReason?: boolean
-  team?: boolean | Prisma.Task$teamArgs<ExtArgs>
   project?: boolean | Prisma.ProjectDefaultArgs<ExtArgs>
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
+  worktree?: boolean | Prisma.WorktreeDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["task"]>
 
 export type TaskSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
   id?: boolean
   projectId?: boolean
+  worktreeId?: boolean
   userId?: boolean
   name?: boolean
   instruction?: boolean
-  context?: boolean
-  accumulatedContext?: boolean
-  canModifyRepo?: boolean
-  permissionMode?: boolean
-  executorType?: boolean
+  contextSource?: boolean
+  contextSnapshot?: boolean
+  executorKind?: boolean
   executorId?: boolean
+  chatMode?: boolean
   status?: boolean
-  isRecurring?: boolean
-  recurrenceConfig?: boolean
   scheduledAt?: boolean
-  pausedAt?: boolean
-  pausedAtIteration?: boolean
-  pausedAtEmployee?: boolean
+  reviewedAt?: boolean
+  sourceTaskId?: boolean
   createdAt?: boolean
   updatedAt?: boolean
-  queuePosition?: boolean
-  originalScheduledAt?: boolean
-  rescheduledCount?: boolean
-  rescheduledReason?: boolean
-  team?: boolean | Prisma.Task$teamArgs<ExtArgs>
   project?: boolean | Prisma.ProjectDefaultArgs<ExtArgs>
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
+  worktree?: boolean | Prisma.WorktreeDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["task"]>
 
 export type TaskSelectScalar = {
   id?: boolean
   projectId?: boolean
+  worktreeId?: boolean
   userId?: boolean
   name?: boolean
   instruction?: boolean
-  context?: boolean
-  accumulatedContext?: boolean
-  canModifyRepo?: boolean
-  permissionMode?: boolean
-  executorType?: boolean
+  contextSource?: boolean
+  contextSnapshot?: boolean
+  executorKind?: boolean
   executorId?: boolean
+  chatMode?: boolean
   status?: boolean
-  isRecurring?: boolean
-  recurrenceConfig?: boolean
   scheduledAt?: boolean
-  pausedAt?: boolean
-  pausedAtIteration?: boolean
-  pausedAtEmployee?: boolean
+  reviewedAt?: boolean
+  sourceTaskId?: boolean
   createdAt?: boolean
   updatedAt?: boolean
-  queuePosition?: boolean
-  originalScheduledAt?: boolean
-  rescheduledCount?: boolean
-  rescheduledReason?: boolean
 }
 
-export type TaskOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "projectId" | "userId" | "name" | "instruction" | "context" | "accumulatedContext" | "canModifyRepo" | "permissionMode" | "executorType" | "executorId" | "status" | "isRecurring" | "recurrenceConfig" | "scheduledAt" | "pausedAt" | "pausedAtIteration" | "pausedAtEmployee" | "createdAt" | "updatedAt" | "queuePosition" | "originalScheduledAt" | "rescheduledCount" | "rescheduledReason", ExtArgs["result"]["task"]>
+export type TaskOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "projectId" | "worktreeId" | "userId" | "name" | "instruction" | "contextSource" | "contextSnapshot" | "executorKind" | "executorId" | "chatMode" | "status" | "scheduledAt" | "reviewedAt" | "sourceTaskId" | "createdAt" | "updatedAt", ExtArgs["result"]["task"]>
 export type TaskInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  iterations?: boolean | Prisma.Task$iterationsArgs<ExtArgs>
   resourceUsage?: boolean | Prisma.Task$resourceUsageArgs<ExtArgs>
   slackLogs?: boolean | Prisma.Task$slackLogsArgs<ExtArgs>
-  buildLogs?: boolean | Prisma.Task$buildLogsArgs<ExtArgs>
-  iterations?: boolean | Prisma.Task$iterationsArgs<ExtArgs>
-  skillLogs?: boolean | Prisma.Task$skillLogsArgs<ExtArgs>
-  suggestions?: boolean | Prisma.Task$suggestionsArgs<ExtArgs>
-  team?: boolean | Prisma.Task$teamArgs<ExtArgs>
   project?: boolean | Prisma.ProjectDefaultArgs<ExtArgs>
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
+  worktree?: boolean | Prisma.WorktreeDefaultArgs<ExtArgs>
   _count?: boolean | Prisma.TaskCountOutputTypeDefaultArgs<ExtArgs>
 }
 export type TaskIncludeCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  team?: boolean | Prisma.Task$teamArgs<ExtArgs>
   project?: boolean | Prisma.ProjectDefaultArgs<ExtArgs>
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
+  worktree?: boolean | Prisma.WorktreeDefaultArgs<ExtArgs>
 }
 export type TaskIncludeUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  team?: boolean | Prisma.Task$teamArgs<ExtArgs>
   project?: boolean | Prisma.ProjectDefaultArgs<ExtArgs>
   user?: boolean | Prisma.UserDefaultArgs<ExtArgs>
+  worktree?: boolean | Prisma.WorktreeDefaultArgs<ExtArgs>
 }
 
 export type $TaskPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Task"
   objects: {
+    iterations: Prisma.$TaskIterationPayload<ExtArgs>[]
     resourceUsage: Prisma.$ResourceUsagePayload<ExtArgs>[]
     slackLogs: Prisma.$SlackLogPayload<ExtArgs>[]
-    buildLogs: Prisma.$TaskBuildLogPayload<ExtArgs>[]
-    iterations: Prisma.$TaskIterationPayload<ExtArgs>[]
-    skillLogs: Prisma.$TaskSkillLogPayload<ExtArgs>[]
-    suggestions: Prisma.$TaskSuggestionPayload<ExtArgs>[]
-    team: Prisma.$TeamPayload<ExtArgs> | null
     project: Prisma.$ProjectPayload<ExtArgs>
     user: Prisma.$UserPayload<ExtArgs>
+    worktree: Prisma.$WorktreePayload<ExtArgs>
   }
   scalars: runtime.Types.Extensions.GetPayloadResult<{
     id: string
     projectId: string
+    worktreeId: string
     userId: string
     name: string
     instruction: string | null
-    context: runtime.JsonValue
-    accumulatedContext: runtime.JsonValue
-    canModifyRepo: boolean
-    permissionMode: $Enums.PermissionMode
-    executorType: $Enums.ExecutorType
+    contextSource: runtime.JsonValue
+    contextSnapshot: string
+    executorKind: string | null
     executorId: string | null
+    chatMode: string | null
     status: $Enums.TaskStatus
-    isRecurring: boolean
-    recurrenceConfig: runtime.JsonValue | null
     scheduledAt: Date | null
-    pausedAt: Date | null
-    pausedAtIteration: number | null
-    pausedAtEmployee: string | null
+    reviewedAt: Date | null
+    sourceTaskId: string | null
     createdAt: Date
     updatedAt: Date
-    queuePosition: number | null
-    originalScheduledAt: Date | null
-    rescheduledCount: number
-    rescheduledReason: string | null
   }, ExtArgs["result"]["task"]>
   composites: {}
 }
@@ -3219,15 +2162,12 @@ readonly fields: TaskFieldRefs;
  */
 export interface Prisma__TaskClient<T, Null = never, ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs, GlobalOmitOptions = {}> extends Prisma.PrismaPromise<T> {
   readonly [Symbol.toStringTag]: "PrismaPromise"
+  iterations<T extends Prisma.Task$iterationsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Task$iterationsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$TaskIterationPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   resourceUsage<T extends Prisma.Task$resourceUsageArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Task$resourceUsageArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$ResourceUsagePayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   slackLogs<T extends Prisma.Task$slackLogsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Task$slackLogsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$SlackLogPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
-  buildLogs<T extends Prisma.Task$buildLogsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Task$buildLogsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$TaskBuildLogPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
-  iterations<T extends Prisma.Task$iterationsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Task$iterationsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$TaskIterationPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
-  skillLogs<T extends Prisma.Task$skillLogsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Task$skillLogsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$TaskSkillLogPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
-  suggestions<T extends Prisma.Task$suggestionsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Task$suggestionsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$TaskSuggestionPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
-  team<T extends Prisma.Task$teamArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Task$teamArgs<ExtArgs>>): Prisma.Prisma__TeamClient<runtime.Types.Result.GetResult<Prisma.$TeamPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | null, null, ExtArgs, GlobalOmitOptions>
   project<T extends Prisma.ProjectDefaultArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.ProjectDefaultArgs<ExtArgs>>): Prisma.Prisma__ProjectClient<runtime.Types.Result.GetResult<Prisma.$ProjectPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | Null, Null, ExtArgs, GlobalOmitOptions>
   user<T extends Prisma.UserDefaultArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.UserDefaultArgs<ExtArgs>>): Prisma.Prisma__UserClient<runtime.Types.Result.GetResult<Prisma.$UserPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | Null, Null, ExtArgs, GlobalOmitOptions>
+  worktree<T extends Prisma.WorktreeDefaultArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.WorktreeDefaultArgs<ExtArgs>>): Prisma.Prisma__WorktreeClient<runtime.Types.Result.GetResult<Prisma.$WorktreePayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | Null, Null, ExtArgs, GlobalOmitOptions>
   /**
    * Attaches callbacks for the resolution and/or rejection of the Promise.
    * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -3259,28 +2199,21 @@ export interface Prisma__TaskClient<T, Null = never, ExtArgs extends runtime.Typ
 export interface TaskFieldRefs {
   readonly id: Prisma.FieldRef<"Task", 'String'>
   readonly projectId: Prisma.FieldRef<"Task", 'String'>
+  readonly worktreeId: Prisma.FieldRef<"Task", 'String'>
   readonly userId: Prisma.FieldRef<"Task", 'String'>
   readonly name: Prisma.FieldRef<"Task", 'String'>
   readonly instruction: Prisma.FieldRef<"Task", 'String'>
-  readonly context: Prisma.FieldRef<"Task", 'Json'>
-  readonly accumulatedContext: Prisma.FieldRef<"Task", 'Json'>
-  readonly canModifyRepo: Prisma.FieldRef<"Task", 'Boolean'>
-  readonly permissionMode: Prisma.FieldRef<"Task", 'PermissionMode'>
-  readonly executorType: Prisma.FieldRef<"Task", 'ExecutorType'>
+  readonly contextSource: Prisma.FieldRef<"Task", 'Json'>
+  readonly contextSnapshot: Prisma.FieldRef<"Task", 'String'>
+  readonly executorKind: Prisma.FieldRef<"Task", 'String'>
   readonly executorId: Prisma.FieldRef<"Task", 'String'>
+  readonly chatMode: Prisma.FieldRef<"Task", 'String'>
   readonly status: Prisma.FieldRef<"Task", 'TaskStatus'>
-  readonly isRecurring: Prisma.FieldRef<"Task", 'Boolean'>
-  readonly recurrenceConfig: Prisma.FieldRef<"Task", 'Json'>
   readonly scheduledAt: Prisma.FieldRef<"Task", 'DateTime'>
-  readonly pausedAt: Prisma.FieldRef<"Task", 'DateTime'>
-  readonly pausedAtIteration: Prisma.FieldRef<"Task", 'Int'>
-  readonly pausedAtEmployee: Prisma.FieldRef<"Task", 'String'>
+  readonly reviewedAt: Prisma.FieldRef<"Task", 'DateTime'>
+  readonly sourceTaskId: Prisma.FieldRef<"Task", 'String'>
   readonly createdAt: Prisma.FieldRef<"Task", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"Task", 'DateTime'>
-  readonly queuePosition: Prisma.FieldRef<"Task", 'Int'>
-  readonly originalScheduledAt: Prisma.FieldRef<"Task", 'DateTime'>
-  readonly rescheduledCount: Prisma.FieldRef<"Task", 'Int'>
-  readonly rescheduledReason: Prisma.FieldRef<"Task", 'String'>
 }
     
 
@@ -3682,6 +2615,30 @@ export type TaskDeleteManyArgs<ExtArgs extends runtime.Types.Extensions.Internal
 }
 
 /**
+ * Task.iterations
+ */
+export type Task$iterationsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
+  /**
+   * Select specific fields to fetch from the TaskIteration
+   */
+  select?: Prisma.TaskIterationSelect<ExtArgs> | null
+  /**
+   * Omit specific fields from the TaskIteration
+   */
+  omit?: Prisma.TaskIterationOmit<ExtArgs> | null
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.TaskIterationInclude<ExtArgs> | null
+  where?: Prisma.TaskIterationWhereInput
+  orderBy?: Prisma.TaskIterationOrderByWithRelationInput | Prisma.TaskIterationOrderByWithRelationInput[]
+  cursor?: Prisma.TaskIterationWhereUniqueInput
+  take?: number
+  skip?: number
+  distinct?: Prisma.TaskIterationScalarFieldEnum | Prisma.TaskIterationScalarFieldEnum[]
+}
+
+/**
  * Task.resourceUsage
  */
 export type Task$resourceUsageArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
@@ -3727,121 +2684,6 @@ export type Task$slackLogsArgs<ExtArgs extends runtime.Types.Extensions.Internal
   take?: number
   skip?: number
   distinct?: Prisma.SlackLogScalarFieldEnum | Prisma.SlackLogScalarFieldEnum[]
-}
-
-/**
- * Task.buildLogs
- */
-export type Task$buildLogsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  /**
-   * Select specific fields to fetch from the TaskBuildLog
-   */
-  select?: Prisma.TaskBuildLogSelect<ExtArgs> | null
-  /**
-   * Omit specific fields from the TaskBuildLog
-   */
-  omit?: Prisma.TaskBuildLogOmit<ExtArgs> | null
-  /**
-   * Choose, which related nodes to fetch as well
-   */
-  include?: Prisma.TaskBuildLogInclude<ExtArgs> | null
-  where?: Prisma.TaskBuildLogWhereInput
-  orderBy?: Prisma.TaskBuildLogOrderByWithRelationInput | Prisma.TaskBuildLogOrderByWithRelationInput[]
-  cursor?: Prisma.TaskBuildLogWhereUniqueInput
-  take?: number
-  skip?: number
-  distinct?: Prisma.TaskBuildLogScalarFieldEnum | Prisma.TaskBuildLogScalarFieldEnum[]
-}
-
-/**
- * Task.iterations
- */
-export type Task$iterationsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  /**
-   * Select specific fields to fetch from the TaskIteration
-   */
-  select?: Prisma.TaskIterationSelect<ExtArgs> | null
-  /**
-   * Omit specific fields from the TaskIteration
-   */
-  omit?: Prisma.TaskIterationOmit<ExtArgs> | null
-  /**
-   * Choose, which related nodes to fetch as well
-   */
-  include?: Prisma.TaskIterationInclude<ExtArgs> | null
-  where?: Prisma.TaskIterationWhereInput
-  orderBy?: Prisma.TaskIterationOrderByWithRelationInput | Prisma.TaskIterationOrderByWithRelationInput[]
-  cursor?: Prisma.TaskIterationWhereUniqueInput
-  take?: number
-  skip?: number
-  distinct?: Prisma.TaskIterationScalarFieldEnum | Prisma.TaskIterationScalarFieldEnum[]
-}
-
-/**
- * Task.skillLogs
- */
-export type Task$skillLogsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  /**
-   * Select specific fields to fetch from the TaskSkillLog
-   */
-  select?: Prisma.TaskSkillLogSelect<ExtArgs> | null
-  /**
-   * Omit specific fields from the TaskSkillLog
-   */
-  omit?: Prisma.TaskSkillLogOmit<ExtArgs> | null
-  /**
-   * Choose, which related nodes to fetch as well
-   */
-  include?: Prisma.TaskSkillLogInclude<ExtArgs> | null
-  where?: Prisma.TaskSkillLogWhereInput
-  orderBy?: Prisma.TaskSkillLogOrderByWithRelationInput | Prisma.TaskSkillLogOrderByWithRelationInput[]
-  cursor?: Prisma.TaskSkillLogWhereUniqueInput
-  take?: number
-  skip?: number
-  distinct?: Prisma.TaskSkillLogScalarFieldEnum | Prisma.TaskSkillLogScalarFieldEnum[]
-}
-
-/**
- * Task.suggestions
- */
-export type Task$suggestionsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  /**
-   * Select specific fields to fetch from the TaskSuggestion
-   */
-  select?: Prisma.TaskSuggestionSelect<ExtArgs> | null
-  /**
-   * Omit specific fields from the TaskSuggestion
-   */
-  omit?: Prisma.TaskSuggestionOmit<ExtArgs> | null
-  /**
-   * Choose, which related nodes to fetch as well
-   */
-  include?: Prisma.TaskSuggestionInclude<ExtArgs> | null
-  where?: Prisma.TaskSuggestionWhereInput
-  orderBy?: Prisma.TaskSuggestionOrderByWithRelationInput | Prisma.TaskSuggestionOrderByWithRelationInput[]
-  cursor?: Prisma.TaskSuggestionWhereUniqueInput
-  take?: number
-  skip?: number
-  distinct?: Prisma.TaskSuggestionScalarFieldEnum | Prisma.TaskSuggestionScalarFieldEnum[]
-}
-
-/**
- * Task.team
- */
-export type Task$teamArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  /**
-   * Select specific fields to fetch from the Team
-   */
-  select?: Prisma.TeamSelect<ExtArgs> | null
-  /**
-   * Omit specific fields from the Team
-   */
-  omit?: Prisma.TeamOmit<ExtArgs> | null
-  /**
-   * Choose, which related nodes to fetch as well
-   */
-  include?: Prisma.TeamInclude<ExtArgs> | null
-  where?: Prisma.TeamWhereInput
 }
 
 /**

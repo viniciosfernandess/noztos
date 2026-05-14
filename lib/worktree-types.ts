@@ -12,6 +12,11 @@ export interface FileEntry {
   // Drives the "U" badge in the Changes list. Optional because the main-
   // view aggregation (cross-worktree) doesn't compute it.
   uncommitted?: boolean
+  // True when a Task iteration on this worktree edited this path and
+  // the changes are still uncommitted. Drives the "T" badge in the
+  // Changes list, paired with "U". Cleared automatically by the next
+  // refetch after the user commits (the server resets the marker set).
+  touchedByTask?: boolean
   // Cross-worktree info — present only when at least one open worktree touched this file
   added?: number
   removed?: number

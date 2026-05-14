@@ -31,7 +31,7 @@ export default async function ProjectPage({ params }: PageProps) {
     }),
     prisma.task.findMany({
       where: { projectId: id },
-      select: { id: true, name: true, status: true, pausedAtEmployee: true },
+      select: { id: true, name: true, status: true },
       orderBy: { createdAt: 'desc' },
     }),
   ])

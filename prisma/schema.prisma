@@ -8,36 +8,36 @@ datasource db {
 }
 
 model User {
-  id             String        @id @default(cuid())
-  email          String        @unique
-  passwordHash   String
-  name           String
-  company        String?
-  role           String?
-  avatarUrl      String?
-  anthropicToken String?
-  slackToken     String?
-  emailVerified  Boolean       @default(false)
-  createdAt      DateTime      @default(now())
-  lastActive     DateTime      @updatedAt
-  githubToken    String?
-  chatMessages      ChatMessage[]
-  projects          Project[]
-  tasks             Task[]
-  companionTokens   CompanionToken[]
+  id              String           @id @default(cuid())
+  email           String           @unique
+  passwordHash    String
+  name            String
+  company         String?
+  role            String?
+  avatarUrl       String?
+  anthropicToken  String?
+  slackToken      String?
+  emailVerified   Boolean          @default(false)
+  createdAt       DateTime         @default(now())
+  lastActive      DateTime         @updatedAt
+  githubToken     String?
+  chatMessages    ChatMessage[]
+  projects        Project[]
+  tasks           Task[]
+  companionTokens CompanionToken[]
 
   @@map("users")
 }
 
 model CompanionToken {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  token       String   @unique
-  name        String   @default("Default")
-  lastUsedAt  DateTime?
-  createdAt   DateTime @default(now())
-  expiresAt   DateTime?
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token      String    @unique
+  name       String    @default("Default")
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime?
 
   @@index([token])
   @@index([userId])
@@ -57,16 +57,16 @@ model CompanionToken {
 // SSE 'config_updated' broadcast that pushes new prompts to every
 // online companion in <1s.
 model CompanionConfig {
-  id               String   @id @default("singleton")
+  id              String   @id @default("singleton")
   // JSON: { plan: "...", ask: "...", agent: "..." }
-  modePrompts      Json
+  modePrompts     Json
   // Naming-rule appended to every mode prompt
-  namingRule       String
+  namingRule      String
   // JSON: { plan: ["AskUserQuestion"], ask: ["Edit","Write",...], agent: [] }
-  disallowedTools  Json
+  disallowedTools Json
   // Bumped on every change; companion uses this for cheap version checks
-  version          String
-  updatedAt        DateTime @updatedAt
+  version         String
+  updatedAt       DateTime @updatedAt
 
   @@map("companion_config")
 }
@@ -108,27 +108,27 @@ model Project {
 }
 
 model Repository {
-  id               String     @id @default(cuid())
-  projectId        String     @unique
-  githubOwner      String
-  githubRepo       String
-  githubBranch     String     @default("main")
-  lastSyncedSha    String?
-  lastSyncedAt     DateTime?
-  createdAt        DateTime   @default(now())
-  lockedAt         DateTime?
-  lockedBy         String?
-  lockedByTaskId   String?
-  sandboxId        String?
-  sandboxStartedAt DateTime?
-  sandboxStatus    String?
-  fileTree         String?
+  id                String     @id @default(cuid())
+  projectId         String     @unique
+  githubOwner       String
+  githubRepo        String
+  githubBranch      String     @default("main")
+  lastSyncedSha     String?
+  lastSyncedAt      DateTime?
+  createdAt         DateTime   @default(now())
+  lockedAt          DateTime?
+  lockedBy          String?
+  lockedByTaskId    String?
+  sandboxId         String?
+  sandboxStartedAt  DateTime?
+  sandboxStatus     String?
+  fileTree          String?
   fileTreeUpdatedAt DateTime?
   // Project-level run script (e.g. "PORT=$BORNASTAR_PORT npm run dev").
   // When set, the user can start the dev server for any chat with one click.
-  runScript        String?
-  files            RepoFile[]
-  project          Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  runScript         String?
+  files             RepoFile[]
+  project           Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@map("repositories")
 }
@@ -153,16 +153,15 @@ model RepoFile {
 }
 
 model Collaborator {
-  id                String         @id @default(cuid())
+  id                String   @id @default(cuid())
   projectId         String?
   name              String
   description       String
-  skillMd           String         @default("")
-  isPlatformDefault Boolean        @default(false)
-  isActive          Boolean        @default(true)
-  createdAt         DateTime       @default(now())
-  project           Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  taskSkillLogs     TaskSkillLog[]
+  skillMd           String   @default("")
+  isPlatformDefault Boolean  @default(false)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  project           Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([name, projectId])
   @@index([projectId, isActive])
@@ -179,7 +178,6 @@ model Team {
   rejectionRules            Json     @default("{}")
   restartFromCollaboratorId String?
   createdAt                 DateTime @default(now())
-  tasks                     Task[]
   project                   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
@@ -212,10 +210,18 @@ model Worktree {
   // timestamp-based) agrees on the unlinked state. Preserves the audit
   // trail — the row never leaves the DB.
   deletedAt    DateTime?
+  // Paths touched by Task iterations since the last commit on this
+  // worktree. Drives the "T" badge in the Changes list, paired with
+  // the "U" (uncommitted) badge. Each completed iteration merges its
+  // filesTouched in; the commit endpoint clears the array. We store
+  // raw paths (Json string[]) — cheap to read, set semantics handled
+  // at the merge call site.
+  taskTouchedPaths Json     @default("[]")
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   sessions     ChatSession[]
   todos        Todo[]
+  tasks        Task[]
   project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId, status])
@@ -231,7 +237,7 @@ model Worktree {
 // `@@ignore` keeps this model out of the generated Prisma Client so no
 // code path can accidentally query it with the ORM.
 model RepoChunk {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id           String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   repositoryId String
   filePath     String
   chunkType    String
@@ -240,8 +246,8 @@ model RepoChunk {
   lineStart    Int?
   lineEnd      Int?
   embedding    Unsupported("vector(1536)")?
-  lastModified DateTime? @default(now())
-  touchCount   Int?      @default(0)
+  lastModified DateTime?                    @default(now())
+  touchCount   Int?                         @default(0)
 
   @@unique([repositoryId, filePath, chunkName])
   @@index([repositoryId, lastModified(sort: Desc)], map: "repo_chunks_repo_idx")
@@ -267,18 +273,18 @@ model RepoImport {
 // For main-chat todos we attach to a session instead of a worktree, via
 // the nullable sessionId — exactly one of worktreeId / sessionId is set.
 model Todo {
-  id          String       @id @default(cuid())
-  worktreeId  String?
-  sessionId   String?
-  content     String
-  done        Boolean      @default(false)
+  id         String       @id @default(cuid())
+  worktreeId String?
+  sessionId  String?
+  content    String
+  done       Boolean      @default(false)
   // Sort order so drag-to-reorder and stable lists work without depending
   // on createdAt alone. New items land at the end (max+1).
-  position    Int          @default(0)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  worktree    Worktree?    @relation(fields: [worktreeId], references: [id], onDelete: Cascade)
-  session     ChatSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  position   Int          @default(0)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  worktree   Worktree?    @relation(fields: [worktreeId], references: [id], onDelete: Cascade)
+  session    ChatSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([worktreeId])
   @@index([sessionId])
@@ -312,22 +318,22 @@ model ChatSession {
   claudeSessionId String?
   // Rollup metrics — updated as messages land. Lets the sidebar list
   // cost/usage per chat without aggregating messages on every render.
-  totalCostUsd   Float          @default(0)
-  totalTokens    Int            @default(0)
-  numTurns       Int            @default(0)
-  lastMessageAt  DateTime?
+  totalCostUsd    Float     @default(0)
+  totalTokens     Int       @default(0)
+  numTurns        Int       @default(0)
+  lastMessageAt   DateTime?
   // Unread marker — stamps every time the user views this chat. A
   // message (role assistant/tool) created after this timestamp is
   // considered unread. Null = chat has never been opened yet.
-  lastReadAt     DateTime?
+  lastReadAt      DateTime?
 
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  messages       ChatMessage[]
-  todos          Todo[]
-  workflowRuns   WorkflowRun[]
-  project        Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  worktree       Worktree?      @relation(fields: [worktreeId], references: [id], onDelete: Cascade)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  messages     ChatMessage[]
+  todos        Todo[]
+  workflowRuns WorkflowRun[]
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  worktree     Worktree?     @relation(fields: [worktreeId], references: [id], onDelete: Cascade)
 
   @@index([projectId, status])
   @@index([worktreeId])
@@ -341,32 +347,32 @@ model ChatSession {
 // provides them, keeping the table rich enough to serve as our future
 // training dataset without back-filling gymnastics later.
 model ChatMessage {
-  id              String       @id @default(cuid())
-  sessionId       String
-  projectId       String
-  userId          String
+  id         String  @id @default(cuid())
+  sessionId  String
+  projectId  String
+  userId     String
   // Denormalized worktree the chat was attached to at the moment of this
   // message — lets us answer "what was Claude looking at?" without joining
   // session → worktree every time. Null ⇒ main.
-  worktreeId      String?
+  worktreeId String?
 
   // Discriminator. What kind of event this row represents.
   //   user      — prompt sent by the human
   //   assistant — Claude's text reply
   //   tool      — a single tool use (before + result, updated in place)
   //   system    — errors and other out-of-band messages
-  role            String
+  role String
 
   // Primary text payload. For tools this is the human-readable label
   // (e.g. "Reading ~/file.ts"); structured data lives in toolInput / toolResult.
-  content         String
+  content String
 
   // ── Tool call structure (when role = 'tool') ──────────────────────────
-  toolName        String?
-  toolInput       Json?
-  toolResult      Json?
-  toolUseId       String?
-  toolError       Boolean      @default(false)
+  toolName   String?
+  toolInput  Json?
+  toolResult Json?
+  toolUseId  String?
+  toolError  Boolean @default(false)
 
   // ── Conversation graph ────────────────────────────────────────────────
   // The message that caused this one to exist. For tool results, this
@@ -378,15 +384,15 @@ model ChatMessage {
   editOfMessageId String?
   // User hit Stop mid-stream, cutting the reply short. Signals "Claude
   // didn't finish" for training filters.
-  wasInterrupted  Boolean      @default(false)
+  wasInterrupted  Boolean   @default(false)
   // User asked Claude to try again — the prior message (parentMessageId)
   // was rejected. Strong preference signal.
-  wasRegenerated  Boolean      @default(false)
+  wasRegenerated  Boolean   @default(false)
   // Flipped by the server when a turn's claudeSessionId differs from the
   // prior turn's — signals Claude auto-compacted the conversation. Lets
   // us filter compaction boundaries out of training data (the pre-compact
   // context was dropped, so continuity is partially broken).
-  wasCompacted    Boolean      @default(false)
+  wasCompacted    Boolean   @default(false)
   // Soft delete — same rationale as ChatSession.deletedAt.
   deletedAt       DateTime?
 
@@ -408,14 +414,14 @@ model ChatMessage {
   // ── Legacy columns from the old chat engine. Kept while the legacy
   // Task/Team pipeline still renders them; dropped once we retire that
   // system. New rows written by the Claude Code flow leave them null.
-  sender          String?
-  mode            String       @default("no_skill")
+  sender String?
+  mode   String  @default("no_skill")
 
-  createdAt       DateTime     @default(now())
+  createdAt DateTime @default(now())
 
-  project         Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  session         ChatSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, createdAt])
   @@index([projectId, createdAt])
@@ -426,111 +432,83 @@ model ChatMessage {
   @@map("chat_messages")
 }
 
+// A Task is a deferred work unit: a snapshot of chat context (frozen at
+// creation time) plus an instruction + executor + chat mode the user
+// configures and runs later. The execution targets the worktree the
+// chat came from, so an "agent" task touches the same branch as if the
+// user had typed the instruction inside the chat itself — just queued
+// to run out-of-band. Re-running creates a new TaskIteration; the
+// model's view of "history" is the frozen contextSnapshot + all prior
+// iteration outputs, fed in order like a side-conversation.
 model Task {
-  id                  String           @id @default(cuid())
-  projectId           String
-  userId              String
-  name                String
-  instruction         String?
-  context             Json             @default("{}")
-  accumulatedContext  Json             @default("{}")
-  canModifyRepo       Boolean          @default(false)
-  permissionMode      PermissionMode   @default(edit)
-  executorType        ExecutorType     @default(no_skill)
-  executorId          String?
-  status              TaskStatus       @default(pending)
-  isRecurring         Boolean          @default(false)
-  recurrenceConfig    Json?
-  scheduledAt         DateTime?
-  pausedAt            DateTime?
-  pausedAtIteration   Int?
-  pausedAtEmployee    String?
-  createdAt           DateTime         @default(now())
-  updatedAt           DateTime         @updatedAt
-  queuePosition       Int?
-  originalScheduledAt DateTime?
-  rescheduledCount    Int              @default(0)
-  rescheduledReason   String?
-  resourceUsage       ResourceUsage[]
-  slackLogs           SlackLog[]
-  buildLogs           TaskBuildLog[]
-  iterations          TaskIteration[]
-  skillLogs           TaskSkillLog[]
-  suggestions         TaskSuggestion[]
-  team                Team?            @relation(fields: [executorId], references: [id])
-  project             Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user                User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id              String          @id @default(cuid())
+  projectId       String
+  worktreeId      String // branch binding — every task lives on a worktree
+  userId          String
+  name            String // editable, defaults to the source chat's name
+  instruction     String? // current user prompt — null until the manage modal is filled
+  // Frozen chat-history snapshot from clicked-message backwards, sized
+  // the same way Bridge IN sizes context for a workflow. Never changes
+  // after creation.
+  contextSource   Json // { chatId, cutoffMessageId, cutoffAt }
+  contextSnapshot String // chat XML, frozen at click time
+  // Configuration set in the manage modal — null until configured
+  executorKind    String? // 'workflow' | 'skill'
+  executorId      String? // 'build' | 'debug' | 'ceo' | 'architect' | ... — no FK on purpose, string keys
+  chatMode        String? // 'agent' | 'plan' | 'ask' (workflow → forced 'agent')
+  status          TaskStatus      @default(pending)
+  scheduledAt     DateTime? // set when user clicks Schedule
+  // Done-review tracking. null = task finished but user hasn't opened
+  // the result yet (card shows amber). Stamped on first open of the
+  // manage modal in done/failed state. Reset to null on every new
+  // iteration so re-runs require re-review.
+  reviewedAt      DateTime?
+  // When this task was forked from another (Create chained task), this
+  // points to the source. Lets the chained-context builder traverse
+  // back across the chain without re-querying.
+  sourceTaskId    String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  iterations      TaskIteration[]
+  resourceUsage   ResourceUsage[]
+  slackLogs       SlackLog[]
+  project         Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  worktree        Worktree        @relation(fields: [worktreeId], references: [id], onDelete: Cascade)
 
-  @@index([projectId, status])
+  @@index([projectId, status, createdAt])
+  @@index([worktreeId])
+  @@index([status, scheduledAt])
   @@map("tasks")
 }
 
+// One execution of a Task. Re-running the task = new iteration row.
+// The model reading the task's history sees: contextSnapshot preamble
+// + every iteration's instruction/outputSummary in order + the current
+// instruction. Linkage to WorkflowRun lets workflow-kind executions
+// reuse the audit trail we already keep on /build and /debug runs.
 model TaskIteration {
-  id                       String         @id @default(cuid())
-  taskId                   String
-  iterationNumber          Int
-  rejectionReason          String?
-  rejectedByCollaboratorId String?
-  createdAt                DateTime       @default(now())
-  buildLogs                TaskBuildLog[]
-  task                     Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  skillLogs                TaskSkillLog[]
-
-  @@index([taskId])
-  @@map("task_iterations")
-}
-
-model TaskSkillLog {
-  id               String         @id @default(cuid())
-  taskId           String
-  iterationId      String?
-  collaboratorId   String?
-  collaboratorName String
-  inputReceived    String?
-  thoughts         String?
-  conclusion       String?
-  passedForward    String?
-  approved         Boolean?
-  rejectionReason  String?
-  startedAt        DateTime       @default(now())
-  finishedAt       DateTime?
-  collaborator     Collaborator?  @relation(fields: [collaboratorId], references: [id])
-  iteration        TaskIteration? @relation(fields: [iterationId], references: [id])
-  task             Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
-
-  @@index([taskId])
-  @@map("task_skill_logs")
-}
-
-model TaskBuildLog {
-  id                 String         @id @default(cuid())
-  taskId             String
-  iterationId        String?
-  filesTouched       Json           @default("[]")
-  linesAdded         Int            @default(0)
-  linesRemoved       Int            @default(0)
-  technicalDecisions String?
-  rawLog             String?
-  createdAt          DateTime       @default(now())
-  iteration          TaskIteration? @relation(fields: [iterationId], references: [id])
-  task               Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
-
-  @@index([taskId])
-  @@map("task_build_logs")
-}
-
-model TaskSuggestion {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   taskId          String
-  suggestionText  String
-  reason          String?
-  accepted        Boolean  @default(false)
-  generatedTaskId String?
-  createdAt       DateTime @default(now())
-  task            Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  iterationNumber Int // 1-based; unique per task
+  instruction     String // what the user asked this run
+  executorKind    String // 'workflow' | 'skill'
+  executorId      String
+  chatMode        String // 'agent' | 'plan' | 'ask'
+  status          String // 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  outputSummary   String? // short summary fed into next iteration's preamble
+  fullOutput      String? // complete model output (for the Done modal)
+  filesTouched    Json      @default("[]")
+  errorReason     String?
+  workflowRunId   String? // when executorKind='workflow', links to WorkflowRun for the full audit trail
+  createdAt       DateTime  @default(now())
+  task            Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
-  @@index([taskId])
-  @@map("task_suggestions")
+  @@unique([taskId, iterationNumber])
+  @@index([taskId, createdAt])
+  @@map("task_iterations")
 }
 
 model SlackLog {
@@ -606,30 +584,35 @@ model BuildSession {
 // devolver ao chat — depois de inserida como ChatMessage, pode ser
 // limpa ou mantida pra audit.
 model WorkflowRun {
-  id             String        @id @default(cuid())
-  sessionId      String
-  projectId      String
-  userId         String
+  id            String      @id @default(cuid())
+  sessionId     String
+  projectId     String
+  userId        String
   // Identifica qual workflow fixo: 'builder', 'review', 'test', etc.
   // V1 só tem 'builder'. Adicionamos outros sem mudar schema.
-  workflowType   String
+  workflowType  String
   // Mensagem do user (parte depois do slash command).
-  userMessage    String
+  userMessage   String
+  // Id da chat_message do prompt que disparou esse run. Permite à UI
+  // ancorar a WorkflowRunCard inline logo abaixo do user msg correto
+  // — em vez de pinar no rodapé do chat. Nullable porque runs antigos
+  // (pré-feature) não têm o link.
+  triggerMessageId String?
   // 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
-  status         String        @default("pending")
+  status        String      @default("pending")
   // Output do Planner: { rationale?, blocks: [{name, objective, estimatedFiles?}] }
-  plan           Json?
+  plan          Json?
   // Estado vivo: { blocks: [{ index, name, status, currentStep?, turns: [...] }], currentBlockIndex }
-  progress       Json          @default("{}")
+  progress      Json        @default("{}")
   // Resposta que o último Reviewer redigiu pro user. Após postar como
   // ChatMessage, fica aqui pra audit.
-  finalResponse  String?
+  finalResponse String?
   // Quando algo falha, motivo human-readable.
-  errorReason    String?
-  createdAt      DateTime      @default(now())
-  completedAt    DateTime?
-  session        ChatSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  project        Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  errorReason   String?
+  createdAt     DateTime    @default(now())
+  completedAt   DateTime?
+  session       ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  project       Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, status])
   @@index([projectId, createdAt])
@@ -639,16 +622,10 @@ model WorkflowRun {
 
 enum TaskStatus {
   pending
-  queue
-  progress
-  completed
+  scheduled
+  running
   done
-}
-
-enum ExecutorType {
-  no_skill
-  skill
-  team
+  failed
 }
 
 enum PermissionMode {

@@ -44,6 +44,18 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   try {
     const sha = await commitAll(ctx.sandboxId, cwd, message, 'Bornastar Agent <noreply@bornastar.app>')
+    // After a successful commit, clear the task-touched marker set on
+    // this worktree so the "T" badges drop alongside the "U" badges in
+    // the Changes list. Main-branch commits (worktreeId=null) have no
+    // marker set to clear.
+    if (sha && worktreeId) {
+      await prisma.worktree.update({
+        where: { id: worktreeId },
+        data: { taskTouchedPaths: [] },
+      }).catch((err) => {
+        console.warn(`[git/commit] failed to clear taskTouchedPaths: ${(err as Error).message}`)
+      })
+    }
     return NextResponse.json({ ok: true, sha })
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'commit failed' }, { status: 500 })

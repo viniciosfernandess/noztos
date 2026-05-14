@@ -1,10 +1,24 @@
+// GET /api/projects/[id]/tasks — list tasks for the project.
+//
+// Creation lives on /tasks/from-chat (the only intended entry point in
+// the new design); this route is read-only. Optional filters:
+//   ?status=pending|scheduled|running|done|failed
+//   ?worktreeId=<id>          — scope to a worktree (branch)
+//   ?limit=N                  — cap result count
+//
+// Default order: createdAt DESC (newest first), so the TasksPanel can
+// drop them straight into columns without re-sorting client-side.
+
 import { NextRequest, NextResponse } from 'next/server'
+import { TaskStatus } from '@/generated/prisma/enums'
 import { prisma } from '@/lib/db'
 import { verifyProjectAccess } from '@/lib/auth'
 
 interface RouteContext {
   params: Promise<{ id: string }>
 }
+
+const VALID_STATUSES = new Set<TaskStatus>(['pending', 'scheduled', 'running', 'done', 'failed'])
 
 export async function GET(request: NextRequest, context: RouteContext) {
   const { id } = await context.params
@@ -13,115 +27,45 @@ export async function GET(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: access.error }, { status: access.status })
   }
 
-  // Optional filters
-  const statusFilter = request.nextUrl.searchParams.get('status')
+  const statusParam = request.nextUrl.searchParams.get('status')
+  const worktreeIdParam = request.nextUrl.searchParams.get('worktreeId')
   const limitParam = request.nextUrl.searchParams.get('limit')
-  const take = limitParam ? parseInt(limitParam) : undefined
+  const take = limitParam ? Math.max(1, Math.min(200, parseInt(limitParam, 10) || 0)) : undefined
 
-  const where: Record<string, unknown> = { projectId: id }
-  if (statusFilter) where.status = statusFilter
-
-  const [tasks, teams] = await Promise.all([
-    prisma.task.findMany({
-      where,
-      ...(take ? { take } : {}),
-      select: {
-        id: true,
-        name: true,
-        instruction: true,
-        status: true,
-        executorType: true,
-        executorId: true,
-        context: true,
-        accumulatedContext: true,
-        isRecurring: true,
-        recurrenceConfig: true,
-        queuePosition: true,
-        pausedAtEmployee: true,
-        scheduledAt: true,
-        originalScheduledAt: true,
-        rescheduledReason: true,
-        rescheduledCount: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    }),
-    prisma.team.findMany({
-      where: { projectId: id },
-      select: { id: true, name: true, hasBuilder: true },
-      orderBy: { createdAt: 'desc' },
-    }),
-  ])
-
-  return NextResponse.json({ tasks, teams })
-}
-
-export async function POST(request: NextRequest, context: RouteContext) {
-  const { id } = await context.params
-  const access = await verifyProjectAccess(id)
-  if ('error' in access) {
-    return NextResponse.json({ error: access.error }, { status: access.status })
+  const where: { projectId: string; status?: TaskStatus; worktreeId?: string } = { projectId: id }
+  if (statusParam && VALID_STATUSES.has(statusParam as TaskStatus)) {
+    where.status = statusParam as TaskStatus
   }
+  if (worktreeIdParam) where.worktreeId = worktreeIdParam
 
-  let body: { name?: string; instruction?: string; teamId?: string; executorType?: string; executorId?: string; status?: string; scheduledAt?: string; isRecurring?: boolean; recurrenceConfig?: Record<string, unknown>; accumulatedContext?: Record<string, unknown>; context?: Record<string, unknown>; permissionMode?: 'plan' | 'edit' | 'agent' }
-  try {
-    body = await request.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
-  }
-
-  const name = body.name?.trim()
-  if (!name) {
-    return NextResponse.json({ error: 'Task name is required' }, { status: 400 })
-  }
-
-  // If teamId provided, verify it belongs to this project
-  if (body.teamId) {
-    const team = await prisma.team.findFirst({
-      where: { id: body.teamId, projectId: id },
-    })
-    if (!team) {
-      return NextResponse.json({ error: 'Team not found' }, { status: 404 })
-    }
-  }
-
-  // Auto-assign queue position if going to queue
-  let queuePosition: number | undefined
-  const targetStatus = body.status ?? 'pending'
-  if (targetStatus === 'queue') {
-    const maxPos = await prisma.task.aggregate({
-      where: { projectId: id, status: 'queue' },
-      _max: { queuePosition: true },
-    })
-    queuePosition = (maxPos._max.queuePosition ?? -1) + 1
-  }
-
-  const task = await prisma.task.create({
-    data: {
-      projectId: id,
-      userId: access.userId,
-      name,
-      instruction: body.instruction?.trim() || null,
-      executorType: (body.executorType ?? (body.teamId ? 'team' : 'no_skill')) as 'no_skill' | 'skill' | 'team',
-      executorId: body.executorId ?? body.teamId ?? null,
-      status: targetStatus as 'pending' | 'queue' | 'progress' | 'completed' | 'done',
-      scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : undefined,
-      isRecurring: body.isRecurring ?? false,
-      recurrenceConfig: body.recurrenceConfig ? JSON.parse(JSON.stringify(body.recurrenceConfig)) : undefined,
-      accumulatedContext: body.accumulatedContext ? JSON.parse(JSON.stringify(body.accumulatedContext)) : undefined,
-      context: body.context ? JSON.parse(JSON.stringify(body.context)) : undefined,
-      permissionMode: body.permissionMode ?? 'edit',
-      queuePosition,
-    },
+  const rows = await prisma.task.findMany({
+    where,
+    ...(take ? { take } : {}),
     select: {
       id: true,
       name: true,
+      instruction: true,
       status: true,
-      executorType: true,
+      worktreeId: true,
+      executorKind: true,
       executorId: true,
+      chatMode: true,
+      scheduledAt: true,
+      reviewedAt: true,
+      sourceTaskId: true,
+      createdAt: true,
+      updatedAt: true,
+      contextSource: true,
+      worktree: { select: { branchName: true } },
     },
+    orderBy: { createdAt: 'desc' },
   })
 
-  return NextResponse.json(task, { status: 201 })
+  // Flatten the worktree join so the client sees branchName as a flat field.
+  const tasks = rows.map(({ worktree, ...task }) => ({
+    ...task,
+    branchName: worktree?.branchName ?? null,
+  }))
+
+  return NextResponse.json({ tasks })
 }

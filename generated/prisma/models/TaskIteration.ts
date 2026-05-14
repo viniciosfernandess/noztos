@@ -38,8 +38,17 @@ export type TaskIterationMinAggregateOutputType = {
   id: string | null
   taskId: string | null
   iterationNumber: number | null
-  rejectionReason: string | null
-  rejectedByCollaboratorId: string | null
+  instruction: string | null
+  executorKind: string | null
+  executorId: string | null
+  chatMode: string | null
+  status: string | null
+  startedAt: Date | null
+  finishedAt: Date | null
+  outputSummary: string | null
+  fullOutput: string | null
+  errorReason: string | null
+  workflowRunId: string | null
   createdAt: Date | null
 }
 
@@ -47,8 +56,17 @@ export type TaskIterationMaxAggregateOutputType = {
   id: string | null
   taskId: string | null
   iterationNumber: number | null
-  rejectionReason: string | null
-  rejectedByCollaboratorId: string | null
+  instruction: string | null
+  executorKind: string | null
+  executorId: string | null
+  chatMode: string | null
+  status: string | null
+  startedAt: Date | null
+  finishedAt: Date | null
+  outputSummary: string | null
+  fullOutput: string | null
+  errorReason: string | null
+  workflowRunId: string | null
   createdAt: Date | null
 }
 
@@ -56,8 +74,18 @@ export type TaskIterationCountAggregateOutputType = {
   id: number
   taskId: number
   iterationNumber: number
-  rejectionReason: number
-  rejectedByCollaboratorId: number
+  instruction: number
+  executorKind: number
+  executorId: number
+  chatMode: number
+  status: number
+  startedAt: number
+  finishedAt: number
+  outputSummary: number
+  fullOutput: number
+  filesTouched: number
+  errorReason: number
+  workflowRunId: number
   createdAt: number
   _all: number
 }
@@ -75,8 +103,17 @@ export type TaskIterationMinAggregateInputType = {
   id?: true
   taskId?: true
   iterationNumber?: true
-  rejectionReason?: true
-  rejectedByCollaboratorId?: true
+  instruction?: true
+  executorKind?: true
+  executorId?: true
+  chatMode?: true
+  status?: true
+  startedAt?: true
+  finishedAt?: true
+  outputSummary?: true
+  fullOutput?: true
+  errorReason?: true
+  workflowRunId?: true
   createdAt?: true
 }
 
@@ -84,8 +121,17 @@ export type TaskIterationMaxAggregateInputType = {
   id?: true
   taskId?: true
   iterationNumber?: true
-  rejectionReason?: true
-  rejectedByCollaboratorId?: true
+  instruction?: true
+  executorKind?: true
+  executorId?: true
+  chatMode?: true
+  status?: true
+  startedAt?: true
+  finishedAt?: true
+  outputSummary?: true
+  fullOutput?: true
+  errorReason?: true
+  workflowRunId?: true
   createdAt?: true
 }
 
@@ -93,8 +139,18 @@ export type TaskIterationCountAggregateInputType = {
   id?: true
   taskId?: true
   iterationNumber?: true
-  rejectionReason?: true
-  rejectedByCollaboratorId?: true
+  instruction?: true
+  executorKind?: true
+  executorId?: true
+  chatMode?: true
+  status?: true
+  startedAt?: true
+  finishedAt?: true
+  outputSummary?: true
+  fullOutput?: true
+  filesTouched?: true
+  errorReason?: true
+  workflowRunId?: true
   createdAt?: true
   _all?: true
 }
@@ -189,8 +245,18 @@ export type TaskIterationGroupByOutputType = {
   id: string
   taskId: string
   iterationNumber: number
-  rejectionReason: string | null
-  rejectedByCollaboratorId: string | null
+  instruction: string
+  executorKind: string
+  executorId: string
+  chatMode: string
+  status: string
+  startedAt: Date | null
+  finishedAt: Date | null
+  outputSummary: string | null
+  fullOutput: string | null
+  filesTouched: runtime.JsonValue
+  errorReason: string | null
+  workflowRunId: string | null
   createdAt: Date
   _count: TaskIterationCountAggregateOutputType | null
   _avg: TaskIterationAvgAggregateOutputType | null
@@ -221,47 +287,82 @@ export type TaskIterationWhereInput = {
   id?: Prisma.StringFilter<"TaskIteration"> | string
   taskId?: Prisma.StringFilter<"TaskIteration"> | string
   iterationNumber?: Prisma.IntFilter<"TaskIteration"> | number
-  rejectionReason?: Prisma.StringNullableFilter<"TaskIteration"> | string | null
-  rejectedByCollaboratorId?: Prisma.StringNullableFilter<"TaskIteration"> | string | null
+  instruction?: Prisma.StringFilter<"TaskIteration"> | string
+  executorKind?: Prisma.StringFilter<"TaskIteration"> | string
+  executorId?: Prisma.StringFilter<"TaskIteration"> | string
+  chatMode?: Prisma.StringFilter<"TaskIteration"> | string
+  status?: Prisma.StringFilter<"TaskIteration"> | string
+  startedAt?: Prisma.DateTimeNullableFilter<"TaskIteration"> | Date | string | null
+  finishedAt?: Prisma.DateTimeNullableFilter<"TaskIteration"> | Date | string | null
+  outputSummary?: Prisma.StringNullableFilter<"TaskIteration"> | string | null
+  fullOutput?: Prisma.StringNullableFilter<"TaskIteration"> | string | null
+  filesTouched?: Prisma.JsonFilter<"TaskIteration">
+  errorReason?: Prisma.StringNullableFilter<"TaskIteration"> | string | null
+  workflowRunId?: Prisma.StringNullableFilter<"TaskIteration"> | string | null
   createdAt?: Prisma.DateTimeFilter<"TaskIteration"> | Date | string
-  buildLogs?: Prisma.TaskBuildLogListRelationFilter
   task?: Prisma.XOR<Prisma.TaskScalarRelationFilter, Prisma.TaskWhereInput>
-  skillLogs?: Prisma.TaskSkillLogListRelationFilter
 }
 
 export type TaskIterationOrderByWithRelationInput = {
   id?: Prisma.SortOrder
   taskId?: Prisma.SortOrder
   iterationNumber?: Prisma.SortOrder
-  rejectionReason?: Prisma.SortOrderInput | Prisma.SortOrder
-  rejectedByCollaboratorId?: Prisma.SortOrderInput | Prisma.SortOrder
+  instruction?: Prisma.SortOrder
+  executorKind?: Prisma.SortOrder
+  executorId?: Prisma.SortOrder
+  chatMode?: Prisma.SortOrder
+  status?: Prisma.SortOrder
+  startedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  finishedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  outputSummary?: Prisma.SortOrderInput | Prisma.SortOrder
+  fullOutput?: Prisma.SortOrderInput | Prisma.SortOrder
+  filesTouched?: Prisma.SortOrder
+  errorReason?: Prisma.SortOrderInput | Prisma.SortOrder
+  workflowRunId?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
-  buildLogs?: Prisma.TaskBuildLogOrderByRelationAggregateInput
   task?: Prisma.TaskOrderByWithRelationInput
-  skillLogs?: Prisma.TaskSkillLogOrderByRelationAggregateInput
 }
 
 export type TaskIterationWhereUniqueInput = Prisma.AtLeast<{
   id?: string
+  taskId_iterationNumber?: Prisma.TaskIterationTaskIdIterationNumberCompoundUniqueInput
   AND?: Prisma.TaskIterationWhereInput | Prisma.TaskIterationWhereInput[]
   OR?: Prisma.TaskIterationWhereInput[]
   NOT?: Prisma.TaskIterationWhereInput | Prisma.TaskIterationWhereInput[]
   taskId?: Prisma.StringFilter<"TaskIteration"> | string
   iterationNumber?: Prisma.IntFilter<"TaskIteration"> | number
-  rejectionReason?: Prisma.StringNullableFilter<"TaskIteration"> | string | null
-  rejectedByCollaboratorId?: Prisma.StringNullableFilter<"TaskIteration"> | string | null
+  instruction?: Prisma.StringFilter<"TaskIteration"> | string
+  executorKind?: Prisma.StringFilter<"TaskIteration"> | string
+  executorId?: Prisma.StringFilter<"TaskIteration"> | string
+  chatMode?: Prisma.StringFilter<"TaskIteration"> | string
+  status?: Prisma.StringFilter<"TaskIteration"> | string
+  startedAt?: Prisma.DateTimeNullableFilter<"TaskIteration"> | Date | string | null
+  finishedAt?: Prisma.DateTimeNullableFilter<"TaskIteration"> | Date | string | null
+  outputSummary?: Prisma.StringNullableFilter<"TaskIteration"> | string | null
+  fullOutput?: Prisma.StringNullableFilter<"TaskIteration"> | string | null
+  filesTouched?: Prisma.JsonFilter<"TaskIteration">
+  errorReason?: Prisma.StringNullableFilter<"TaskIteration"> | string | null
+  workflowRunId?: Prisma.StringNullableFilter<"TaskIteration"> | string | null
   createdAt?: Prisma.DateTimeFilter<"TaskIteration"> | Date | string
-  buildLogs?: Prisma.TaskBuildLogListRelationFilter
   task?: Prisma.XOR<Prisma.TaskScalarRelationFilter, Prisma.TaskWhereInput>
-  skillLogs?: Prisma.TaskSkillLogListRelationFilter
-}, "id">
+}, "id" | "taskId_iterationNumber">
 
 export type TaskIterationOrderByWithAggregationInput = {
   id?: Prisma.SortOrder
   taskId?: Prisma.SortOrder
   iterationNumber?: Prisma.SortOrder
-  rejectionReason?: Prisma.SortOrderInput | Prisma.SortOrder
-  rejectedByCollaboratorId?: Prisma.SortOrderInput | Prisma.SortOrder
+  instruction?: Prisma.SortOrder
+  executorKind?: Prisma.SortOrder
+  executorId?: Prisma.SortOrder
+  chatMode?: Prisma.SortOrder
+  status?: Prisma.SortOrder
+  startedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  finishedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  outputSummary?: Prisma.SortOrderInput | Prisma.SortOrder
+  fullOutput?: Prisma.SortOrderInput | Prisma.SortOrder
+  filesTouched?: Prisma.SortOrder
+  errorReason?: Prisma.SortOrderInput | Prisma.SortOrder
+  workflowRunId?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   _count?: Prisma.TaskIterationCountOrderByAggregateInput
   _avg?: Prisma.TaskIterationAvgOrderByAggregateInput
@@ -277,69 +378,131 @@ export type TaskIterationScalarWhereWithAggregatesInput = {
   id?: Prisma.StringWithAggregatesFilter<"TaskIteration"> | string
   taskId?: Prisma.StringWithAggregatesFilter<"TaskIteration"> | string
   iterationNumber?: Prisma.IntWithAggregatesFilter<"TaskIteration"> | number
-  rejectionReason?: Prisma.StringNullableWithAggregatesFilter<"TaskIteration"> | string | null
-  rejectedByCollaboratorId?: Prisma.StringNullableWithAggregatesFilter<"TaskIteration"> | string | null
+  instruction?: Prisma.StringWithAggregatesFilter<"TaskIteration"> | string
+  executorKind?: Prisma.StringWithAggregatesFilter<"TaskIteration"> | string
+  executorId?: Prisma.StringWithAggregatesFilter<"TaskIteration"> | string
+  chatMode?: Prisma.StringWithAggregatesFilter<"TaskIteration"> | string
+  status?: Prisma.StringWithAggregatesFilter<"TaskIteration"> | string
+  startedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"TaskIteration"> | Date | string | null
+  finishedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"TaskIteration"> | Date | string | null
+  outputSummary?: Prisma.StringNullableWithAggregatesFilter<"TaskIteration"> | string | null
+  fullOutput?: Prisma.StringNullableWithAggregatesFilter<"TaskIteration"> | string | null
+  filesTouched?: Prisma.JsonWithAggregatesFilter<"TaskIteration">
+  errorReason?: Prisma.StringNullableWithAggregatesFilter<"TaskIteration"> | string | null
+  workflowRunId?: Prisma.StringNullableWithAggregatesFilter<"TaskIteration"> | string | null
   createdAt?: Prisma.DateTimeWithAggregatesFilter<"TaskIteration"> | Date | string
 }
 
 export type TaskIterationCreateInput = {
   id?: string
   iterationNumber: number
-  rejectionReason?: string | null
-  rejectedByCollaboratorId?: string | null
+  instruction: string
+  executorKind: string
+  executorId: string
+  chatMode: string
+  status: string
+  startedAt?: Date | string | null
+  finishedAt?: Date | string | null
+  outputSummary?: string | null
+  fullOutput?: string | null
+  filesTouched?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  errorReason?: string | null
+  workflowRunId?: string | null
   createdAt?: Date | string
-  buildLogs?: Prisma.TaskBuildLogCreateNestedManyWithoutIterationInput
   task: Prisma.TaskCreateNestedOneWithoutIterationsInput
-  skillLogs?: Prisma.TaskSkillLogCreateNestedManyWithoutIterationInput
 }
 
 export type TaskIterationUncheckedCreateInput = {
   id?: string
   taskId: string
   iterationNumber: number
-  rejectionReason?: string | null
-  rejectedByCollaboratorId?: string | null
+  instruction: string
+  executorKind: string
+  executorId: string
+  chatMode: string
+  status: string
+  startedAt?: Date | string | null
+  finishedAt?: Date | string | null
+  outputSummary?: string | null
+  fullOutput?: string | null
+  filesTouched?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  errorReason?: string | null
+  workflowRunId?: string | null
   createdAt?: Date | string
-  buildLogs?: Prisma.TaskBuildLogUncheckedCreateNestedManyWithoutIterationInput
-  skillLogs?: Prisma.TaskSkillLogUncheckedCreateNestedManyWithoutIterationInput
 }
 
 export type TaskIterationUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   iterationNumber?: Prisma.IntFieldUpdateOperationsInput | number
-  rejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  rejectedByCollaboratorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  instruction?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.StringFieldUpdateOperationsInput | string
+  executorId?: Prisma.StringFieldUpdateOperationsInput | string
+  chatMode?: Prisma.StringFieldUpdateOperationsInput | string
+  status?: Prisma.StringFieldUpdateOperationsInput | string
+  startedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  finishedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  outputSummary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  fullOutput?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  filesTouched?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  errorReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  workflowRunId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  buildLogs?: Prisma.TaskBuildLogUpdateManyWithoutIterationNestedInput
   task?: Prisma.TaskUpdateOneRequiredWithoutIterationsNestedInput
-  skillLogs?: Prisma.TaskSkillLogUpdateManyWithoutIterationNestedInput
 }
 
 export type TaskIterationUncheckedUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   taskId?: Prisma.StringFieldUpdateOperationsInput | string
   iterationNumber?: Prisma.IntFieldUpdateOperationsInput | number
-  rejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  rejectedByCollaboratorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  instruction?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.StringFieldUpdateOperationsInput | string
+  executorId?: Prisma.StringFieldUpdateOperationsInput | string
+  chatMode?: Prisma.StringFieldUpdateOperationsInput | string
+  status?: Prisma.StringFieldUpdateOperationsInput | string
+  startedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  finishedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  outputSummary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  fullOutput?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  filesTouched?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  errorReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  workflowRunId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  buildLogs?: Prisma.TaskBuildLogUncheckedUpdateManyWithoutIterationNestedInput
-  skillLogs?: Prisma.TaskSkillLogUncheckedUpdateManyWithoutIterationNestedInput
 }
 
 export type TaskIterationCreateManyInput = {
   id?: string
   taskId: string
   iterationNumber: number
-  rejectionReason?: string | null
-  rejectedByCollaboratorId?: string | null
+  instruction: string
+  executorKind: string
+  executorId: string
+  chatMode: string
+  status: string
+  startedAt?: Date | string | null
+  finishedAt?: Date | string | null
+  outputSummary?: string | null
+  fullOutput?: string | null
+  filesTouched?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  errorReason?: string | null
+  workflowRunId?: string | null
   createdAt?: Date | string
 }
 
 export type TaskIterationUpdateManyMutationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   iterationNumber?: Prisma.IntFieldUpdateOperationsInput | number
-  rejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  rejectedByCollaboratorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  instruction?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.StringFieldUpdateOperationsInput | string
+  executorId?: Prisma.StringFieldUpdateOperationsInput | string
+  chatMode?: Prisma.StringFieldUpdateOperationsInput | string
+  status?: Prisma.StringFieldUpdateOperationsInput | string
+  startedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  finishedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  outputSummary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  fullOutput?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  filesTouched?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  errorReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  workflowRunId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -347,8 +510,18 @@ export type TaskIterationUncheckedUpdateManyInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   taskId?: Prisma.StringFieldUpdateOperationsInput | string
   iterationNumber?: Prisma.IntFieldUpdateOperationsInput | number
-  rejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  rejectedByCollaboratorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  instruction?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.StringFieldUpdateOperationsInput | string
+  executorId?: Prisma.StringFieldUpdateOperationsInput | string
+  chatMode?: Prisma.StringFieldUpdateOperationsInput | string
+  status?: Prisma.StringFieldUpdateOperationsInput | string
+  startedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  finishedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  outputSummary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  fullOutput?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  filesTouched?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  errorReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  workflowRunId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
@@ -362,12 +535,27 @@ export type TaskIterationOrderByRelationAggregateInput = {
   _count?: Prisma.SortOrder
 }
 
+export type TaskIterationTaskIdIterationNumberCompoundUniqueInput = {
+  taskId: string
+  iterationNumber: number
+}
+
 export type TaskIterationCountOrderByAggregateInput = {
   id?: Prisma.SortOrder
   taskId?: Prisma.SortOrder
   iterationNumber?: Prisma.SortOrder
-  rejectionReason?: Prisma.SortOrder
-  rejectedByCollaboratorId?: Prisma.SortOrder
+  instruction?: Prisma.SortOrder
+  executorKind?: Prisma.SortOrder
+  executorId?: Prisma.SortOrder
+  chatMode?: Prisma.SortOrder
+  status?: Prisma.SortOrder
+  startedAt?: Prisma.SortOrder
+  finishedAt?: Prisma.SortOrder
+  outputSummary?: Prisma.SortOrder
+  fullOutput?: Prisma.SortOrder
+  filesTouched?: Prisma.SortOrder
+  errorReason?: Prisma.SortOrder
+  workflowRunId?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
 }
 
@@ -379,8 +567,17 @@ export type TaskIterationMaxOrderByAggregateInput = {
   id?: Prisma.SortOrder
   taskId?: Prisma.SortOrder
   iterationNumber?: Prisma.SortOrder
-  rejectionReason?: Prisma.SortOrder
-  rejectedByCollaboratorId?: Prisma.SortOrder
+  instruction?: Prisma.SortOrder
+  executorKind?: Prisma.SortOrder
+  executorId?: Prisma.SortOrder
+  chatMode?: Prisma.SortOrder
+  status?: Prisma.SortOrder
+  startedAt?: Prisma.SortOrder
+  finishedAt?: Prisma.SortOrder
+  outputSummary?: Prisma.SortOrder
+  fullOutput?: Prisma.SortOrder
+  errorReason?: Prisma.SortOrder
+  workflowRunId?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
 }
 
@@ -388,18 +585,22 @@ export type TaskIterationMinOrderByAggregateInput = {
   id?: Prisma.SortOrder
   taskId?: Prisma.SortOrder
   iterationNumber?: Prisma.SortOrder
-  rejectionReason?: Prisma.SortOrder
-  rejectedByCollaboratorId?: Prisma.SortOrder
+  instruction?: Prisma.SortOrder
+  executorKind?: Prisma.SortOrder
+  executorId?: Prisma.SortOrder
+  chatMode?: Prisma.SortOrder
+  status?: Prisma.SortOrder
+  startedAt?: Prisma.SortOrder
+  finishedAt?: Prisma.SortOrder
+  outputSummary?: Prisma.SortOrder
+  fullOutput?: Prisma.SortOrder
+  errorReason?: Prisma.SortOrder
+  workflowRunId?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
 }
 
 export type TaskIterationSumOrderByAggregateInput = {
   iterationNumber?: Prisma.SortOrder
-}
-
-export type TaskIterationNullableScalarRelationFilter = {
-  is?: Prisma.TaskIterationWhereInput | null
-  isNot?: Prisma.TaskIterationWhereInput | null
 }
 
 export type TaskIterationCreateNestedManyWithoutTaskInput = {
@@ -444,56 +645,40 @@ export type TaskIterationUncheckedUpdateManyWithoutTaskNestedInput = {
   deleteMany?: Prisma.TaskIterationScalarWhereInput | Prisma.TaskIterationScalarWhereInput[]
 }
 
-export type TaskIterationCreateNestedOneWithoutSkillLogsInput = {
-  create?: Prisma.XOR<Prisma.TaskIterationCreateWithoutSkillLogsInput, Prisma.TaskIterationUncheckedCreateWithoutSkillLogsInput>
-  connectOrCreate?: Prisma.TaskIterationCreateOrConnectWithoutSkillLogsInput
-  connect?: Prisma.TaskIterationWhereUniqueInput
-}
-
-export type TaskIterationUpdateOneWithoutSkillLogsNestedInput = {
-  create?: Prisma.XOR<Prisma.TaskIterationCreateWithoutSkillLogsInput, Prisma.TaskIterationUncheckedCreateWithoutSkillLogsInput>
-  connectOrCreate?: Prisma.TaskIterationCreateOrConnectWithoutSkillLogsInput
-  upsert?: Prisma.TaskIterationUpsertWithoutSkillLogsInput
-  disconnect?: Prisma.TaskIterationWhereInput | boolean
-  delete?: Prisma.TaskIterationWhereInput | boolean
-  connect?: Prisma.TaskIterationWhereUniqueInput
-  update?: Prisma.XOR<Prisma.XOR<Prisma.TaskIterationUpdateToOneWithWhereWithoutSkillLogsInput, Prisma.TaskIterationUpdateWithoutSkillLogsInput>, Prisma.TaskIterationUncheckedUpdateWithoutSkillLogsInput>
-}
-
-export type TaskIterationCreateNestedOneWithoutBuildLogsInput = {
-  create?: Prisma.XOR<Prisma.TaskIterationCreateWithoutBuildLogsInput, Prisma.TaskIterationUncheckedCreateWithoutBuildLogsInput>
-  connectOrCreate?: Prisma.TaskIterationCreateOrConnectWithoutBuildLogsInput
-  connect?: Prisma.TaskIterationWhereUniqueInput
-}
-
-export type TaskIterationUpdateOneWithoutBuildLogsNestedInput = {
-  create?: Prisma.XOR<Prisma.TaskIterationCreateWithoutBuildLogsInput, Prisma.TaskIterationUncheckedCreateWithoutBuildLogsInput>
-  connectOrCreate?: Prisma.TaskIterationCreateOrConnectWithoutBuildLogsInput
-  upsert?: Prisma.TaskIterationUpsertWithoutBuildLogsInput
-  disconnect?: Prisma.TaskIterationWhereInput | boolean
-  delete?: Prisma.TaskIterationWhereInput | boolean
-  connect?: Prisma.TaskIterationWhereUniqueInput
-  update?: Prisma.XOR<Prisma.XOR<Prisma.TaskIterationUpdateToOneWithWhereWithoutBuildLogsInput, Prisma.TaskIterationUpdateWithoutBuildLogsInput>, Prisma.TaskIterationUncheckedUpdateWithoutBuildLogsInput>
-}
-
 export type TaskIterationCreateWithoutTaskInput = {
   id?: string
   iterationNumber: number
-  rejectionReason?: string | null
-  rejectedByCollaboratorId?: string | null
+  instruction: string
+  executorKind: string
+  executorId: string
+  chatMode: string
+  status: string
+  startedAt?: Date | string | null
+  finishedAt?: Date | string | null
+  outputSummary?: string | null
+  fullOutput?: string | null
+  filesTouched?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  errorReason?: string | null
+  workflowRunId?: string | null
   createdAt?: Date | string
-  buildLogs?: Prisma.TaskBuildLogCreateNestedManyWithoutIterationInput
-  skillLogs?: Prisma.TaskSkillLogCreateNestedManyWithoutIterationInput
 }
 
 export type TaskIterationUncheckedCreateWithoutTaskInput = {
   id?: string
   iterationNumber: number
-  rejectionReason?: string | null
-  rejectedByCollaboratorId?: string | null
+  instruction: string
+  executorKind: string
+  executorId: string
+  chatMode: string
+  status: string
+  startedAt?: Date | string | null
+  finishedAt?: Date | string | null
+  outputSummary?: string | null
+  fullOutput?: string | null
+  filesTouched?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  errorReason?: string | null
+  workflowRunId?: string | null
   createdAt?: Date | string
-  buildLogs?: Prisma.TaskBuildLogUncheckedCreateNestedManyWithoutIterationInput
-  skillLogs?: Prisma.TaskSkillLogUncheckedCreateNestedManyWithoutIterationInput
 }
 
 export type TaskIterationCreateOrConnectWithoutTaskInput = {
@@ -529,218 +714,131 @@ export type TaskIterationScalarWhereInput = {
   id?: Prisma.StringFilter<"TaskIteration"> | string
   taskId?: Prisma.StringFilter<"TaskIteration"> | string
   iterationNumber?: Prisma.IntFilter<"TaskIteration"> | number
-  rejectionReason?: Prisma.StringNullableFilter<"TaskIteration"> | string | null
-  rejectedByCollaboratorId?: Prisma.StringNullableFilter<"TaskIteration"> | string | null
+  instruction?: Prisma.StringFilter<"TaskIteration"> | string
+  executorKind?: Prisma.StringFilter<"TaskIteration"> | string
+  executorId?: Prisma.StringFilter<"TaskIteration"> | string
+  chatMode?: Prisma.StringFilter<"TaskIteration"> | string
+  status?: Prisma.StringFilter<"TaskIteration"> | string
+  startedAt?: Prisma.DateTimeNullableFilter<"TaskIteration"> | Date | string | null
+  finishedAt?: Prisma.DateTimeNullableFilter<"TaskIteration"> | Date | string | null
+  outputSummary?: Prisma.StringNullableFilter<"TaskIteration"> | string | null
+  fullOutput?: Prisma.StringNullableFilter<"TaskIteration"> | string | null
+  filesTouched?: Prisma.JsonFilter<"TaskIteration">
+  errorReason?: Prisma.StringNullableFilter<"TaskIteration"> | string | null
+  workflowRunId?: Prisma.StringNullableFilter<"TaskIteration"> | string | null
   createdAt?: Prisma.DateTimeFilter<"TaskIteration"> | Date | string
-}
-
-export type TaskIterationCreateWithoutSkillLogsInput = {
-  id?: string
-  iterationNumber: number
-  rejectionReason?: string | null
-  rejectedByCollaboratorId?: string | null
-  createdAt?: Date | string
-  buildLogs?: Prisma.TaskBuildLogCreateNestedManyWithoutIterationInput
-  task: Prisma.TaskCreateNestedOneWithoutIterationsInput
-}
-
-export type TaskIterationUncheckedCreateWithoutSkillLogsInput = {
-  id?: string
-  taskId: string
-  iterationNumber: number
-  rejectionReason?: string | null
-  rejectedByCollaboratorId?: string | null
-  createdAt?: Date | string
-  buildLogs?: Prisma.TaskBuildLogUncheckedCreateNestedManyWithoutIterationInput
-}
-
-export type TaskIterationCreateOrConnectWithoutSkillLogsInput = {
-  where: Prisma.TaskIterationWhereUniqueInput
-  create: Prisma.XOR<Prisma.TaskIterationCreateWithoutSkillLogsInput, Prisma.TaskIterationUncheckedCreateWithoutSkillLogsInput>
-}
-
-export type TaskIterationUpsertWithoutSkillLogsInput = {
-  update: Prisma.XOR<Prisma.TaskIterationUpdateWithoutSkillLogsInput, Prisma.TaskIterationUncheckedUpdateWithoutSkillLogsInput>
-  create: Prisma.XOR<Prisma.TaskIterationCreateWithoutSkillLogsInput, Prisma.TaskIterationUncheckedCreateWithoutSkillLogsInput>
-  where?: Prisma.TaskIterationWhereInput
-}
-
-export type TaskIterationUpdateToOneWithWhereWithoutSkillLogsInput = {
-  where?: Prisma.TaskIterationWhereInput
-  data: Prisma.XOR<Prisma.TaskIterationUpdateWithoutSkillLogsInput, Prisma.TaskIterationUncheckedUpdateWithoutSkillLogsInput>
-}
-
-export type TaskIterationUpdateWithoutSkillLogsInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string
-  iterationNumber?: Prisma.IntFieldUpdateOperationsInput | number
-  rejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  rejectedByCollaboratorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  buildLogs?: Prisma.TaskBuildLogUpdateManyWithoutIterationNestedInput
-  task?: Prisma.TaskUpdateOneRequiredWithoutIterationsNestedInput
-}
-
-export type TaskIterationUncheckedUpdateWithoutSkillLogsInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string
-  taskId?: Prisma.StringFieldUpdateOperationsInput | string
-  iterationNumber?: Prisma.IntFieldUpdateOperationsInput | number
-  rejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  rejectedByCollaboratorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  buildLogs?: Prisma.TaskBuildLogUncheckedUpdateManyWithoutIterationNestedInput
-}
-
-export type TaskIterationCreateWithoutBuildLogsInput = {
-  id?: string
-  iterationNumber: number
-  rejectionReason?: string | null
-  rejectedByCollaboratorId?: string | null
-  createdAt?: Date | string
-  task: Prisma.TaskCreateNestedOneWithoutIterationsInput
-  skillLogs?: Prisma.TaskSkillLogCreateNestedManyWithoutIterationInput
-}
-
-export type TaskIterationUncheckedCreateWithoutBuildLogsInput = {
-  id?: string
-  taskId: string
-  iterationNumber: number
-  rejectionReason?: string | null
-  rejectedByCollaboratorId?: string | null
-  createdAt?: Date | string
-  skillLogs?: Prisma.TaskSkillLogUncheckedCreateNestedManyWithoutIterationInput
-}
-
-export type TaskIterationCreateOrConnectWithoutBuildLogsInput = {
-  where: Prisma.TaskIterationWhereUniqueInput
-  create: Prisma.XOR<Prisma.TaskIterationCreateWithoutBuildLogsInput, Prisma.TaskIterationUncheckedCreateWithoutBuildLogsInput>
-}
-
-export type TaskIterationUpsertWithoutBuildLogsInput = {
-  update: Prisma.XOR<Prisma.TaskIterationUpdateWithoutBuildLogsInput, Prisma.TaskIterationUncheckedUpdateWithoutBuildLogsInput>
-  create: Prisma.XOR<Prisma.TaskIterationCreateWithoutBuildLogsInput, Prisma.TaskIterationUncheckedCreateWithoutBuildLogsInput>
-  where?: Prisma.TaskIterationWhereInput
-}
-
-export type TaskIterationUpdateToOneWithWhereWithoutBuildLogsInput = {
-  where?: Prisma.TaskIterationWhereInput
-  data: Prisma.XOR<Prisma.TaskIterationUpdateWithoutBuildLogsInput, Prisma.TaskIterationUncheckedUpdateWithoutBuildLogsInput>
-}
-
-export type TaskIterationUpdateWithoutBuildLogsInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string
-  iterationNumber?: Prisma.IntFieldUpdateOperationsInput | number
-  rejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  rejectedByCollaboratorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  task?: Prisma.TaskUpdateOneRequiredWithoutIterationsNestedInput
-  skillLogs?: Prisma.TaskSkillLogUpdateManyWithoutIterationNestedInput
-}
-
-export type TaskIterationUncheckedUpdateWithoutBuildLogsInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string
-  taskId?: Prisma.StringFieldUpdateOperationsInput | string
-  iterationNumber?: Prisma.IntFieldUpdateOperationsInput | number
-  rejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  rejectedByCollaboratorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  skillLogs?: Prisma.TaskSkillLogUncheckedUpdateManyWithoutIterationNestedInput
 }
 
 export type TaskIterationCreateManyTaskInput = {
   id?: string
   iterationNumber: number
-  rejectionReason?: string | null
-  rejectedByCollaboratorId?: string | null
+  instruction: string
+  executorKind: string
+  executorId: string
+  chatMode: string
+  status: string
+  startedAt?: Date | string | null
+  finishedAt?: Date | string | null
+  outputSummary?: string | null
+  fullOutput?: string | null
+  filesTouched?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  errorReason?: string | null
+  workflowRunId?: string | null
   createdAt?: Date | string
 }
 
 export type TaskIterationUpdateWithoutTaskInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   iterationNumber?: Prisma.IntFieldUpdateOperationsInput | number
-  rejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  rejectedByCollaboratorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  instruction?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.StringFieldUpdateOperationsInput | string
+  executorId?: Prisma.StringFieldUpdateOperationsInput | string
+  chatMode?: Prisma.StringFieldUpdateOperationsInput | string
+  status?: Prisma.StringFieldUpdateOperationsInput | string
+  startedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  finishedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  outputSummary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  fullOutput?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  filesTouched?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  errorReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  workflowRunId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  buildLogs?: Prisma.TaskBuildLogUpdateManyWithoutIterationNestedInput
-  skillLogs?: Prisma.TaskSkillLogUpdateManyWithoutIterationNestedInput
 }
 
 export type TaskIterationUncheckedUpdateWithoutTaskInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   iterationNumber?: Prisma.IntFieldUpdateOperationsInput | number
-  rejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  rejectedByCollaboratorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  instruction?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.StringFieldUpdateOperationsInput | string
+  executorId?: Prisma.StringFieldUpdateOperationsInput | string
+  chatMode?: Prisma.StringFieldUpdateOperationsInput | string
+  status?: Prisma.StringFieldUpdateOperationsInput | string
+  startedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  finishedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  outputSummary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  fullOutput?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  filesTouched?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  errorReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  workflowRunId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  buildLogs?: Prisma.TaskBuildLogUncheckedUpdateManyWithoutIterationNestedInput
-  skillLogs?: Prisma.TaskSkillLogUncheckedUpdateManyWithoutIterationNestedInput
 }
 
 export type TaskIterationUncheckedUpdateManyWithoutTaskInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string
   iterationNumber?: Prisma.IntFieldUpdateOperationsInput | number
-  rejectionReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  rejectedByCollaboratorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  instruction?: Prisma.StringFieldUpdateOperationsInput | string
+  executorKind?: Prisma.StringFieldUpdateOperationsInput | string
+  executorId?: Prisma.StringFieldUpdateOperationsInput | string
+  chatMode?: Prisma.StringFieldUpdateOperationsInput | string
+  status?: Prisma.StringFieldUpdateOperationsInput | string
+  startedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  finishedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  outputSummary?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  fullOutput?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  filesTouched?: Prisma.JsonNullValueInput | runtime.InputJsonValue
+  errorReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  workflowRunId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
 }
 
-
-/**
- * Count Type TaskIterationCountOutputType
- */
-
-export type TaskIterationCountOutputType = {
-  buildLogs: number
-  skillLogs: number
-}
-
-export type TaskIterationCountOutputTypeSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  buildLogs?: boolean | TaskIterationCountOutputTypeCountBuildLogsArgs
-  skillLogs?: boolean | TaskIterationCountOutputTypeCountSkillLogsArgs
-}
-
-/**
- * TaskIterationCountOutputType without action
- */
-export type TaskIterationCountOutputTypeDefaultArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  /**
-   * Select specific fields to fetch from the TaskIterationCountOutputType
-   */
-  select?: Prisma.TaskIterationCountOutputTypeSelect<ExtArgs> | null
-}
-
-/**
- * TaskIterationCountOutputType without action
- */
-export type TaskIterationCountOutputTypeCountBuildLogsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  where?: Prisma.TaskBuildLogWhereInput
-}
-
-/**
- * TaskIterationCountOutputType without action
- */
-export type TaskIterationCountOutputTypeCountSkillLogsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  where?: Prisma.TaskSkillLogWhereInput
-}
 
 
 export type TaskIterationSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
   id?: boolean
   taskId?: boolean
   iterationNumber?: boolean
-  rejectionReason?: boolean
-  rejectedByCollaboratorId?: boolean
+  instruction?: boolean
+  executorKind?: boolean
+  executorId?: boolean
+  chatMode?: boolean
+  status?: boolean
+  startedAt?: boolean
+  finishedAt?: boolean
+  outputSummary?: boolean
+  fullOutput?: boolean
+  filesTouched?: boolean
+  errorReason?: boolean
+  workflowRunId?: boolean
   createdAt?: boolean
-  buildLogs?: boolean | Prisma.TaskIteration$buildLogsArgs<ExtArgs>
   task?: boolean | Prisma.TaskDefaultArgs<ExtArgs>
-  skillLogs?: boolean | Prisma.TaskIteration$skillLogsArgs<ExtArgs>
-  _count?: boolean | Prisma.TaskIterationCountOutputTypeDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["taskIteration"]>
 
 export type TaskIterationSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
   id?: boolean
   taskId?: boolean
   iterationNumber?: boolean
-  rejectionReason?: boolean
-  rejectedByCollaboratorId?: boolean
+  instruction?: boolean
+  executorKind?: boolean
+  executorId?: boolean
+  chatMode?: boolean
+  status?: boolean
+  startedAt?: boolean
+  finishedAt?: boolean
+  outputSummary?: boolean
+  fullOutput?: boolean
+  filesTouched?: boolean
+  errorReason?: boolean
+  workflowRunId?: boolean
   createdAt?: boolean
   task?: boolean | Prisma.TaskDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["taskIteration"]>
@@ -749,8 +847,18 @@ export type TaskIterationSelectUpdateManyAndReturn<ExtArgs extends runtime.Types
   id?: boolean
   taskId?: boolean
   iterationNumber?: boolean
-  rejectionReason?: boolean
-  rejectedByCollaboratorId?: boolean
+  instruction?: boolean
+  executorKind?: boolean
+  executorId?: boolean
+  chatMode?: boolean
+  status?: boolean
+  startedAt?: boolean
+  finishedAt?: boolean
+  outputSummary?: boolean
+  fullOutput?: boolean
+  filesTouched?: boolean
+  errorReason?: boolean
+  workflowRunId?: boolean
   createdAt?: boolean
   task?: boolean | Prisma.TaskDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["taskIteration"]>
@@ -759,17 +867,24 @@ export type TaskIterationSelectScalar = {
   id?: boolean
   taskId?: boolean
   iterationNumber?: boolean
-  rejectionReason?: boolean
-  rejectedByCollaboratorId?: boolean
+  instruction?: boolean
+  executorKind?: boolean
+  executorId?: boolean
+  chatMode?: boolean
+  status?: boolean
+  startedAt?: boolean
+  finishedAt?: boolean
+  outputSummary?: boolean
+  fullOutput?: boolean
+  filesTouched?: boolean
+  errorReason?: boolean
+  workflowRunId?: boolean
   createdAt?: boolean
 }
 
-export type TaskIterationOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "taskId" | "iterationNumber" | "rejectionReason" | "rejectedByCollaboratorId" | "createdAt", ExtArgs["result"]["taskIteration"]>
+export type TaskIterationOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "taskId" | "iterationNumber" | "instruction" | "executorKind" | "executorId" | "chatMode" | "status" | "startedAt" | "finishedAt" | "outputSummary" | "fullOutput" | "filesTouched" | "errorReason" | "workflowRunId" | "createdAt", ExtArgs["result"]["taskIteration"]>
 export type TaskIterationInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  buildLogs?: boolean | Prisma.TaskIteration$buildLogsArgs<ExtArgs>
   task?: boolean | Prisma.TaskDefaultArgs<ExtArgs>
-  skillLogs?: boolean | Prisma.TaskIteration$skillLogsArgs<ExtArgs>
-  _count?: boolean | Prisma.TaskIterationCountOutputTypeDefaultArgs<ExtArgs>
 }
 export type TaskIterationIncludeCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   task?: boolean | Prisma.TaskDefaultArgs<ExtArgs>
@@ -781,16 +896,24 @@ export type TaskIterationIncludeUpdateManyAndReturn<ExtArgs extends runtime.Type
 export type $TaskIterationPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "TaskIteration"
   objects: {
-    buildLogs: Prisma.$TaskBuildLogPayload<ExtArgs>[]
     task: Prisma.$TaskPayload<ExtArgs>
-    skillLogs: Prisma.$TaskSkillLogPayload<ExtArgs>[]
   }
   scalars: runtime.Types.Extensions.GetPayloadResult<{
     id: string
     taskId: string
     iterationNumber: number
-    rejectionReason: string | null
-    rejectedByCollaboratorId: string | null
+    instruction: string
+    executorKind: string
+    executorId: string
+    chatMode: string
+    status: string
+    startedAt: Date | null
+    finishedAt: Date | null
+    outputSummary: string | null
+    fullOutput: string | null
+    filesTouched: runtime.JsonValue
+    errorReason: string | null
+    workflowRunId: string | null
     createdAt: Date
   }, ExtArgs["result"]["taskIteration"]>
   composites: {}
@@ -1186,9 +1309,7 @@ readonly fields: TaskIterationFieldRefs;
  */
 export interface Prisma__TaskIterationClient<T, Null = never, ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs, GlobalOmitOptions = {}> extends Prisma.PrismaPromise<T> {
   readonly [Symbol.toStringTag]: "PrismaPromise"
-  buildLogs<T extends Prisma.TaskIteration$buildLogsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.TaskIteration$buildLogsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$TaskBuildLogPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   task<T extends Prisma.TaskDefaultArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.TaskDefaultArgs<ExtArgs>>): Prisma.Prisma__TaskClient<runtime.Types.Result.GetResult<Prisma.$TaskPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | Null, Null, ExtArgs, GlobalOmitOptions>
-  skillLogs<T extends Prisma.TaskIteration$skillLogsArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.TaskIteration$skillLogsArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$TaskSkillLogPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   /**
    * Attaches callbacks for the resolution and/or rejection of the Promise.
    * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -1221,8 +1342,18 @@ export interface TaskIterationFieldRefs {
   readonly id: Prisma.FieldRef<"TaskIteration", 'String'>
   readonly taskId: Prisma.FieldRef<"TaskIteration", 'String'>
   readonly iterationNumber: Prisma.FieldRef<"TaskIteration", 'Int'>
-  readonly rejectionReason: Prisma.FieldRef<"TaskIteration", 'String'>
-  readonly rejectedByCollaboratorId: Prisma.FieldRef<"TaskIteration", 'String'>
+  readonly instruction: Prisma.FieldRef<"TaskIteration", 'String'>
+  readonly executorKind: Prisma.FieldRef<"TaskIteration", 'String'>
+  readonly executorId: Prisma.FieldRef<"TaskIteration", 'String'>
+  readonly chatMode: Prisma.FieldRef<"TaskIteration", 'String'>
+  readonly status: Prisma.FieldRef<"TaskIteration", 'String'>
+  readonly startedAt: Prisma.FieldRef<"TaskIteration", 'DateTime'>
+  readonly finishedAt: Prisma.FieldRef<"TaskIteration", 'DateTime'>
+  readonly outputSummary: Prisma.FieldRef<"TaskIteration", 'String'>
+  readonly fullOutput: Prisma.FieldRef<"TaskIteration", 'String'>
+  readonly filesTouched: Prisma.FieldRef<"TaskIteration", 'Json'>
+  readonly errorReason: Prisma.FieldRef<"TaskIteration", 'String'>
+  readonly workflowRunId: Prisma.FieldRef<"TaskIteration", 'String'>
   readonly createdAt: Prisma.FieldRef<"TaskIteration", 'DateTime'>
 }
     
@@ -1622,54 +1753,6 @@ export type TaskIterationDeleteManyArgs<ExtArgs extends runtime.Types.Extensions
    * Limit how many TaskIterations to delete.
    */
   limit?: number
-}
-
-/**
- * TaskIteration.buildLogs
- */
-export type TaskIteration$buildLogsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  /**
-   * Select specific fields to fetch from the TaskBuildLog
-   */
-  select?: Prisma.TaskBuildLogSelect<ExtArgs> | null
-  /**
-   * Omit specific fields from the TaskBuildLog
-   */
-  omit?: Prisma.TaskBuildLogOmit<ExtArgs> | null
-  /**
-   * Choose, which related nodes to fetch as well
-   */
-  include?: Prisma.TaskBuildLogInclude<ExtArgs> | null
-  where?: Prisma.TaskBuildLogWhereInput
-  orderBy?: Prisma.TaskBuildLogOrderByWithRelationInput | Prisma.TaskBuildLogOrderByWithRelationInput[]
-  cursor?: Prisma.TaskBuildLogWhereUniqueInput
-  take?: number
-  skip?: number
-  distinct?: Prisma.TaskBuildLogScalarFieldEnum | Prisma.TaskBuildLogScalarFieldEnum[]
-}
-
-/**
- * TaskIteration.skillLogs
- */
-export type TaskIteration$skillLogsArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  /**
-   * Select specific fields to fetch from the TaskSkillLog
-   */
-  select?: Prisma.TaskSkillLogSelect<ExtArgs> | null
-  /**
-   * Omit specific fields from the TaskSkillLog
-   */
-  omit?: Prisma.TaskSkillLogOmit<ExtArgs> | null
-  /**
-   * Choose, which related nodes to fetch as well
-   */
-  include?: Prisma.TaskSkillLogInclude<ExtArgs> | null
-  where?: Prisma.TaskSkillLogWhereInput
-  orderBy?: Prisma.TaskSkillLogOrderByWithRelationInput | Prisma.TaskSkillLogOrderByWithRelationInput[]
-  cursor?: Prisma.TaskSkillLogWhereUniqueInput
-  take?: number
-  skip?: number
-  distinct?: Prisma.TaskSkillLogScalarFieldEnum | Prisma.TaskSkillLogScalarFieldEnum[]
 }
 
 /**

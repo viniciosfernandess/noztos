@@ -33,7 +33,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
   if (!project || project.deletedAt) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
 
-  const pendingTasks = await prisma.task.count({ where: { projectId: id, status: { in: ['pending', 'queue', 'progress'] } } })
+  const pendingTasks = await prisma.task.count({ where: { projectId: id, status: { in: ['pending', 'scheduled', 'running'] } } })
   const uncommittedChanges = project.repository?.files?.length ?? 0
 
   return NextResponse.json({

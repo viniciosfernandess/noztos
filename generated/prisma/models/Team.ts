@@ -240,7 +240,6 @@ export type TeamWhereInput = {
   rejectionRules?: Prisma.JsonFilter<"Team">
   restartFromCollaboratorId?: Prisma.StringNullableFilter<"Team"> | string | null
   createdAt?: Prisma.DateTimeFilter<"Team"> | Date | string
-  tasks?: Prisma.TaskListRelationFilter
   project?: Prisma.XOR<Prisma.ProjectScalarRelationFilter, Prisma.ProjectWhereInput>
 }
 
@@ -254,7 +253,6 @@ export type TeamOrderByWithRelationInput = {
   rejectionRules?: Prisma.SortOrder
   restartFromCollaboratorId?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrder
-  tasks?: Prisma.TaskOrderByRelationAggregateInput
   project?: Prisma.ProjectOrderByWithRelationInput
 }
 
@@ -271,7 +269,6 @@ export type TeamWhereUniqueInput = Prisma.AtLeast<{
   rejectionRules?: Prisma.JsonFilter<"Team">
   restartFromCollaboratorId?: Prisma.StringNullableFilter<"Team"> | string | null
   createdAt?: Prisma.DateTimeFilter<"Team"> | Date | string
-  tasks?: Prisma.TaskListRelationFilter
   project?: Prisma.XOR<Prisma.ProjectScalarRelationFilter, Prisma.ProjectWhereInput>
 }, "id">
 
@@ -316,7 +313,6 @@ export type TeamCreateInput = {
   rejectionRules?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   restartFromCollaboratorId?: string | null
   createdAt?: Date | string
-  tasks?: Prisma.TaskCreateNestedManyWithoutTeamInput
   project: Prisma.ProjectCreateNestedOneWithoutTeamsInput
 }
 
@@ -330,7 +326,6 @@ export type TeamUncheckedCreateInput = {
   rejectionRules?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   restartFromCollaboratorId?: string | null
   createdAt?: Date | string
-  tasks?: Prisma.TaskUncheckedCreateNestedManyWithoutTeamInput
 }
 
 export type TeamUpdateInput = {
@@ -342,7 +337,6 @@ export type TeamUpdateInput = {
   rejectionRules?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   restartFromCollaboratorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  tasks?: Prisma.TaskUpdateManyWithoutTeamNestedInput
   project?: Prisma.ProjectUpdateOneRequiredWithoutTeamsNestedInput
 }
 
@@ -356,7 +350,6 @@ export type TeamUncheckedUpdateInput = {
   rejectionRules?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   restartFromCollaboratorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  tasks?: Prisma.TaskUncheckedUpdateManyWithoutTeamNestedInput
 }
 
 export type TeamCreateManyInput = {
@@ -444,11 +437,6 @@ export type TeamSumOrderByAggregateInput = {
   builderPosition?: Prisma.SortOrder
 }
 
-export type TeamNullableScalarRelationFilter = {
-  is?: Prisma.TeamWhereInput | null
-  isNot?: Prisma.TeamWhereInput | null
-}
-
 export type TeamCreateNestedManyWithoutProjectInput = {
   create?: Prisma.XOR<Prisma.TeamCreateWithoutProjectInput, Prisma.TeamUncheckedCreateWithoutProjectInput> | Prisma.TeamCreateWithoutProjectInput[] | Prisma.TeamUncheckedCreateWithoutProjectInput[]
   connectOrCreate?: Prisma.TeamCreateOrConnectWithoutProjectInput | Prisma.TeamCreateOrConnectWithoutProjectInput[]
@@ -499,22 +487,6 @@ export type NullableIntFieldUpdateOperationsInput = {
   divide?: number
 }
 
-export type TeamCreateNestedOneWithoutTasksInput = {
-  create?: Prisma.XOR<Prisma.TeamCreateWithoutTasksInput, Prisma.TeamUncheckedCreateWithoutTasksInput>
-  connectOrCreate?: Prisma.TeamCreateOrConnectWithoutTasksInput
-  connect?: Prisma.TeamWhereUniqueInput
-}
-
-export type TeamUpdateOneWithoutTasksNestedInput = {
-  create?: Prisma.XOR<Prisma.TeamCreateWithoutTasksInput, Prisma.TeamUncheckedCreateWithoutTasksInput>
-  connectOrCreate?: Prisma.TeamCreateOrConnectWithoutTasksInput
-  upsert?: Prisma.TeamUpsertWithoutTasksInput
-  disconnect?: Prisma.TeamWhereInput | boolean
-  delete?: Prisma.TeamWhereInput | boolean
-  connect?: Prisma.TeamWhereUniqueInput
-  update?: Prisma.XOR<Prisma.XOR<Prisma.TeamUpdateToOneWithWhereWithoutTasksInput, Prisma.TeamUpdateWithoutTasksInput>, Prisma.TeamUncheckedUpdateWithoutTasksInput>
-}
-
 export type TeamCreateWithoutProjectInput = {
   id?: string
   name: string
@@ -524,7 +496,6 @@ export type TeamCreateWithoutProjectInput = {
   rejectionRules?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   restartFromCollaboratorId?: string | null
   createdAt?: Date | string
-  tasks?: Prisma.TaskCreateNestedManyWithoutTeamInput
 }
 
 export type TeamUncheckedCreateWithoutProjectInput = {
@@ -536,7 +507,6 @@ export type TeamUncheckedCreateWithoutProjectInput = {
   rejectionRules?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   restartFromCollaboratorId?: string | null
   createdAt?: Date | string
-  tasks?: Prisma.TaskUncheckedCreateNestedManyWithoutTeamInput
 }
 
 export type TeamCreateOrConnectWithoutProjectInput = {
@@ -580,70 +550,6 @@ export type TeamScalarWhereInput = {
   createdAt?: Prisma.DateTimeFilter<"Team"> | Date | string
 }
 
-export type TeamCreateWithoutTasksInput = {
-  id?: string
-  name: string
-  collaboratorOrder?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  hasBuilder?: boolean
-  builderPosition?: number | null
-  rejectionRules?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  restartFromCollaboratorId?: string | null
-  createdAt?: Date | string
-  project: Prisma.ProjectCreateNestedOneWithoutTeamsInput
-}
-
-export type TeamUncheckedCreateWithoutTasksInput = {
-  id?: string
-  projectId: string
-  name: string
-  collaboratorOrder?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  hasBuilder?: boolean
-  builderPosition?: number | null
-  rejectionRules?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  restartFromCollaboratorId?: string | null
-  createdAt?: Date | string
-}
-
-export type TeamCreateOrConnectWithoutTasksInput = {
-  where: Prisma.TeamWhereUniqueInput
-  create: Prisma.XOR<Prisma.TeamCreateWithoutTasksInput, Prisma.TeamUncheckedCreateWithoutTasksInput>
-}
-
-export type TeamUpsertWithoutTasksInput = {
-  update: Prisma.XOR<Prisma.TeamUpdateWithoutTasksInput, Prisma.TeamUncheckedUpdateWithoutTasksInput>
-  create: Prisma.XOR<Prisma.TeamCreateWithoutTasksInput, Prisma.TeamUncheckedCreateWithoutTasksInput>
-  where?: Prisma.TeamWhereInput
-}
-
-export type TeamUpdateToOneWithWhereWithoutTasksInput = {
-  where?: Prisma.TeamWhereInput
-  data: Prisma.XOR<Prisma.TeamUpdateWithoutTasksInput, Prisma.TeamUncheckedUpdateWithoutTasksInput>
-}
-
-export type TeamUpdateWithoutTasksInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string
-  name?: Prisma.StringFieldUpdateOperationsInput | string
-  collaboratorOrder?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  hasBuilder?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  builderPosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  rejectionRules?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  restartFromCollaboratorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  project?: Prisma.ProjectUpdateOneRequiredWithoutTeamsNestedInput
-}
-
-export type TeamUncheckedUpdateWithoutTasksInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string
-  projectId?: Prisma.StringFieldUpdateOperationsInput | string
-  name?: Prisma.StringFieldUpdateOperationsInput | string
-  collaboratorOrder?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  hasBuilder?: Prisma.BoolFieldUpdateOperationsInput | boolean
-  builderPosition?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  rejectionRules?: Prisma.JsonNullValueInput | runtime.InputJsonValue
-  restartFromCollaboratorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-}
-
 export type TeamCreateManyProjectInput = {
   id?: string
   name: string
@@ -664,7 +570,6 @@ export type TeamUpdateWithoutProjectInput = {
   rejectionRules?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   restartFromCollaboratorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  tasks?: Prisma.TaskUpdateManyWithoutTeamNestedInput
 }
 
 export type TeamUncheckedUpdateWithoutProjectInput = {
@@ -676,7 +581,6 @@ export type TeamUncheckedUpdateWithoutProjectInput = {
   rejectionRules?: Prisma.JsonNullValueInput | runtime.InputJsonValue
   restartFromCollaboratorId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdAt?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
-  tasks?: Prisma.TaskUncheckedUpdateManyWithoutTeamNestedInput
 }
 
 export type TeamUncheckedUpdateManyWithoutProjectInput = {
@@ -691,35 +595,6 @@ export type TeamUncheckedUpdateManyWithoutProjectInput = {
 }
 
 
-/**
- * Count Type TeamCountOutputType
- */
-
-export type TeamCountOutputType = {
-  tasks: number
-}
-
-export type TeamCountOutputTypeSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  tasks?: boolean | TeamCountOutputTypeCountTasksArgs
-}
-
-/**
- * TeamCountOutputType without action
- */
-export type TeamCountOutputTypeDefaultArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  /**
-   * Select specific fields to fetch from the TeamCountOutputType
-   */
-  select?: Prisma.TeamCountOutputTypeSelect<ExtArgs> | null
-}
-
-/**
- * TeamCountOutputType without action
- */
-export type TeamCountOutputTypeCountTasksArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  where?: Prisma.TaskWhereInput
-}
-
 
 export type TeamSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
   id?: boolean
@@ -731,9 +606,7 @@ export type TeamSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = r
   rejectionRules?: boolean
   restartFromCollaboratorId?: boolean
   createdAt?: boolean
-  tasks?: boolean | Prisma.Team$tasksArgs<ExtArgs>
   project?: boolean | Prisma.ProjectDefaultArgs<ExtArgs>
-  _count?: boolean | Prisma.TeamCountOutputTypeDefaultArgs<ExtArgs>
 }, ExtArgs["result"]["team"]>
 
 export type TeamSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -776,9 +649,7 @@ export type TeamSelectScalar = {
 
 export type TeamOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "projectId" | "name" | "collaboratorOrder" | "hasBuilder" | "builderPosition" | "rejectionRules" | "restartFromCollaboratorId" | "createdAt", ExtArgs["result"]["team"]>
 export type TeamInclude<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  tasks?: boolean | Prisma.Team$tasksArgs<ExtArgs>
   project?: boolean | Prisma.ProjectDefaultArgs<ExtArgs>
-  _count?: boolean | Prisma.TeamCountOutputTypeDefaultArgs<ExtArgs>
 }
 export type TeamIncludeCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   project?: boolean | Prisma.ProjectDefaultArgs<ExtArgs>
@@ -790,7 +661,6 @@ export type TeamIncludeUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensi
 export type $TeamPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Team"
   objects: {
-    tasks: Prisma.$TaskPayload<ExtArgs>[]
     project: Prisma.$ProjectPayload<ExtArgs>
   }
   scalars: runtime.Types.Extensions.GetPayloadResult<{
@@ -1197,7 +1067,6 @@ readonly fields: TeamFieldRefs;
  */
 export interface Prisma__TeamClient<T, Null = never, ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs, GlobalOmitOptions = {}> extends Prisma.PrismaPromise<T> {
   readonly [Symbol.toStringTag]: "PrismaPromise"
-  tasks<T extends Prisma.Team$tasksArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.Team$tasksArgs<ExtArgs>>): Prisma.PrismaPromise<runtime.Types.Result.GetResult<Prisma.$TaskPayload<ExtArgs>, T, "findMany", GlobalOmitOptions> | Null>
   project<T extends Prisma.ProjectDefaultArgs<ExtArgs> = {}>(args?: Prisma.Subset<T, Prisma.ProjectDefaultArgs<ExtArgs>>): Prisma.Prisma__ProjectClient<runtime.Types.Result.GetResult<Prisma.$ProjectPayload<ExtArgs>, T, "findUniqueOrThrow", GlobalOmitOptions> | Null, Null, ExtArgs, GlobalOmitOptions>
   /**
    * Attaches callbacks for the resolution and/or rejection of the Promise.
@@ -1635,30 +1504,6 @@ export type TeamDeleteManyArgs<ExtArgs extends runtime.Types.Extensions.Internal
    * Limit how many Teams to delete.
    */
   limit?: number
-}
-
-/**
- * Team.tasks
- */
-export type Team$tasksArgs<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
-  /**
-   * Select specific fields to fetch from the Task
-   */
-  select?: Prisma.TaskSelect<ExtArgs> | null
-  /**
-   * Omit specific fields from the Task
-   */
-  omit?: Prisma.TaskOmit<ExtArgs> | null
-  /**
-   * Choose, which related nodes to fetch as well
-   */
-  include?: Prisma.TaskInclude<ExtArgs> | null
-  where?: Prisma.TaskWhereInput
-  orderBy?: Prisma.TaskOrderByWithRelationInput | Prisma.TaskOrderByWithRelationInput[]
-  cursor?: Prisma.TaskWhereUniqueInput
-  take?: number
-  skip?: number
-  distinct?: Prisma.TaskScalarFieldEnum | Prisma.TaskScalarFieldEnum[]
 }
 
 /**

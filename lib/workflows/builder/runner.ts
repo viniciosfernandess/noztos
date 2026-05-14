@@ -13,6 +13,8 @@ import { prisma } from '@/lib/db'
 import { getChannel, dropFramesByPredicate } from '@/lib/companion-relay'
 import { loadSessionContext, persistRows, type PersistRow } from '@/lib/chat-persist'
 import { buildBridgeInContext } from '../shared/bridge-in'
+import { extractFilesTouched } from '../shared/files-touched'
+import { buildWorkflowSummary } from '../shared/summary'
 import { cleanupHandoff, readArchitectPlan, readBuilderReport, readRejectionList } from '../shared/artifacts'
 import { runPlannerStep, buildRepoSnapshot } from './planner'
 import { runArchitectStep } from './architect'
@@ -43,6 +45,12 @@ export interface StartWorkflowInput {
   // duplicate row on the client). When omitted (e.g. server-driven
   // run with no UI), the runner falls back to `wf-<runId>-user`.
   userMsgId?: string
+  // Task-bound run: skip Bridge IN, use this frozen snapshot instead.
+  overrideChatContext?: string
+  // Task-bound run: persist the final response into TaskIteration
+  // instead of posting back to chat. Also suppresses the user-message
+  // persist (the task lives outside the chat thread).
+  taskContext?: { taskId: string; iterationId: string }
 }
 
 export interface StartWorkflowResult {
@@ -74,6 +82,12 @@ export async function startBuilderWorkflow(input: StartWorkflowInput): Promise<S
       userId: input.userId,
       workflowType: input.workflowType,
       userMessage: input.userMessage,
+      // Anchor for inline UI: the chat_message id of the user prompt
+      // that triggered this run. The runner persists the same id on
+      // the user chat_message row (see persistUserMessage), so the
+      // browser can render this card right after that message in the
+      // chat timeline instead of pinning it to the bottom.
+      triggerMessageId: input.userMsgId ?? null,
       status: 'pending',
       progress: initialSnapshot as unknown as object,
     },
@@ -280,7 +294,12 @@ async function executeRun(runId: string, input: StartWorkflowInput): Promise<voi
   // CLI transcript together when the run completes. Without this, F5
   // wipes the optimistic browser-only insert and the chat looks like
   // it was started by the assistant out of nowhere.
-  await persistUserMessage(runId, input)
+  //
+  // Task-bound runs skip this entirely — the instruction lives on the
+  // Task row, not in the chat thread.
+  if (!input.taskContext) {
+    await persistUserMessage(runId, input)
+  }
 
   // Monotonic counter shared across every step's onChunk so the browser
   // store can dedupe deltas on SSE reconnect. The ref shape keeps it
@@ -310,8 +329,9 @@ async function executeRun(runId: string, input: StartWorkflowInput): Promise<voi
   }
   await persistProgress(runId, snapshot)
 
-  const chatContextXml = await buildBridgeInContext(input.sessionId, input.userId)
-  console.log(`[wf-runner] run=${runId.slice(0, 8)} bridge_in chatBytes=${chatContextXml.length} hasContext=${chatContextXml.length > 0}`)
+  const chatContextXml = input.overrideChatContext
+    ?? await buildBridgeInContext(input.sessionId, input.userId)
+  console.log(`[wf-runner] run=${runId.slice(0, 8)} bridge_in chatBytes=${chatContextXml.length} hasContext=${chatContextXml.length > 0}${input.overrideChatContext ? ' (from task)' : ''}`)
 
   const repoSnapshot = await buildRepoSnapshot(input.projectPath)
   console.log(`[wf-runner] run=${runId.slice(0, 8)} repo_snapshot bytes=${repoSnapshot.length} cwd=${input.projectPath}`)
@@ -335,6 +355,20 @@ async function executeRun(runId: string, input: StartWorkflowInput): Promise<voi
 
   plannerStep.finishedAt = Date.now()
   plannerStep.durationMs = plannerStep.finishedAt - plannerStep.startedAt!
+  // Cancel arrived mid-step (user clicked pause while the planner was
+  // running). The `claude -p` subprocess was SIGTERMed by the cancel
+  // endpoint, so the step result probably has empty output / error.
+  // Mark the step as `cancelled` (not `failed`) so the UI shows a
+  // paused state instead of "planner failed: parse error". The
+  // workflowRun.status is already `cancelled` from the cancel endpoint.
+  if (await isCancelled(runId)) {
+    plannerStep.status = 'cancelled'
+    snapshot.currentStep = null
+    await persistProgress(runId, snapshot)
+    evictRunFromCache(input.sessionId, runId)
+    console.log(`[wf-runner] run=${runId.slice(0, 8)} planner cancelled mid-step`)
+    return
+  }
   if (!plannerResult.plan) {
     plannerStep.status = 'failed'
     plannerStep.errorReason = plannerResult.parseError ?? plannerResult.rawResult.error ?? 'unknown'
@@ -399,6 +433,21 @@ async function executeRun(runId: string, input: StartWorkflowInput): Promise<voi
 
     const ok = await runBlock(runId, snapshot, i, isFinalBlock, plannerResult.plan, input, chunkCtx)
     if (!ok) {
+      // runBlock returns false either on a real step failure or on
+      // mid-step cancel. Distinguish by checking workflowRun status —
+      // if the user paused, the step already marked itself
+      // `cancelled` inside runBlock; we just need to flip the block
+      // status to match and skip the failure update (which is
+      // guarded anyway, but the block status would still say
+      // 'failed' visually).
+      if (await isCancelled(runId)) {
+        block.status = 'cancelled'
+        block.finishedAt = Date.now()
+        await persistProgress(runId, snapshot)
+        evictRunFromCache(input.sessionId, runId)
+        console.log(`[wf-runner] run=${runId.slice(0, 8)} block=${i + 1} cancelled mid-block`)
+        return
+      }
       block.status = 'failed'
       block.finishedAt = Date.now()
       await persistProgress(runId, snapshot)
@@ -427,9 +476,43 @@ async function executeRun(runId: string, input: StartWorkflowInput): Promise<voi
   }
 
   // ── Phase final: post final response as chat message ─────────────
+  //
+  // Task-bound runs land the final output on the TaskIteration row and
+  // flip the Task to done — they don't post back into the chat thread.
 
   if (snapshot.finalResponse) {
-    await postFinalResponseToChat(runId, input, snapshot.finalResponse)
+    if (input.taskContext) {
+      // Pull file paths from every tool_use frame in the run so the
+      // Task UI / Changes list can mark them with the "T" badge.
+      const filesTouched = extractFilesTouched(snapshot)
+      await prisma.taskIteration.update({
+        where: { id: input.taskContext.iterationId },
+        data: {
+          status: 'completed',
+          finishedAt: new Date(),
+          fullOutput: snapshot.finalResponse,
+          outputSummary: snapshot.finalResponse.length > 500
+            ? `${snapshot.finalResponse.slice(0, 500)}…`
+            : snapshot.finalResponse,
+          filesTouched,
+          workflowRunId: runId,
+        },
+      })
+      await prisma.task.update({
+        where: { id: input.taskContext.taskId },
+        data: { status: 'done' },
+      })
+      console.log(`[wf-runner] run=${runId.slice(0, 8)} ✓ delivered final to task=${input.taskContext.taskId.slice(0, 8)} iter=${input.taskContext.iterationId.slice(0, 8)} filesTouched=${filesTouched.length}`)
+    } else {
+      // Synthesize the per-role recap from the snapshot we already
+      // have in memory. Lands between (user, prompt) and (assistant,
+      // finalResponse) in chat_messages so any downstream consumer
+      // (next workflow's Bridge IN, task creation snapshot, Claude
+      // --resume) sees the depth of what this run did — not just the
+      // user-facing summary.
+      const workflowSummary = buildWorkflowSummary(snapshot)
+      await postFinalResponseToChat(runId, input, snapshot.finalResponse, workflowSummary)
+    }
   }
 
   // Cleanup handoff folder (artifacts foram preservados na DB via snapshot)
@@ -509,6 +592,12 @@ async function runBlock(
 
     archStep.finishedAt = Date.now()
     archStep.durationMs = archStep.finishedAt - archStep.startedAt!
+    if (await isCancelled(runId)) {
+      archStep.status = 'cancelled'
+      await persistProgress(runId, snapshot)
+      console.log(`[wf-runner] block=${blockIndex + 1} architect cancelled mid-step`)
+      return false
+    }
     if (archResult.rawResult.error || !archResult.outputPath) {
       archStep.status = 'failed'
       archStep.errorReason = archResult.rawResult.error ?? 'architect produced no output'
@@ -553,6 +642,12 @@ async function runBlock(
 
     buildStep.finishedAt = Date.now()
     buildStep.durationMs = buildStep.finishedAt - buildStep.startedAt!
+    if (await isCancelled(runId)) {
+      buildStep.status = 'cancelled'
+      await persistProgress(runId, snapshot)
+      console.log(`[wf-runner] block=${blockIndex + 1} builder cancelled mid-step`)
+      return false
+    }
     if (buildResult.rawResult.error || !buildResult.outputPath) {
       buildStep.status = 'failed'
       buildStep.errorReason = buildResult.rawResult.error ?? 'builder produced no output'
@@ -601,6 +696,12 @@ async function runBlock(
 
     revStep.finishedAt = Date.now()
     revStep.durationMs = revStep.finishedAt - revStep.startedAt!
+    if (await isCancelled(runId)) {
+      revStep.status = 'cancelled'
+      await persistProgress(runId, snapshot)
+      console.log(`[wf-runner] block=${blockIndex + 1} reviewer cancelled mid-step`)
+      return false
+    }
     if (revResult.rawResult.error || !revResult.decision) {
       revStep.status = 'failed'
       revStep.errorReason = revResult.rawResult.error ?? revResult.parseError ?? 'reviewer parse failed'
@@ -719,38 +820,49 @@ async function postFinalResponseToChat(
   runId: string,
   input: StartWorkflowInput,
   content: string,
+  workflowSummary: string,
 ): Promise<void> {
-  console.log(`[wf-runner] ▶ posting final response to chat session=${input.sessionId.slice(0, 8)} contentBytes=${content.length}`)
+  console.log(`[wf-runner] ▶ posting final response to chat session=${input.sessionId.slice(0, 8)} contentBytes=${content.length} summaryBytes=${workflowSummary.length}`)
 
-  // Stable id ties together SSE event, ring entry, and DB row.
+  // Stable ids tie together SSE event, ring entry, and DB row. The
+  // summary lands between user prompt and final response in time,
+  // so we stamp it ~1ms before the final so chronological readers
+  // (Bridge IN, buildChatSnapshot) order them correctly.
+  const summaryRowId = `wf-${runId}-summary`
   const finalRowId = `wf-${runId}-final`
-  const createdAt = Date.now()
-  const persistRow: PersistRow = {
+  const summaryCreatedAt = Date.now()
+  const finalCreatedAt = summaryCreatedAt + 1
+
+  const summaryRow: PersistRow = {
+    id: summaryRowId,
+    role: 'system',
+    content: workflowSummary,
+    createdAt: summaryCreatedAt,
+  }
+  const finalRow: PersistRow = {
     id: finalRowId,
     role: 'assistant',
     content,
-    createdAt,
+    createdAt: finalCreatedAt,
   }
 
   // ── 1. Ring buffer + browser SSE ───────────────────────────────────
+  // Push both rows in one frame. Chat UI hides the summary row by id;
+  // Bridge IN reads both. Single pushEvent keeps client cache write
+  // atomic — no flicker / out-of-order.
   try {
     const channel = getChannel(input.userId)
-    const frame = {
+    channel.pushEvent({
       type: 'claude_event',
       payload: {
         bornastarSessionId: input.sessionId,
-        // persistRows path is the daemon-stamped shape bridge_in/companion-store
-        // both already understand — wrap our single row the same way.
-        persistRows: [{
-          id: finalRowId,
-          role: 'assistant',
-          content,
-          createdAt,
-        }],
+        persistRows: [
+          { id: summaryRowId, role: 'system', content: workflowSummary, createdAt: summaryCreatedAt },
+          { id: finalRowId,   role: 'assistant', content,                createdAt: finalCreatedAt   },
+        ],
       },
-    }
-    channel.pushEvent(frame, input.userId)
-    console.log(`[wf-runner] ✓ pushed assistant frame to relay (ring + SSE) sid=${input.sessionId.slice(0, 8)} rowId=${finalRowId}`)
+    }, input.userId)
+    console.log(`[wf-runner] ✓ pushed (summary, assistant) frame to relay sid=${input.sessionId.slice(0, 8)}`)
   } catch (err) {
     console.warn(`[wf-runner] relay push failed: ${(err as Error).message}`)
   }
@@ -762,8 +874,8 @@ async function postFinalResponseToChat(
     if (!ctx) {
       console.warn(`[wf-runner] loadSessionContext returned null sid=${input.sessionId.slice(0, 8)} — skipping DB write`)
     } else {
-      await persistRows([persistRow], ctx)
-      console.log(`[wf-runner] ✓ persisted to DB sid=${input.sessionId.slice(0, 8)} rowId=${finalRowId}`)
+      await persistRows([summaryRow, finalRow], ctx)
+      console.log(`[wf-runner] ✓ persisted (summary, assistant) to DB sid=${input.sessionId.slice(0, 8)}`)
     }
     // Need the CLI session id for the JSONL append regardless of DB outcome.
     const session = await prisma.chatSession.findUnique({
@@ -776,6 +888,13 @@ async function postFinalResponseToChat(
   }
 
   // ── 3. Claude CLI JSONL append (via companion) ─────────────────────
+  //
+  // The --resume file is a sequence of (user, assistant) turns. We
+  // fold the workflow summary into the assistant turn (prefix) so
+  // Claude on the next chat turn sees one coherent "what I did
+  // internally + the user-facing answer" assistant response. Cheaper
+  // than inventing a third role in the JSONL and risking breaking
+  // Claude's parser.
   if (!claudeSessionId) {
     console.log(`[wf-runner] no claudeSessionId on chat (first turn?) — skipping JSONL append`)
     return
@@ -787,7 +906,7 @@ async function postFinalResponseToChat(
       claudeSessionId,
       worktreePath: input.projectPath,
       userText: input.userMessage,
-      assistantText: content,
+      assistantText: `${workflowSummary}\n\n---\n\n${content}`,
     })
     console.log(`[wf-runner] ✓ enqueued append_claude_turn cmd to companion claudeSid=${claudeSessionId.slice(0, 8)}`)
   } catch (err) {

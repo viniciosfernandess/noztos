@@ -88,21 +88,6 @@ export type Task = Prisma.TaskModel
  */
 export type TaskIteration = Prisma.TaskIterationModel
 /**
- * Model TaskSkillLog
- * 
- */
-export type TaskSkillLog = Prisma.TaskSkillLogModel
-/**
- * Model TaskBuildLog
- * 
- */
-export type TaskBuildLog = Prisma.TaskBuildLogModel
-/**
- * Model TaskSuggestion
- * 
- */
-export type TaskSuggestion = Prisma.TaskSuggestionModel
-/**
  * Model SlackLog
  * 
  */

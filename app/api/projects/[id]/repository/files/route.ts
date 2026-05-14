@@ -74,9 +74,24 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     if (worktreeId) {
       const wtChanges = await getWorktreeChangedFiles(id, worktreeId)
       const changeByPath = new Map(wtChanges.map((f) => [f.path, f]))
+      // Set of paths touched by Task iterations since the last commit
+      // on this worktree. Drives the "T" badge in the Changes list,
+      // alongside the existing "U" (uncommitted) badge. Cleared by
+      // /api/projects/[id]/git/commit on a successful commit so the
+      // badges drop together.
+      const wt = await prisma.worktree.findUnique({
+        where: { id: worktreeId },
+        select: { taskTouchedPaths: true },
+      })
+      const taskTouchedSet = new Set<string>(
+        Array.isArray(wt?.taskTouchedPaths)
+          ? (wt.taskTouchedPaths as unknown[]).filter((p): p is string => typeof p === 'string')
+          : [],
+      )
       const files: Array<{
         id: string; path: string; isModified: boolean; isNew: boolean; sizeBytes: number
         added?: number; removed?: number; uncommitted?: boolean
+        touchedByTask?: boolean
         worktrees?: { id: string; name: string }[]
       }> = diskFiles.map((path, i) => {
         const c = changeByPath.get(path)
@@ -87,6 +102,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           isNew: c?.status === 'A',
           sizeBytes: 0,
           ...(c && { added: c.added, removed: c.removed, uncommitted: c.uncommitted }),
+          ...(taskTouchedSet.has(path) && { touchedByTask: true }),
         }
       })
       // Deleted files (don't exist on disk but show in git diff as 'D')
@@ -102,6 +118,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
             added: c.added,
             removed: c.removed,
             uncommitted: c.uncommitted,
+            ...(taskTouchedSet.has(c.path) && { touchedByTask: true }),
           })
         }
       }

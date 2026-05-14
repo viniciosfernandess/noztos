@@ -65,9 +65,6 @@ export const ModelName = {
   ChatMessage: 'ChatMessage',
   Task: 'Task',
   TaskIteration: 'TaskIteration',
-  TaskSkillLog: 'TaskSkillLog',
-  TaskBuildLog: 'TaskBuildLog',
-  TaskSuggestion: 'TaskSuggestion',
   SlackLog: 'SlackLog',
   ResourceUsage: 'ResourceUsage',
   TeamRun: 'TeamRun',
@@ -234,6 +231,7 @@ export const WorktreeScalarFieldEnum = {
   prTitleDraft: 'prTitleDraft',
   prBodyDraft: 'prBodyDraft',
   deletedAt: 'deletedAt',
+  taskTouchedPaths: 'taskTouchedPaths',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
@@ -317,28 +315,21 @@ export type ChatMessageScalarFieldEnum = (typeof ChatMessageScalarFieldEnum)[key
 export const TaskScalarFieldEnum = {
   id: 'id',
   projectId: 'projectId',
+  worktreeId: 'worktreeId',
   userId: 'userId',
   name: 'name',
   instruction: 'instruction',
-  context: 'context',
-  accumulatedContext: 'accumulatedContext',
-  canModifyRepo: 'canModifyRepo',
-  permissionMode: 'permissionMode',
-  executorType: 'executorType',
+  contextSource: 'contextSource',
+  contextSnapshot: 'contextSnapshot',
+  executorKind: 'executorKind',
   executorId: 'executorId',
+  chatMode: 'chatMode',
   status: 'status',
-  isRecurring: 'isRecurring',
-  recurrenceConfig: 'recurrenceConfig',
   scheduledAt: 'scheduledAt',
-  pausedAt: 'pausedAt',
-  pausedAtIteration: 'pausedAtIteration',
-  pausedAtEmployee: 'pausedAtEmployee',
+  reviewedAt: 'reviewedAt',
+  sourceTaskId: 'sourceTaskId',
   createdAt: 'createdAt',
-  updatedAt: 'updatedAt',
-  queuePosition: 'queuePosition',
-  originalScheduledAt: 'originalScheduledAt',
-  rescheduledCount: 'rescheduledCount',
-  rescheduledReason: 'rescheduledReason'
+  updatedAt: 'updatedAt'
 } as const
 
 export type TaskScalarFieldEnum = (typeof TaskScalarFieldEnum)[keyof typeof TaskScalarFieldEnum]
@@ -348,59 +339,22 @@ export const TaskIterationScalarFieldEnum = {
   id: 'id',
   taskId: 'taskId',
   iterationNumber: 'iterationNumber',
-  rejectionReason: 'rejectionReason',
-  rejectedByCollaboratorId: 'rejectedByCollaboratorId',
+  instruction: 'instruction',
+  executorKind: 'executorKind',
+  executorId: 'executorId',
+  chatMode: 'chatMode',
+  status: 'status',
+  startedAt: 'startedAt',
+  finishedAt: 'finishedAt',
+  outputSummary: 'outputSummary',
+  fullOutput: 'fullOutput',
+  filesTouched: 'filesTouched',
+  errorReason: 'errorReason',
+  workflowRunId: 'workflowRunId',
   createdAt: 'createdAt'
 } as const
 
 export type TaskIterationScalarFieldEnum = (typeof TaskIterationScalarFieldEnum)[keyof typeof TaskIterationScalarFieldEnum]
-
-
-export const TaskSkillLogScalarFieldEnum = {
-  id: 'id',
-  taskId: 'taskId',
-  iterationId: 'iterationId',
-  collaboratorId: 'collaboratorId',
-  collaboratorName: 'collaboratorName',
-  inputReceived: 'inputReceived',
-  thoughts: 'thoughts',
-  conclusion: 'conclusion',
-  passedForward: 'passedForward',
-  approved: 'approved',
-  rejectionReason: 'rejectionReason',
-  startedAt: 'startedAt',
-  finishedAt: 'finishedAt'
-} as const
-
-export type TaskSkillLogScalarFieldEnum = (typeof TaskSkillLogScalarFieldEnum)[keyof typeof TaskSkillLogScalarFieldEnum]
-
-
-export const TaskBuildLogScalarFieldEnum = {
-  id: 'id',
-  taskId: 'taskId',
-  iterationId: 'iterationId',
-  filesTouched: 'filesTouched',
-  linesAdded: 'linesAdded',
-  linesRemoved: 'linesRemoved',
-  technicalDecisions: 'technicalDecisions',
-  rawLog: 'rawLog',
-  createdAt: 'createdAt'
-} as const
-
-export type TaskBuildLogScalarFieldEnum = (typeof TaskBuildLogScalarFieldEnum)[keyof typeof TaskBuildLogScalarFieldEnum]
-
-
-export const TaskSuggestionScalarFieldEnum = {
-  id: 'id',
-  taskId: 'taskId',
-  suggestionText: 'suggestionText',
-  reason: 'reason',
-  accepted: 'accepted',
-  generatedTaskId: 'generatedTaskId',
-  createdAt: 'createdAt'
-} as const
-
-export type TaskSuggestionScalarFieldEnum = (typeof TaskSuggestionScalarFieldEnum)[keyof typeof TaskSuggestionScalarFieldEnum]
 
 
 export const SlackLogScalarFieldEnum = {
@@ -464,6 +418,7 @@ export const WorkflowRunScalarFieldEnum = {
   userId: 'userId',
   workflowType: 'workflowType',
   userMessage: 'userMessage',
+  triggerMessageId: 'triggerMessageId',
   status: 'status',
   plan: 'plan',
   progress: 'progress',

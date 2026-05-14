@@ -36,7 +36,7 @@ const EMPLOYEE_NAMES: Record<string, string> = {
 
 interface Project { id: string; name: string }
 interface Team { id: string; name: string; collaboratorOrder: { collaboratorIds: string[] } }
-interface Task { id: string; name: string; status: string; pausedAtEmployee: string | null }
+interface Task { id: string; name: string; status: string }
 
 interface Props {
   project: Project

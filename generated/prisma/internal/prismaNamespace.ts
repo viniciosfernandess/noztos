@@ -398,9 +398,6 @@ export const ModelName = {
   ChatMessage: 'ChatMessage',
   Task: 'Task',
   TaskIteration: 'TaskIteration',
-  TaskSkillLog: 'TaskSkillLog',
-  TaskBuildLog: 'TaskBuildLog',
-  TaskSuggestion: 'TaskSuggestion',
   SlackLog: 'SlackLog',
   ResourceUsage: 'ResourceUsage',
   TeamRun: 'TeamRun',
@@ -421,7 +418,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "user" | "companionToken" | "companionConfig" | "project" | "repository" | "repoFile" | "collaborator" | "team" | "worktree" | "todo" | "chatSession" | "chatMessage" | "task" | "taskIteration" | "taskSkillLog" | "taskBuildLog" | "taskSuggestion" | "slackLog" | "resourceUsage" | "teamRun" | "buildSession" | "workflowRun"
+    modelProps: "user" | "companionToken" | "companionConfig" | "project" | "repository" | "repoFile" | "collaborator" | "team" | "worktree" | "todo" | "chatSession" | "chatMessage" | "task" | "taskIteration" | "slackLog" | "resourceUsage" | "teamRun" | "buildSession" | "workflowRun"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -1461,228 +1458,6 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
-    TaskSkillLog: {
-      payload: Prisma.$TaskSkillLogPayload<ExtArgs>
-      fields: Prisma.TaskSkillLogFieldRefs
-      operations: {
-        findUnique: {
-          args: Prisma.TaskSkillLogFindUniqueArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskSkillLogPayload> | null
-        }
-        findUniqueOrThrow: {
-          args: Prisma.TaskSkillLogFindUniqueOrThrowArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskSkillLogPayload>
-        }
-        findFirst: {
-          args: Prisma.TaskSkillLogFindFirstArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskSkillLogPayload> | null
-        }
-        findFirstOrThrow: {
-          args: Prisma.TaskSkillLogFindFirstOrThrowArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskSkillLogPayload>
-        }
-        findMany: {
-          args: Prisma.TaskSkillLogFindManyArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskSkillLogPayload>[]
-        }
-        create: {
-          args: Prisma.TaskSkillLogCreateArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskSkillLogPayload>
-        }
-        createMany: {
-          args: Prisma.TaskSkillLogCreateManyArgs<ExtArgs>
-          result: BatchPayload
-        }
-        createManyAndReturn: {
-          args: Prisma.TaskSkillLogCreateManyAndReturnArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskSkillLogPayload>[]
-        }
-        delete: {
-          args: Prisma.TaskSkillLogDeleteArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskSkillLogPayload>
-        }
-        update: {
-          args: Prisma.TaskSkillLogUpdateArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskSkillLogPayload>
-        }
-        deleteMany: {
-          args: Prisma.TaskSkillLogDeleteManyArgs<ExtArgs>
-          result: BatchPayload
-        }
-        updateMany: {
-          args: Prisma.TaskSkillLogUpdateManyArgs<ExtArgs>
-          result: BatchPayload
-        }
-        updateManyAndReturn: {
-          args: Prisma.TaskSkillLogUpdateManyAndReturnArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskSkillLogPayload>[]
-        }
-        upsert: {
-          args: Prisma.TaskSkillLogUpsertArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskSkillLogPayload>
-        }
-        aggregate: {
-          args: Prisma.TaskSkillLogAggregateArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.AggregateTaskSkillLog>
-        }
-        groupBy: {
-          args: Prisma.TaskSkillLogGroupByArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.TaskSkillLogGroupByOutputType>[]
-        }
-        count: {
-          args: Prisma.TaskSkillLogCountArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.TaskSkillLogCountAggregateOutputType> | number
-        }
-      }
-    }
-    TaskBuildLog: {
-      payload: Prisma.$TaskBuildLogPayload<ExtArgs>
-      fields: Prisma.TaskBuildLogFieldRefs
-      operations: {
-        findUnique: {
-          args: Prisma.TaskBuildLogFindUniqueArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskBuildLogPayload> | null
-        }
-        findUniqueOrThrow: {
-          args: Prisma.TaskBuildLogFindUniqueOrThrowArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskBuildLogPayload>
-        }
-        findFirst: {
-          args: Prisma.TaskBuildLogFindFirstArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskBuildLogPayload> | null
-        }
-        findFirstOrThrow: {
-          args: Prisma.TaskBuildLogFindFirstOrThrowArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskBuildLogPayload>
-        }
-        findMany: {
-          args: Prisma.TaskBuildLogFindManyArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskBuildLogPayload>[]
-        }
-        create: {
-          args: Prisma.TaskBuildLogCreateArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskBuildLogPayload>
-        }
-        createMany: {
-          args: Prisma.TaskBuildLogCreateManyArgs<ExtArgs>
-          result: BatchPayload
-        }
-        createManyAndReturn: {
-          args: Prisma.TaskBuildLogCreateManyAndReturnArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskBuildLogPayload>[]
-        }
-        delete: {
-          args: Prisma.TaskBuildLogDeleteArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskBuildLogPayload>
-        }
-        update: {
-          args: Prisma.TaskBuildLogUpdateArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskBuildLogPayload>
-        }
-        deleteMany: {
-          args: Prisma.TaskBuildLogDeleteManyArgs<ExtArgs>
-          result: BatchPayload
-        }
-        updateMany: {
-          args: Prisma.TaskBuildLogUpdateManyArgs<ExtArgs>
-          result: BatchPayload
-        }
-        updateManyAndReturn: {
-          args: Prisma.TaskBuildLogUpdateManyAndReturnArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskBuildLogPayload>[]
-        }
-        upsert: {
-          args: Prisma.TaskBuildLogUpsertArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskBuildLogPayload>
-        }
-        aggregate: {
-          args: Prisma.TaskBuildLogAggregateArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.AggregateTaskBuildLog>
-        }
-        groupBy: {
-          args: Prisma.TaskBuildLogGroupByArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.TaskBuildLogGroupByOutputType>[]
-        }
-        count: {
-          args: Prisma.TaskBuildLogCountArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.TaskBuildLogCountAggregateOutputType> | number
-        }
-      }
-    }
-    TaskSuggestion: {
-      payload: Prisma.$TaskSuggestionPayload<ExtArgs>
-      fields: Prisma.TaskSuggestionFieldRefs
-      operations: {
-        findUnique: {
-          args: Prisma.TaskSuggestionFindUniqueArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskSuggestionPayload> | null
-        }
-        findUniqueOrThrow: {
-          args: Prisma.TaskSuggestionFindUniqueOrThrowArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskSuggestionPayload>
-        }
-        findFirst: {
-          args: Prisma.TaskSuggestionFindFirstArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskSuggestionPayload> | null
-        }
-        findFirstOrThrow: {
-          args: Prisma.TaskSuggestionFindFirstOrThrowArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskSuggestionPayload>
-        }
-        findMany: {
-          args: Prisma.TaskSuggestionFindManyArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskSuggestionPayload>[]
-        }
-        create: {
-          args: Prisma.TaskSuggestionCreateArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskSuggestionPayload>
-        }
-        createMany: {
-          args: Prisma.TaskSuggestionCreateManyArgs<ExtArgs>
-          result: BatchPayload
-        }
-        createManyAndReturn: {
-          args: Prisma.TaskSuggestionCreateManyAndReturnArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskSuggestionPayload>[]
-        }
-        delete: {
-          args: Prisma.TaskSuggestionDeleteArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskSuggestionPayload>
-        }
-        update: {
-          args: Prisma.TaskSuggestionUpdateArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskSuggestionPayload>
-        }
-        deleteMany: {
-          args: Prisma.TaskSuggestionDeleteManyArgs<ExtArgs>
-          result: BatchPayload
-        }
-        updateMany: {
-          args: Prisma.TaskSuggestionUpdateManyArgs<ExtArgs>
-          result: BatchPayload
-        }
-        updateManyAndReturn: {
-          args: Prisma.TaskSuggestionUpdateManyAndReturnArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskSuggestionPayload>[]
-        }
-        upsert: {
-          args: Prisma.TaskSuggestionUpsertArgs<ExtArgs>
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$TaskSuggestionPayload>
-        }
-        aggregate: {
-          args: Prisma.TaskSuggestionAggregateArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.AggregateTaskSuggestion>
-        }
-        groupBy: {
-          args: Prisma.TaskSuggestionGroupByArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.TaskSuggestionGroupByOutputType>[]
-        }
-        count: {
-          args: Prisma.TaskSuggestionCountArgs<ExtArgs>
-          result: runtime.Types.Utils.Optional<Prisma.TaskSuggestionCountAggregateOutputType> | number
-        }
-      }
-    }
     SlackLog: {
       payload: Prisma.$SlackLogPayload<ExtArgs>
       fields: Prisma.SlackLogFieldRefs
@@ -2235,6 +2010,7 @@ export const WorktreeScalarFieldEnum = {
   prTitleDraft: 'prTitleDraft',
   prBodyDraft: 'prBodyDraft',
   deletedAt: 'deletedAt',
+  taskTouchedPaths: 'taskTouchedPaths',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 } as const
@@ -2318,28 +2094,21 @@ export type ChatMessageScalarFieldEnum = (typeof ChatMessageScalarFieldEnum)[key
 export const TaskScalarFieldEnum = {
   id: 'id',
   projectId: 'projectId',
+  worktreeId: 'worktreeId',
   userId: 'userId',
   name: 'name',
   instruction: 'instruction',
-  context: 'context',
-  accumulatedContext: 'accumulatedContext',
-  canModifyRepo: 'canModifyRepo',
-  permissionMode: 'permissionMode',
-  executorType: 'executorType',
+  contextSource: 'contextSource',
+  contextSnapshot: 'contextSnapshot',
+  executorKind: 'executorKind',
   executorId: 'executorId',
+  chatMode: 'chatMode',
   status: 'status',
-  isRecurring: 'isRecurring',
-  recurrenceConfig: 'recurrenceConfig',
   scheduledAt: 'scheduledAt',
-  pausedAt: 'pausedAt',
-  pausedAtIteration: 'pausedAtIteration',
-  pausedAtEmployee: 'pausedAtEmployee',
+  reviewedAt: 'reviewedAt',
+  sourceTaskId: 'sourceTaskId',
   createdAt: 'createdAt',
-  updatedAt: 'updatedAt',
-  queuePosition: 'queuePosition',
-  originalScheduledAt: 'originalScheduledAt',
-  rescheduledCount: 'rescheduledCount',
-  rescheduledReason: 'rescheduledReason'
+  updatedAt: 'updatedAt'
 } as const
 
 export type TaskScalarFieldEnum = (typeof TaskScalarFieldEnum)[keyof typeof TaskScalarFieldEnum]
@@ -2349,59 +2118,22 @@ export const TaskIterationScalarFieldEnum = {
   id: 'id',
   taskId: 'taskId',
   iterationNumber: 'iterationNumber',
-  rejectionReason: 'rejectionReason',
-  rejectedByCollaboratorId: 'rejectedByCollaboratorId',
+  instruction: 'instruction',
+  executorKind: 'executorKind',
+  executorId: 'executorId',
+  chatMode: 'chatMode',
+  status: 'status',
+  startedAt: 'startedAt',
+  finishedAt: 'finishedAt',
+  outputSummary: 'outputSummary',
+  fullOutput: 'fullOutput',
+  filesTouched: 'filesTouched',
+  errorReason: 'errorReason',
+  workflowRunId: 'workflowRunId',
   createdAt: 'createdAt'
 } as const
 
 export type TaskIterationScalarFieldEnum = (typeof TaskIterationScalarFieldEnum)[keyof typeof TaskIterationScalarFieldEnum]
-
-
-export const TaskSkillLogScalarFieldEnum = {
-  id: 'id',
-  taskId: 'taskId',
-  iterationId: 'iterationId',
-  collaboratorId: 'collaboratorId',
-  collaboratorName: 'collaboratorName',
-  inputReceived: 'inputReceived',
-  thoughts: 'thoughts',
-  conclusion: 'conclusion',
-  passedForward: 'passedForward',
-  approved: 'approved',
-  rejectionReason: 'rejectionReason',
-  startedAt: 'startedAt',
-  finishedAt: 'finishedAt'
-} as const
-
-export type TaskSkillLogScalarFieldEnum = (typeof TaskSkillLogScalarFieldEnum)[keyof typeof TaskSkillLogScalarFieldEnum]
-
-
-export const TaskBuildLogScalarFieldEnum = {
-  id: 'id',
-  taskId: 'taskId',
-  iterationId: 'iterationId',
-  filesTouched: 'filesTouched',
-  linesAdded: 'linesAdded',
-  linesRemoved: 'linesRemoved',
-  technicalDecisions: 'technicalDecisions',
-  rawLog: 'rawLog',
-  createdAt: 'createdAt'
-} as const
-
-export type TaskBuildLogScalarFieldEnum = (typeof TaskBuildLogScalarFieldEnum)[keyof typeof TaskBuildLogScalarFieldEnum]
-
-
-export const TaskSuggestionScalarFieldEnum = {
-  id: 'id',
-  taskId: 'taskId',
-  suggestionText: 'suggestionText',
-  reason: 'reason',
-  accepted: 'accepted',
-  generatedTaskId: 'generatedTaskId',
-  createdAt: 'createdAt'
-} as const
-
-export type TaskSuggestionScalarFieldEnum = (typeof TaskSuggestionScalarFieldEnum)[keyof typeof TaskSuggestionScalarFieldEnum]
 
 
 export const SlackLogScalarFieldEnum = {
@@ -2465,6 +2197,7 @@ export const WorkflowRunScalarFieldEnum = {
   userId: 'userId',
   workflowType: 'workflowType',
   userMessage: 'userMessage',
+  triggerMessageId: 'triggerMessageId',
   status: 'status',
   plan: 'plan',
   progress: 'progress',
@@ -2623,20 +2356,6 @@ export type ListFloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaMode
 
 
 /**
- * Reference to a field of type 'ExecutorType'
- */
-export type EnumExecutorTypeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'ExecutorType'>
-    
-
-
-/**
- * Reference to a field of type 'ExecutorType[]'
- */
-export type ListEnumExecutorTypeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'ExecutorType[]'>
-    
-
-
-/**
  * Reference to a field of type 'TaskStatus'
  */
 export type EnumTaskStatusFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'TaskStatus'>
@@ -2758,9 +2477,6 @@ export type GlobalOmitConfig = {
   chatMessage?: Prisma.ChatMessageOmit
   task?: Prisma.TaskOmit
   taskIteration?: Prisma.TaskIterationOmit
-  taskSkillLog?: Prisma.TaskSkillLogOmit
-  taskBuildLog?: Prisma.TaskBuildLogOmit
-  taskSuggestion?: Prisma.TaskSuggestionOmit
   slackLog?: Prisma.SlackLogOmit
   resourceUsage?: Prisma.ResourceUsageOmit
   teamRun?: Prisma.TeamRunOmit

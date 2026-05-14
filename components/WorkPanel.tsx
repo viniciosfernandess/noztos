@@ -34,6 +34,10 @@ import { CompanionProvider, setActiveSessionIdForUnread } from './CompanionProvi
 import { ClaudeToolCard, SessionResultCard, ModeSelector, ModelSelector, ThinkingSelector, CompanionStatusBadge, WorkBlock, TodoBlock, ExitPlanModeBlock } from './ClaudeToolCard'
 import { ReportBadge } from './ChatReport'
 import { WorkflowRunCard } from './WorkflowRunCard'
+import { TakeContextToTaskButton } from './tasks/TakeContextToTaskButton'
+import { TaskCreatedConfirmModal } from './tasks/TaskCreatedConfirmModal'
+import { TaskManageModal } from './tasks/TaskManageModal'
+import type { TaskListItem } from './tasks/types'
 import type { ChatReport } from '@/lib/report-types'
 
 // ── Thinking Indicator ────────────────────────────────────────────────────
@@ -4068,6 +4072,10 @@ interface MockChangedFile {
   // automatically post-commit because the next refetch sees the file
   // as fully-committed (no entries in `git status --porcelain`).
   uncommitted?: boolean
+  // True when a Task iteration wrote to this path and the change is
+  // still uncommitted. Drives the "T" badge — same lifecycle as U
+  // (cleared by the commit endpoint).
+  touchedByTask?: boolean
   // First worktree that touched this file — used to fetch the correct
   // version when opening the inline diff. Optional because the legacy
   // mock data doesn't carry it.
@@ -4362,6 +4370,7 @@ function ChangesList({
       removed: f.removed ?? 0,
       hunks: [],
       uncommitted: f.uncommitted ?? false,
+      touchedByTask: f.touchedByTask ?? false,
       worktreeId: worktreeId ?? f.worktrees?.[0]?.id,
     }))
   }
@@ -4608,6 +4617,18 @@ function ChangesList({
                 className="shrink-0 text-[12px] font-bold leading-none text-zinc-200"
               >
                 U
+              </span>
+            )}
+
+            {/* Task-touched indicator — "T" letter. Same lifecycle as U:
+                appears when a Task iteration on this worktree wrote to the
+                path, disappears on commit (server clears the marker set). */}
+            {file.touchedByTask && (
+              <span
+                title="Modified by a task — still uncommitted"
+                className="shrink-0 text-[12px] font-bold leading-none text-violet-300"
+              >
+                T
               </span>
             )}
 
@@ -6171,6 +6192,39 @@ function ChatPanel({
   const isRunning = useChatIsRunning(sessionId)
   // Builder Workflow attached? Renders WorkflowRunCard below messages.
   const workflowRunId = useWorkflowRunId(sessionId)
+
+  // List of every workflow run that lived under this session — drives
+  // the inline rendering of WorkflowRunCards anchored to the user
+  // message that triggered them (via triggerMessageId). Refetched when
+  // the session changes or when a new run attaches (workflowRunId
+  // flips), so newly-started runs land in the list quickly.
+  //
+  // Heavy fields (progress, transcripts) stay on the per-run detail
+  // endpoint — the card component pulls them on demand via its own
+  // subscription. This list is just enough for positioning.
+  interface WorkflowRunListItem {
+    id: string
+    status: string
+    workflowType: string
+    triggerMessageId: string | null
+    createdAt: string
+    completedAt: string | null
+  }
+  const [workflowRunsList, setWorkflowRunsList] = useState<WorkflowRunListItem[]>([])
+  useEffect(() => {
+    if (!sessionId) return
+    let cancelled = false
+    async function load() {
+      try {
+        const res = await fetch(`/api/workflow?sessionId=${sessionId}`)
+        if (!res.ok || cancelled) return
+        const data = await res.json() as { runs: WorkflowRunListItem[] }
+        setWorkflowRunsList(data.runs)
+      } catch { /* offline / transient — try again on next trigger */ }
+    }
+    void load()
+    return () => { cancelled = true }
+  }, [sessionId, workflowRunId])
   const companionStatus = useCompanionStatus()
   const companionInfo = useCompanionInfo()
   const companionConnected = companionStatus === 'connected'
@@ -6192,6 +6246,13 @@ function ChatPanel({
   const [hasMoreOlder, setHasMoreOlder] = useState(false)
   const [oldestMessageId, setOldestMessageId] = useState<string | null>(null)
   const [loadingOlder, setLoadingOlder] = useState(false)
+
+  // Task-from-chat flow: clicking the discrete button under the last
+  // assistant message instantly creates a task (the API responds with
+  // the new TaskListItem) and surfaces a confirm modal. From there the
+  // user can hop into the same manage modal the /tasks page uses.
+  const [taskJustCreated, setTaskJustCreated] = useState<TaskListItem | null>(null)
+  const [manageTaskTarget, setManageTaskTarget] = useState<TaskListItem | null>(null)
 
 
   type DbMessage = {
@@ -7234,6 +7295,20 @@ function ChatPanel({
           // turn's block was closed would re-open that previous block
           // because it'd momentarily be "the last work block again".
           const tailIsLiveWork = items.length > 0 && items[items.length - 1].kind === 'work'
+          // Find the id of the LAST assistant message rendered. Only that
+          // message gets the discrete "take context to task" button —
+          // the button captures everything from the clicked message
+          // backwards as the task preamble, so it only makes sense on
+          // the most recent assistant turn (older messages already had
+          // the same chance when they were on top).
+          let lastAssistantMessageId: string | null = null
+          for (let i = items.length - 1; i >= 0; i--) {
+            const it = items[i]
+            if (it.kind === 'single' && it.msg.role === 'assistant') {
+              lastAssistantMessageId = it.msg.id
+              break
+            }
+          }
           return items.map((item, idx) => {
             if (item.kind === 'work') {
               const isActive = isRunning && tailIsLiveWork && idx === items.length - 1
@@ -7264,6 +7339,15 @@ function ChatPanel({
               return <ExitPlanModeBlock key={item.msg.id} message={item.msg} />
             }
             const msg = item.msg
+            // Inline workflow cards: any workflow run whose
+            // triggerMessageId equals this user msg's id renders right
+            // after the bubble. Anchored placement preserves chat
+            // chronology — cancelled/completed workflow cards stay at
+            // the moment they ran, instead of floating at the bottom
+            // and getting pushed around by newer chat turns.
+            const inlineWorkflowRuns = msg.role === 'user'
+              ? workflowRunsList.filter((r) => r.triggerMessageId === msg.id)
+              : []
             if (msg.role === 'user') {
               // Always run the diff stripper — no-op when there's no fenced
               // diff in `content`, so live messages whose optimistic upsert
@@ -7326,17 +7410,30 @@ function ChatPanel({
                       {bubbleText}
                     </div>
                   )}
+                  {inlineWorkflowRuns.map((wr) => (
+                    <div key={wr.id} className="w-full max-w-2xl min-w-0 overflow-hidden break-words">
+                      <WorkflowRunCard sessionId={sessionId} runId={wr.id} />
+                    </div>
+                  ))}
                 </div>
               )
             }
             if (msg.role === 'system') {
               if (msg.costUsd !== undefined) return null
+              // Workflow run summary — lives in chat_messages so
+              // Bridge IN / task snapshots / Claude --resume pick it
+              // up, but the chat UI shouldn't render it (the workflow
+              // card above already shows the per-role activity). Stable
+              // id pattern `wf-<runId>-summary` lets us drop it
+              // without parsing content.
+              if (typeof msg.id === 'string' && msg.id.startsWith('wf-') && msg.id.endsWith('-summary')) return null
               return (
                 <div key={msg.id} className="flex justify-start">
                   <p className="text-xs italic text-zinc-500">{msg.content}</p>
                 </div>
               )
             }
+            const isLastAssistant = msg.role === 'assistant' && msg.id === lastAssistantMessageId
             return (
               <div key={msg.id} className="flex justify-start">
                 {/* Cap markdown reply width to match the tool blocks
@@ -7350,12 +7447,28 @@ function ChatPanel({
                     docs viewers) keep their own layouts. */}
                 <div className="w-full max-w-2xl min-w-0 overflow-hidden break-words">
                   <MarkdownRenderer content={msg.content} />
+                  {isLastAssistant && !isRunning && (
+                    <TakeContextToTaskButton
+                      projectId={projectId}
+                      sessionId={sessionId}
+                      messageId={msg.id}
+                      onCreated={(task) => setTaskJustCreated(task)}
+                      onError={(message) => console.warn('[task-from-chat]', message)}
+                    />
+                  )}
                 </div>
               </div>
             )
           })
         })()}
-        {workflowRunId && (
+        {/* Fallback bottom-pin: only render the active workflow card
+            here if it isn't already rendered inline above (no
+            triggerMessageId match in workflowRunsList). Handles legacy
+            runs without the column populated and the brief window
+            where a fresh run started but the list refetch hasn't
+            completed yet. Once the list catches up, the inline render
+            takes over and this block goes silent. */}
+        {workflowRunId && !workflowRunsList.some((r) => r.id === workflowRunId && r.triggerMessageId) && (
           <div className="w-full max-w-2xl min-w-0 overflow-hidden break-words">
             <WorkflowRunCard sessionId={sessionId} runId={workflowRunId} />
           </div>
@@ -7804,6 +7917,21 @@ function ChatPanel({
                   // by their original timestamps). If it fails the
                   // user already has their UI back.
                   companionStore.interrupt(sessionId, companionProjectId).catch(() => {})
+                  // Workflow cancel — daemon `interrupt` only stops
+                  // chat-normal Claude. Workflows spawn their own
+                  // `claude -p` subprocess server-side (outside the
+                  // daemon's scope), so we need to hit the workflow
+                  // cancel endpoint directly. The endpoint flips
+                  // status='cancelled' AND SIGTERMs the active step's
+                  // subprocess via the process registry, so the
+                  // mid-step agent stops within ~100ms instead of
+                  // running to completion and then being labeled
+                  // "failed". Fire-and-forget — UI already feels
+                  // paused via markIdle above; the server-side cancel
+                  // is what makes it real.
+                  if (workflowRunId) {
+                    fetch(`/api/workflow/${workflowRunId}/cancel`, { method: 'POST' }).catch(() => {})
+                  }
                 }}
                 title="Stop"
                 className="ml-1 flex h-7 w-7 items-center justify-center rounded-lg bg-white text-zinc-900 transition-colors hover:bg-zinc-200"
@@ -7884,6 +8012,32 @@ function ChatPanel({
             onClose={() => setShowReminderModal(false)}
           />
         )}
+
+        {/* Task-from-chat flow: the confirm modal pops as soon as the
+            button creates a task, then optionally hands off to the
+            shared manage modal (same component the /tasks page uses).
+            Both render at the end so they sit on top of the chat. */}
+        <TaskCreatedConfirmModal
+          open={taskJustCreated !== null && manageTaskTarget === null}
+          taskName={taskJustCreated?.name ?? ''}
+          onClose={() => setTaskJustCreated(null)}
+          onManage={() => {
+            setManageTaskTarget(taskJustCreated)
+            setTaskJustCreated(null)
+          }}
+        />
+        <TaskManageModal
+          projectId={projectId}
+          open={manageTaskTarget !== null}
+          task={manageTaskTarget}
+          onClose={() => setManageTaskTarget(null)}
+          onOpenChainedTask={async (taskId) => {
+            try {
+              const res = await fetch(`/api/projects/${projectId}/tasks/${taskId}`)
+              if (res.ok) setManageTaskTarget(await res.json() as TaskListItem)
+            } catch { /* keep modal open with the source task */ }
+          }}
+        />
       </div>
     </div>
   )

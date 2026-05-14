@@ -35,12 +35,12 @@ interface RunSnapshotProgress {
     index: number
     name: string
     objective: string
-    status: 'pending' | 'running' | 'completed' | 'failed'
+    status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
     rejectCount?: number
     steps?: Array<{
       role: 'planner' | 'architect' | 'builder' | 'reviewer' | 'detective' | 'consolidator'
       attempt: number
-      status: 'pending' | 'running' | 'completed' | 'failed'
+      status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
       durationMs?: number
       output?: string
       decision?: 'APPROVED' | 'REJECT' | 'FORCED_APPROVAL'
@@ -61,7 +61,7 @@ interface RunSnapshotProgress {
   parallelSteps?: Array<{
     role: 'detective'
     attempt: number
-    status: 'pending' | 'running' | 'completed' | 'failed'
+    status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
     startedAt?: number
     finishedAt?: number
     durationMs?: number
@@ -195,11 +195,17 @@ function Header({ snapshot }: { snapshot: WorkflowRunUIState }) {
 }
 
 function StatusDot({ status }: { status: string }) {
+  // 'cancelled' is user-initiated pause — neutral zinc (the user chose
+  // to stop, nothing went wrong). 'failed' is a system error — rose.
+  // Visually separating the two so the chat doesn't look catastrophic
+  // when the user just clicked pause.
   const cls = status === 'running' || status === 'pending'
     ? 'bg-amber-400 animate-pulse'
     : status === 'completed'
     ? 'bg-emerald-400'
-    : status === 'failed' || status === 'cancelled'
+    : status === 'cancelled'
+    ? 'bg-zinc-400'
+    : status === 'failed'
     ? 'bg-rose-400'
     : 'bg-zinc-500'
   return <span className={`inline-block h-1.5 w-1.5 rounded-full ${cls}`} />
@@ -317,10 +323,12 @@ function DetectiveTile({
 }) {
   const marker = step.status === 'completed' ? '✓'
     : step.status === 'failed' ? '✗'
+    : step.status === 'cancelled' ? '⏸'
     : step.status === 'running' ? '▶'
     : '◌'
   const markerCls = step.status === 'completed' ? 'text-emerald-400'
     : step.status === 'failed' ? 'text-rose-400'
+    : step.status === 'cancelled' ? 'text-zinc-400'
     : step.status === 'running' ? 'text-amber-400'
     : 'text-zinc-600'
 
@@ -361,10 +369,12 @@ function BlockRow({
 
   const marker = block.status === 'completed' ? '✓'
     : block.status === 'failed' ? '✗'
+    : block.status === 'cancelled' ? '⏸'
     : isActive ? '▶'
     : '◌'
   const markerCls = block.status === 'completed' ? 'text-emerald-400'
     : block.status === 'failed' ? 'text-rose-400'
+    : block.status === 'cancelled' ? 'text-zinc-400'
     : isActive ? 'text-amber-400'
     : 'text-zinc-600'
 
@@ -571,12 +581,14 @@ function StepRow({ step }: { step: NonNullable<NonNullable<RunSnapshotProgress['
     : step.status === 'completed' && step.decision === 'FORCED_APPROVAL' ? '⚠'
     : step.status === 'completed' ? '✓'
     : step.status === 'failed' ? '✗'
+    : step.status === 'cancelled' ? '⏸'
     : step.status === 'running' ? '▶'
     : '◌'
   const cls = step.status === 'completed' && step.decision === 'REJECT' ? 'text-rose-400'
     : step.status === 'completed' && step.decision === 'FORCED_APPROVAL' ? 'text-amber-400'
     : step.status === 'completed' ? 'text-emerald-400'
     : step.status === 'failed' ? 'text-rose-400'
+    : step.status === 'cancelled' ? 'text-zinc-400'
     : step.status === 'running' ? 'text-amber-400 animate-pulse'
     : 'text-zinc-600'
   return (

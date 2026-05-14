@@ -22,4 +22,11 @@ export async function register() {
     // cost on first request instead of getting a cold-start crash.
     console.warn('[instrumentation] skill cache preload failed:', (err as Error).message)
   }
+
+  try {
+    const { startTaskScheduler } = await import('@/lib/tasks/scheduler')
+    startTaskScheduler()
+  } catch (err) {
+    console.warn('[instrumentation] task scheduler start failed:', (err as Error).message)
+  }
 }
