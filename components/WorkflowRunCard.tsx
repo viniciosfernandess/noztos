@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useWorkflowSnapshot, type WorkflowRunUIState } from '@/lib/hooks/useWorkflowSnapshot'
-import { companionStore } from '@/lib/companion-store'
 
 // Card vivo no chat com progresso do Builder Workflow.
 //
@@ -78,9 +77,7 @@ interface RunSnapshotProgress {
   }
 }
 
-const TERMINAL_STATUSES = new Set(['completed', 'failed', 'cancelled'])
-
-export function WorkflowRunCard({ sessionId, runId }: { sessionId: string; runId: string }) {
+export function WorkflowRunCard({ runId }: { sessionId?: string; runId: string }) {
   const snapshot = useWorkflowSnapshot(runId)
 
   if (!snapshot) {
@@ -91,8 +88,11 @@ export function WorkflowRunCard({ sessionId, runId }: { sessionId: string; runId
     )
   }
 
-  const isTerminal = TERMINAL_STATUSES.has(snapshot.status)
-
+  // No dismiss action: the card is part of chat history, anchored
+  // chronologically to the user msg that triggered the run via
+  // triggerMessageId. It stays put regardless of status — the user
+  // sees what was attempted, what each role did, and the outcome,
+  // exactly like a chat message can't be "dismissed".
   return (
     <div className="my-3 rounded-md border border-white/10 bg-white/[0.02]">
       <Header snapshot={snapshot} />
@@ -102,17 +102,6 @@ export function WorkflowRunCard({ sessionId, runId }: { sessionId: string; runId
       {snapshot.errorReason && (
         <div className="border-t border-white/10 px-3 py-1.5 text-[10px] text-rose-400">
           {snapshot.errorReason}
-        </div>
-      )}
-      {isTerminal && (
-        <div className="flex justify-end border-t border-white/10 px-3 py-1.5">
-          <button
-            type="button"
-            onClick={() => companionStore.dismissWorkflowRun(runId, sessionId)}
-            className="rounded px-2 py-1 text-[10px] text-zinc-500 transition-colors hover:bg-white/5 hover:text-zinc-300"
-          >
-            Dispensar
-          </button>
         </div>
       )}
     </div>
