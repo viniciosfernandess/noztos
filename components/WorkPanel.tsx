@@ -2700,23 +2700,26 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
 
                       <div className="flex-1" />
 
-                      {/* Tasks (worktree-scoped) — toggles the chat
-                          area between the normal ChatPanel and a
-                          TasksPanel filtered to this worktree. /tasks
-                          page (project-wide) stays untouched; this
-                          is the quick lens for managing tasks of
-                          THIS branch without leaving the chat. Active
-                          state styled to make the current view
-                          obvious. */}
+                      {/* Tasks (worktree-scoped) — small text badge in
+                          the same visual family as the origin/main pill
+                          to its left. Toggles the chat area between
+                          the normal ChatPanel and a TasksPanel filtered
+                          to this worktree. /tasks page (project-wide)
+                          stays untouched; this is the quick lens for
+                          managing tasks of THIS branch without leaving
+                          the chat. Active state turns violet so the
+                          current view is obvious. */}
                       <button
                         type="button"
                         onClick={() => setShowWorktreeTasks((v) => !v)}
                         title={showWorktreeTasks ? 'Back to chat' : "Tasks (this worktree)"}
-                        className={`transition-colors ${showWorktreeTasks ? 'text-violet-400 hover:text-violet-300' : 'text-zinc-500 hover:text-zinc-300'}`}
+                        className={`flex items-center rounded-md border px-2 py-0.5 font-mono text-[11px] transition-colors ${
+                          showWorktreeTasks
+                            ? 'border-violet-500/40 bg-violet-500/15 text-violet-200 hover:bg-violet-500/20'
+                            : 'border-[#3C3C3C] bg-[#2A2A2A] text-zinc-300 hover:border-zinc-500'
+                        }`}
                       >
-                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.745 3.745 0 0121 12z" />
-                        </svg>
+                        tasks
                       </button>
 
                       {/* Scratchpad */}

@@ -118,9 +118,16 @@ export function TasksPanel({ projectId, worktreeId }: TasksPanelProps) {
   const running = tasks.filter((t) => t.status === 'running')
 
   return (
-    <div className="flex flex-1 overflow-hidden" style={{ backgroundColor: '#1F1F1F' }}>
-      {/* Main: 3 columns */}
-      <div className="flex min-h-0 flex-1 flex-col">
+    // overflow-x-auto + min-w on the inner blocks: when the chat area
+    // is narrowed by sidebars/filters, the running area no longer gets
+    // clipped — instead the whole panel scrolls horizontally. Themed
+    // scrollbar (chat-scroll) keeps it from showing the chunky native
+    // macOS overlay. overflow-y-hidden on the outer leaves the column
+    // bodies + running area to manage their own vertical scroll.
+    <div className="chat-scroll flex flex-1 overflow-x-auto overflow-y-hidden" style={{ backgroundColor: '#1F1F1F' }}>
+      {/* Main: 3 columns — min-w guarantees each column stays at least
+          ~160 px wide; below that the parent scrolls instead of squishing. */}
+      <div className="flex min-h-0 min-w-[480px] flex-1 flex-col">
         <div className="flex shrink-0 border-b border-white/10 text-[11px] uppercase tracking-wide text-zinc-500">
           <ColumnHeader label="Pending" count={pending.length} color="amber" />
           <ColumnHeader label="Scheduled" count={scheduled.length} color="blue" />
@@ -158,7 +165,7 @@ export function TasksPanel({ projectId, worktreeId }: TasksPanelProps) {
           Running
           <span className="rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-300">{running.length}</span>
         </div>
-        <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
+        <div className="chat-scroll flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
           {running.length === 0 ? (
             <EmptyState label="No running tasks" />
           ) : (
@@ -200,7 +207,7 @@ export function TasksPanel({ projectId, worktreeId }: TasksPanelProps) {
 
 function Column({ children, last }: { children: React.ReactNode; last?: boolean }) {
   return (
-    <div className={`flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3 ${last ? '' : 'border-r border-white/10'}`}>
+    <div className={`chat-scroll flex min-h-0 min-w-[160px] flex-1 flex-col gap-2 overflow-y-auto p-3 ${last ? '' : 'border-r border-white/10'}`}>
       {children}
     </div>
   )
