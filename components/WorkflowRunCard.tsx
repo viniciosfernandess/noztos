@@ -170,17 +170,44 @@ function workflowLabel(workflowType: string | undefined): { icon: string; name: 
 
 function Header({ snapshot }: { snapshot: WorkflowRunUIState }) {
   const status = snapshot.status
-  const elapsed = ((snapshot.completedAt ? new Date(snapshot.completedAt).getTime() : Date.now()) - new Date(snapshot.createdAt).getTime()) / 1000
+  const isTerminal = status === 'completed' || status === 'failed' || status === 'cancelled'
   const { icon, name } = workflowLabel(snapshot.workflowType)
+  // Active runs show an elapsed timer that ticks. Terminal runs show
+  // "5 min ago" relative to completedAt — much more useful than the
+  // run's frozen duration ("434s") once it's done. We re-render this
+  // header on a 1-minute interval so the "X min ago" stays fresh as
+  // time passes, without subscribing to anything beyond the local clock.
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60_000)
+    return () => clearInterval(t)
+  }, [])
+  const timeLabel = isTerminal && snapshot.completedAt
+    ? `${formatRelativeAgo(now - new Date(snapshot.completedAt).getTime())} ago`
+    : `${Math.round((now - new Date(snapshot.createdAt).getTime()) / 1000)}s`
 
   return (
     <div className="flex items-center gap-2 border-b border-white/10 px-3 py-1.5 text-[11px]">
       <StatusDot status={status} />
       <span className="font-medium text-zinc-300">{icon} {name}</span>
       <span className="text-zinc-500">{status === 'running' ? 'running' : status}</span>
-      <span className="ml-auto text-zinc-500">{elapsed.toFixed(0)}s</span>
+      <span className="ml-auto text-zinc-500">{timeLabel}</span>
     </div>
   )
+}
+
+// Compact "5 min ago" / "2h ago" / "3 days ago" formatter for terminal-
+// state cards. Keeps the time label short enough to share the header
+// row with the workflow name and status.
+function formatRelativeAgo(ms: number): string {
+  const abs = Math.max(0, ms)
+  const minutes = Math.round(abs / 60_000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes} min`
+  const hours = Math.round(abs / 3_600_000)
+  if (hours < 24) return `${hours}h`
+  const days = Math.round(abs / 86_400_000)
+  return `${days} day${days === 1 ? '' : 's'}`
 }
 
 function StatusDot({ status }: { status: string }) {

@@ -552,7 +552,6 @@ function DoneView({
     outputSummary: string | null
     fullOutput: string | null
     errorReason: string | null
-    filesTouched: string[] | null
     workflowRunId: string | null
   } | null
 }) {
@@ -600,15 +599,6 @@ function DoneView({
         </div>
       </Field>
 
-      {iteration.filesTouched && iteration.filesTouched.length > 0 && (
-        <Field label="Files touched">
-          <ul className="space-y-0.5 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] font-mono text-zinc-300">
-            {iteration.filesTouched.map((f) => (
-              <li key={f} className="truncate">{f}</li>
-            ))}
-          </ul>
-        </Field>
-      )}
     </div>
   )
 }

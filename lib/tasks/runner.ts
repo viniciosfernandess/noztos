@@ -444,11 +444,37 @@ async function markWorktreeTouched(worktreeId: string, paths: string[]): Promise
   try {
     const row = await prisma.worktree.findUnique({
       where: { id: worktreeId },
-      select: { taskTouchedPaths: true },
+      select: { taskTouchedPaths: true, worktreePath: true },
     })
-    const current = Array.isArray(row?.taskTouchedPaths) ? (row.taskTouchedPaths as unknown[]).filter((p): p is string => typeof p === 'string') : []
-    const merged = Array.from(new Set([...current, ...paths]))
-    if (merged.length === current.length) {
+    if (!row) {
+      console.warn(`[task-runner/touched] worktree=${worktreeId.slice(0, 8)} not found`)
+      return
+    }
+    // Normalize absolute paths to repo-relative — same shape that `git
+    // status --porcelain` emits, which is what the Changes API
+    // (/api/projects/[id]/repository/files) compares against to decide
+    // whether to light up the "T" badge. Without this normalization,
+    // every path stored here had the full /Users/.../wt-... prefix and
+    // the badge would never match against git's "src/foo.ts" output.
+    //
+    // We also re-normalize anything that was already in the array
+    // (legacy absolute entries from before this fix) so they get
+    // cleaned up incrementally. A path that doesn't start with the
+    // worktree root falls back to as-is — defensive for the rare case
+    // where the agent edited something outside the worktree.
+    const root = (row.worktreePath ?? '').replace(/\/$/, '')
+    const toRel = (p: string): string => {
+      if (!root) return p
+      if (p === root) return ''
+      if (p.startsWith(root + '/')) return p.slice(root.length + 1)
+      return p
+    }
+    const current = Array.isArray(row.taskTouchedPaths)
+      ? (row.taskTouchedPaths as unknown[]).filter((p): p is string => typeof p === 'string').map(toRel)
+      : []
+    const incoming = paths.map(toRel)
+    const merged = Array.from(new Set([...current, ...incoming]))
+    if (merged.length === current.length && incoming.every((p) => current.includes(p))) {
       console.log(`[task-runner/touched] worktree=${worktreeId.slice(0, 8)} no new paths (current=${current.length})`)
       return
     }
