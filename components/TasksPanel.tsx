@@ -31,11 +31,16 @@ import type { TaskListItem, TaskDetail } from './tasks/types'
 
 interface TasksPanelProps {
   projectId: string
+  // Optional: when set, filter the listing to a single worktree
+  // (used by the in-chat tasks panel that mirrors /tasks but scoped
+  // to the active worktree). When omitted, behaves as the standalone
+  // /tasks page and shows every task in the project.
+  worktreeId?: string | null
 }
 
 const POLL_MS = 8_000
 
-export function TasksPanel({ projectId }: TasksPanelProps) {
+export function TasksPanel({ projectId, worktreeId }: TasksPanelProps) {
   const [tasks, setTasks] = useState<TaskListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -44,7 +49,10 @@ export function TasksPanel({ projectId }: TasksPanelProps) {
 
   const loadTasks = useCallback(async () => {
     try {
-      const res = await fetch(`/api/projects/${projectId}/tasks`)
+      const url = worktreeId
+        ? `/api/projects/${projectId}/tasks?worktreeId=${encodeURIComponent(worktreeId)}`
+        : `/api/projects/${projectId}/tasks`
+      const res = await fetch(url)
       if (!res.ok) {
         const j = await res.json().catch(() => null)
         setError(j?.error ?? `Failed to load tasks (${res.status})`)
@@ -56,7 +64,7 @@ export function TasksPanel({ projectId }: TasksPanelProps) {
     } finally {
       setLoading(false)
     }
-  }, [projectId])
+  }, [projectId, worktreeId])
 
   useEffect(() => {
     void loadTasks()

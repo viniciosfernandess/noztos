@@ -34,6 +34,7 @@ import { CompanionProvider, setActiveSessionIdForUnread } from './CompanionProvi
 import { ClaudeToolCard, SessionResultCard, ModeSelector, ModelSelector, ThinkingSelector, CompanionStatusBadge, WorkBlock, TodoBlock, ExitPlanModeBlock } from './ClaudeToolCard'
 import { ReportBadge } from './ChatReport'
 import { WorkflowRunCard } from './WorkflowRunCard'
+import { TasksPanel } from './TasksPanel'
 import { TakeContextToTaskButton } from './tasks/TakeContextToTaskButton'
 import { TaskCreatedConfirmModal } from './tasks/TaskCreatedConfirmModal'
 import { TaskManageModal } from './tasks/TaskManageModal'
@@ -1330,6 +1331,12 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
   // Scratchpad — per-project free-form notes, referenced via @notes in chat
   const [showScratchpad, setShowScratchpad] = useState(false)
   const [scratchpadContent, setScratchpadContent] = useState('')
+  // In-worktree tasks view: when true, the chat area swaps for a
+  // TasksPanel filtered to the active worktree's tasks. Mirror of the
+  // /tasks page but scoped — same component, same modal, just with a
+  // worktreeId pre-filter. Toggle lives in the top bar between the
+  // origin/main badge and the scratchpad icon.
+  const [showWorktreeTasks, setShowWorktreeTasks] = useState(false)
   // Busy (currently processing) + unread are owned by the
   // `companionStore`. CompanionProvider feeds them from the single SSE
   // stream; hooks here just observe. That's how switching chats stays
@@ -2693,6 +2700,25 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
 
                       <div className="flex-1" />
 
+                      {/* Tasks (worktree-scoped) — toggles the chat
+                          area between the normal ChatPanel and a
+                          TasksPanel filtered to this worktree. /tasks
+                          page (project-wide) stays untouched; this
+                          is the quick lens for managing tasks of
+                          THIS branch without leaving the chat. Active
+                          state styled to make the current view
+                          obvious. */}
+                      <button
+                        type="button"
+                        onClick={() => setShowWorktreeTasks((v) => !v)}
+                        title={showWorktreeTasks ? 'Back to chat' : "Tasks (this worktree)"}
+                        className={`transition-colors ${showWorktreeTasks ? 'text-violet-400 hover:text-violet-300' : 'text-zinc-500 hover:text-zinc-300'}`}
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 01-1.043 3.296 3.745 3.745 0 01-3.296 1.043A3.745 3.745 0 0112 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 01-3.296-1.043 3.745 3.745 0 01-1.043-3.296A3.745 3.745 0 013 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 011.043-3.296 3.746 3.746 0 013.296-1.043A3.746 3.746 0 0112 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 013.296 1.043 3.746 3.746 0 011.043 3.296A3.745 3.745 0 0121 12z" />
+                        </svg>
+                      </button>
+
                       {/* Scratchpad */}
                       <button
                         type="button"
@@ -2840,6 +2866,15 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
               })()}
 
               <div className="flex flex-1 overflow-hidden">
+                {showWorktreeTasks && activeWorktreeId ? (
+                  // Worktree-scoped tasks view — same TasksPanel as the
+                  // /tasks page, just filtered by worktreeId. Click the
+                  // top-bar tasks icon again to toggle back to the chat.
+                  // The chat slice stays mounted in the store, so the
+                  // round-trip keeps every message + workflow card
+                  // intact.
+                  <TasksPanel projectId={projectId} worktreeId={activeWorktreeId} />
+                ) : (
                 <ChatPanel
                   projectId={projectId}
                   sessionId={activeSessionId}
@@ -2891,6 +2926,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                     companionStore.clearPendingAttachments(activeSessionId)
                   }}
                 />
+                )}
               </div>
             </div>
         ) : (
