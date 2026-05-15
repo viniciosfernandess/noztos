@@ -149,7 +149,7 @@ function CardScrollBody({ children }: { children: React.ReactNode }) {
     <div
       ref={scrollRef}
       onScroll={handleScroll}
-      className="max-h-[480px] overflow-y-auto"
+      className="chat-scroll max-h-[480px] overflow-y-auto"
     >
       {children}
     </div>
@@ -355,7 +355,7 @@ function DetectiveTile({
         <span className="text-[10px] text-zinc-500">#{index + 1}</span>
         <span className="truncate text-zinc-300">{name}</span>
       </div>
-      <div className="max-h-[160px] overflow-y-auto px-2 py-1">
+      <div className="chat-scroll max-h-[160px] overflow-y-auto px-2 py-1">
         <LiveTranscript chunks={step.transcript} projectPath={projectPath} />
         {step.status === 'failed' && step.errorReason && (
           <p className="mt-1 text-[10px] text-rose-400">{step.errorReason}</p>
@@ -481,7 +481,7 @@ function LiveTranscript({ chunks, projectPath }: { chunks?: TranscriptChunk[]; p
     <div
       ref={scrollRef}
       onScroll={handleScroll}
-      className="mt-2 max-h-72 space-y-1.5 overflow-y-auto border-l border-amber-500/20 pl-2.5"
+      className="chat-scroll mt-2 max-h-72 space-y-1.5 overflow-y-auto border-l border-amber-500/20 pl-2.5"
     >
       {chunks.map((chunk, i) => {
         if (chunk.type === 'text') {
@@ -528,7 +528,7 @@ function ToolChunk({ use, result, projectPath }: { use: TranscriptChunk; result?
         )}
       </button>
       {open && hasResult && (
-        <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words border-t border-white/5 px-2 py-1 font-mono text-[10px] text-zinc-400">
+        <pre className="chat-scroll max-h-48 overflow-auto whitespace-pre-wrap break-words border-t border-white/5 px-2 py-1 font-mono text-[10px] text-zinc-400">
           {result?.toolResult}
         </pre>
       )}

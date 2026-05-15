@@ -72,11 +72,32 @@ export function TasksPanel({ projectId }: TasksPanelProps) {
   }, [selectedTask, loadTasks])
 
   async function openTask(task: TaskListItem) {
+    // Optimistic review flip: when the user clicks a done/failed card
+    // that's still amber (reviewedAt=null), assume the GET below will
+    // stamp it server-side and update the local list right now so the
+    // card flips emerald immediately. The server is still source of
+    // truth — the .then() below reconciles whatever it returns. If
+    // the GET fails, the next 8s poll re-fetches and corrects.
+    const willStamp = (task.status === 'done' || task.status === 'failed') && !task.reviewedAt
+    if (willStamp) {
+      const nowIso = new Date().toISOString()
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? { ...t, reviewedAt: nowIso } : t)))
+    }
+
     // Fetch the full TaskDetail (including iterations) for the modal.
     try {
       const res = await fetch(`/api/projects/${projectId}/tasks/${task.id}`)
       if (res.ok) {
-        setSelectedTask(await res.json() as TaskDetail)
+        const detail = await res.json() as TaskDetail
+        setSelectedTask(detail)
+        // Reconcile the list with whatever the server returned. The
+        // iterations subarray belongs to TaskDetail only — we strip
+        // it before merging so the list-level shape (TaskListItem)
+        // stays clean. Cast to never because TS can't infer that the
+        // destructured rest matches TaskListItem exactly.
+        const { iterations: _iterations, ...listFields } = detail
+        void _iterations
+        setTasks((prev) => prev.map((t) => (t.id === detail.id ? { ...t, ...(listFields as unknown as TaskListItem) } : t)))
         return
       }
     } catch { /* fall through to list-level data */ }

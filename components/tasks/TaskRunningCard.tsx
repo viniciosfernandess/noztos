@@ -69,18 +69,17 @@ export function TaskRunningCard({ task, onOpen }: Props) {
           {isWorkflow && current?.workflowRunId ? (
             // Reuse the existing chat workflow card — same data
             // pipeline (workflow_progress SSE → workflowSnapshots),
-            // same UI affordances (per-step transcript, tool cards,
-            // fix loop). No duplication, no divergence over time.
-            // Compact height: the side area is just a "this is
-            // happening" pulse; full inspection lives behind "Open
-            // task" → manage modal.
-            <div className="max-h-[240px] overflow-y-auto p-2">
+            // same UI affordances. Fixed-height container keeps the
+            // card's visual footprint constant: as the agent emits
+            // chunks the box DOESN'T grow, the scroll just kicks in.
+            // Full inspection lives behind "Open task".
+            <div className="chat-scroll h-[240px] overflow-y-auto p-2">
               <WorkflowRunCard runId={current.workflowRunId} />
             </div>
           ) : current?.id ? (
             <SkillTranscript iterationId={current.id} />
           ) : (
-            <p className="px-3 py-2 text-[11px] italic text-zinc-500">Waiting for runner…</p>
+            <p className="h-[240px] px-3 py-2 text-[11px] italic text-zinc-500">Waiting for runner…</p>
           )}
           <div className="flex justify-end border-t border-violet-500/20 px-3 py-1.5">
             <button
@@ -122,14 +121,14 @@ function SkillTranscript({ iterationId }: { iterationId: string }) {
   }, [chunks])
 
   if (chunks.length === 0) {
-    return <p className="px-3 py-2 text-[11px] italic text-zinc-500">Streaming…</p>
+    return <p className="h-[240px] px-3 py-2 text-[11px] italic text-zinc-500">Streaming…</p>
   }
 
   return (
     <div
       ref={scrollRef}
       onScroll={handleScroll}
-      className="max-h-[240px] space-y-1 overflow-y-auto px-3 py-2 text-[11px]"
+      className="chat-scroll h-[240px] space-y-1 overflow-y-auto px-3 py-2 text-[11px]"
     >
       {chunks.map((c, i) => (
         <ChunkLine key={i} chunk={c} />
