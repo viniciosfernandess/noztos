@@ -403,7 +403,7 @@ export function TaskManageModal({ projectId, open, task, onClose, onChanged, onO
             <>
               <ActionButton variant="ghost" onClick={handleDelete} busy={busy === 'delete'}>Delete</ActionButton>
               <ActionButton variant="primary" onClick={handleCreateChained} busy={busy === 'chain'}>
-                Create chained task
+                New task <span className="opacity-70">(cumulative context)</span>
               </ActionButton>
             </>
           )}

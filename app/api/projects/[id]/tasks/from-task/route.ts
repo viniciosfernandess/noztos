@@ -1,19 +1,21 @@
 // POST /api/projects/[id]/tasks/from-task
 //
-// Creates a chained task — a new Task whose contextSnapshot is the
-// source task's snapshot with one extra `<previous_task>` block
-// appended, containing the source task's instruction + final result.
+// Creates a chained task. The new task's contextSnapshot is:
 //
-// Use case: the user opens a Done task's modal, sees the model output,
-// and decides "now I want another task to act on what this one just
-// produced." Click "Create chained task" → POST here → new pending task
-// opens in the manage modal. The chain is transparent: each chained
-// task carries forward the full history.
+//   parent.contextSnapshot  +  serializeTaskHistory(parent)
 //
-// Why an extra route instead of /tasks/from-chat with a flag: the
-// inputs are completely different (source task vs anchored chat
-// message), and the snapshot construction logic doesn't overlap. Two
-// routes keep both narrow.
+// `serializeTaskHistory` walks the parent's iterations in order and
+// renders each as a chat-style turn — for workflow iterations it
+// embeds the full per-role hand-off via <workflow_internals>, the
+// same format the chat workflow card uses. Skill iterations are
+// simpler (prompt + result). Because each parent's contextSnapshot
+// already contains its own ancestors' task_history blocks, the chain
+// is transitively complete with a single concatenation; no recursive
+// traversal needed at fork time.
+//
+// A soft 80 KB budget caps growth on deep chains. The chat_context
+// base is always preserved; older task_history blocks are dropped
+// oldest-first when the snapshot exceeds the budget.
 //
 // Required body fields:
 //   sourceTaskId — the task to fork from
@@ -23,18 +25,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyProjectAccess } from '@/lib/auth'
+import { serializeTaskHistory, truncateToBudget } from '@/lib/tasks/history'
 
 interface RouteContext {
   params: Promise<{ id: string }>
 }
 
-function escapeXml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
-
-function escapeAttr(s: string): string {
-  return escapeXml(s).replace(/"/g, '&quot;')
-}
+// Soft cap on contextSnapshot bytes. Tuned generously so 95%+ of
+// chains never hit truncation in practice. 300 KB fits ~5-6 deep
+// workflow chains (each ~50 KB serialized with internals) on top of
+// the 30 KB chat context base, leaving headroom for skill iterations
+// in between. Cost trade-off: extra input tokens per chained run,
+// but the alternative (losing parent memory on truncation) defeats
+// the whole point of chaining. The invariant "always keep at least
+// the most recent block" in truncateToBudget makes the overshoot
+// path graceful when chains do get extreme.
+const SNAPSHOT_BUDGET_BYTES = 300 * 1024
 
 export async function POST(request: NextRequest, context: RouteContext) {
   const { id } = await context.params
@@ -61,18 +67,23 @@ export async function POST(request: NextRequest, context: RouteContext) {
       worktreeId: true,
       contextSnapshot: true,
       contextSource: true,
-      instruction: true,
-      executorKind: true,
-      executorId: true,
-      chatMode: true,
       iterations: {
-        orderBy: { iterationNumber: 'desc' },
-        take: 1,
+        // ALL completed iterations in chronological order — the
+        // chain captures the source task's full execution history,
+        // not just its latest run. Re-runs of the source feed the
+        // chained task with everything that was learned.
+        orderBy: { iterationNumber: 'asc' },
         select: {
-          finishedAt: true,
-          outputSummary: true,
-          fullOutput: true,
+          iterationNumber: true,
+          instruction: true,
+          executorKind: true,
+          executorId: true,
+          chatMode: true,
           status: true,
+          fullOutput: true,
+          outputSummary: true,
+          workflowRunId: true,
+          finishedAt: true,
         },
       },
     },
@@ -80,33 +91,31 @@ export async function POST(request: NextRequest, context: RouteContext) {
   if (!source) {
     return NextResponse.json({ error: 'Source task not found' }, { status: 404 })
   }
-  const latest = source.iterations[0]
-  if (!latest || latest.status !== 'completed') {
+  // Require at least one completed iteration so there's actually
+  // history to inherit. Otherwise a chain off an empty task would
+  // just clone the snapshot without adding any signal.
+  const hasCompleted = source.iterations.some((it) => it.status === 'completed')
+  if (!hasCompleted) {
     return NextResponse.json(
       { error: 'Source task has no completed iteration to chain from.' },
       { status: 400 },
     )
   }
 
-  // Append one `<previous_task>` block carrying the source's user
-  // prompt + assistant response. Anything earlier in the chain is
-  // already inside source.contextSnapshot (each chain step appends one
-  // more block), so a single append is enough — no walking back.
-  const result = latest.fullOutput ?? latest.outputSummary ?? ''
-  const attrs = [
-    `name="${escapeAttr(source.name)}"`,
-    `executor="${escapeAttr(`${source.executorKind ?? '?'}/${source.executorId ?? '?'}`)}"`,
-    `mode="${escapeAttr(source.chatMode ?? '?')}"`,
-    `finishedAt="${escapeAttr(latest.finishedAt?.toISOString() ?? '')}"`,
-  ].join(' ')
-  const block = [
-    `<previous_task ${attrs}>`,
-    `  <instruction>${escapeXml(source.instruction ?? '')}</instruction>`,
-    `  <result>${escapeXml(result)}</result>`,
-    `</previous_task>`,
-  ].join('\n')
+  // Build the new contextSnapshot: parent's full inherited base +
+  // parent's own thread serialized as task_history.
+  const sourceHistory = await serializeTaskHistory(
+    { id: source.id, name: source.name },
+    source.iterations,
+  )
+  const merged = sourceHistory
+    ? `${source.contextSnapshot}\n\n${sourceHistory}`
+    : source.contextSnapshot
 
-  const newSnapshot = `${source.contextSnapshot}\n${block}`
+  const newSnapshot = truncateToBudget(merged, SNAPSHOT_BUDGET_BYTES)
+  const truncated = newSnapshot.length < merged.length
+  console.log(`[task/from-task] source=${source.id.slice(0, 8)} parentSnap=${source.contextSnapshot.length}b history=${sourceHistory.length}b merged=${merged.length}b final=${newSnapshot.length}b${truncated ? ' (truncated)' : ''}`)
+
   const name = body.name?.trim() || `${source.name} (chained)`
 
   const task = await prisma.task.create({
@@ -138,6 +147,19 @@ export async function POST(request: NextRequest, context: RouteContext) {
       worktree: { select: { branchName: true } },
     },
   })
+
+  // Enforce a linear chain per worktree: once a task is forked, the
+  // source disappears from the user's lists. Prevents the fan-out
+  // footgun — forking the same Done task twice would create two
+  // parallel chains writing to the same worktree filesystem, with
+  // each branch unaware of the other's edits. The source row stays
+  // in the DB (soft-delete via deletedAt) so the audit trail and
+  // chain lineage (sourceTaskId pointer) remain intact.
+  await prisma.task.update({
+    where: { id: source.id },
+    data: { deletedAt: new Date() },
+  })
+  console.log(`[task/from-task] source=${source.id.slice(0, 8)} soft-deleted (linear chain enforced)`)
 
   const { worktree, ...rest } = task
   return NextResponse.json(
