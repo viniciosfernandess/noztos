@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyProjectAccess } from '@/lib/auth'
 import { ensureSandboxRunning } from '@/lib/sandbox-manager'
-import { LocalProvider } from '@/lib/compute-local'
+import { cloudAwareCompute } from '@/lib/compute-router'
 
-const compute = new LocalProvider()
+// Cloud-aware: when the requested file path falls under a worktree
+// whose activeContext='cloud', the router transparently delegates to
+// the E2B sandbox. Main-branch paths stay on local.
+const compute = cloudAwareCompute
 
 interface RouteParams {
   params: Promise<{ id: string; path: string }>

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyProjectAccess } from '@/lib/auth'
 import { loadProjectGitContext } from '@/lib/git'
 import { prisma } from '@/lib/db'
-import { LocalProvider } from '@/lib/compute-local'
+import { cloudAwareCompute } from '@/lib/compute-router'
 
 interface RouteContext { params: Promise<{ id: string }> }
 
@@ -60,8 +60,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const repo = repoData.name
   const remoteUrl = `https://${ctx.githubToken}@github.com/${owner}/${repo}.git`
 
-  // Step 2+3 — wire up the remote and push
-  const compute = new LocalProvider()
+  // Step 2+3 — wire up the remote and push. Publishing is always a
+  // main-branch op so the cloud-aware router falls back to local
+  // automatically.
+  const compute = cloudAwareCompute
 
   await compute.exec(ctx.sandboxId, `cd ${ctx.sandboxId} && git remote remove origin 2>/dev/null || true`)
   await compute.exec(ctx.sandboxId, `cd ${ctx.sandboxId} && git remote add origin ${remoteUrl}`)

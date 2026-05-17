@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/db'
 import { ensureSandboxRunning } from '@/lib/sandbox-manager'
 import { loadProjectGitContext } from '@/lib/git'
-import { LocalProvider } from '@/lib/compute-local'
+import { cloudAwareCompute } from '@/lib/compute-router'
 import { getCompanionHomeDir } from '@/lib/companion-relay'
 
 // ── Worktree Manager ──────────────────────────────────────────────────────
@@ -17,7 +17,9 @@ import { getCompanionHomeDir } from '@/lib/companion-relay'
 // Paths are resolved via the project's DB record, so the layout
 // difference is transparent to callers.
 
-const compute = new LocalProvider()
+// Cloud-aware: routes to E2BProvider when the path belongs to a
+// worktree with activeContext='cloud'. See lib/compute-router.ts.
+const compute = cloudAwareCompute
 
 // Each worktree reserves PORTS_PER_WORKTREE consecutive ports starting at
 // portBase. The user can reference them as $BORNASTAR_PORT through

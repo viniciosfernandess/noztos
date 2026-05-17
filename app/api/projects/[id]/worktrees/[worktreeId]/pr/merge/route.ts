@@ -7,7 +7,7 @@ import {
   loadProjectGitContext,
   mergePullRequest,
 } from '@/lib/git'
-import { LocalProvider } from '@/lib/compute-local'
+import { cloudAwareCompute } from '@/lib/compute-router'
 
 interface RouteContext { params: Promise<{ id: string; worktreeId: string }> }
 
@@ -38,7 +38,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
   // ── Local project: no GitHub repo attached ────────────────────────────
   if (!ctx.githubOwner) {
     if (!wt.branchName) return NextResponse.json({ error: 'worktree has no branch' }, { status: 400 })
-    const compute = new LocalProvider()
+    // Merge target is the project root (main), which is always local —
+    // cloudAwareCompute falls through to LocalProvider for non-worktree paths.
+    const compute = cloudAwareCompute
     const mergeRes = await compute.exec(
       ctx.sandboxId,
       `cd ${ctx.sandboxId} && git merge ${wt.branchName} --no-ff -m "Merge branch '${wt.branchName}'" 2>&1`,

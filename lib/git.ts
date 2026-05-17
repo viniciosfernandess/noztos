@@ -15,9 +15,14 @@
 import { prisma } from '@/lib/db'
 import { decrypt } from '@/lib/crypto'
 import { ensureSandboxRunning } from '@/lib/sandbox-manager'
-import { LocalProvider } from '@/lib/compute-local'
+import { cloudAwareCompute } from '@/lib/compute-router'
 
-const compute = new LocalProvider()
+// Cloud Mirror — uses the cloud-aware router instead of LocalProvider
+// directly. When the path passed to compute methods belongs to a
+// worktree with activeContext='cloud', the router delegates to the
+// E2BProvider transparently. Local paths keep going through the
+// LocalProvider, so existing main-branch flows are unaffected.
+const compute = cloudAwareCompute
 
 // The
 // "project root" is wherever `ensureSandboxRunning()` resolved the

@@ -1,13 +1,15 @@
 import { prisma } from '@/lib/db'
 import { ensureSandboxRunning } from '@/lib/sandbox-manager'
-import { LocalProvider } from '@/lib/compute-local'
+import { cloudAwareCompute } from '@/lib/compute-router'
 
 // ── Repository Tools ──────────────────────────────────────────────────────
 //
-// All file operations execute directly on the user's machine via the companion.
-// DB stores only metadata (tasks, chat, teams, etc.) — NOT files.
+// All file operations execute directly on the user's machine via the
+// companion when in local mode, or via the E2B sandbox when the path
+// belongs to a worktree with activeContext='cloud'. The cloud-aware
+// router transparently picks the backend per call.
 
-const compute = new LocalProvider()
+const compute = cloudAwareCompute
 
 // Read-only tools — available in ALL modes (conversation, review, analyze, build)
 export const READ_TOOLS = [

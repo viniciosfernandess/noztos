@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyProjectAccess } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { loadProjectGitContext, runGit } from '@/lib/git'
-import { LocalProvider } from '@/lib/compute-local'
+import { cloudAwareCompute } from '@/lib/compute-router'
 
-const compute = new LocalProvider()
+// Main-branch refresh always runs local — main is never mirrored to
+// cloud. Using cloudAwareCompute here is a no-op (router falls back to
+// local for non-worktree paths) but keeps the import surface uniform.
+const compute = cloudAwareCompute
 
 interface RouteContext { params: Promise<{ id: string }> }
 

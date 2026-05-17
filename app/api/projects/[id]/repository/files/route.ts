@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { verifyProjectAccess } from '@/lib/auth'
 import { ensureSandboxRunning } from '@/lib/sandbox-manager'
-import { LocalProvider } from '@/lib/compute-local'
+import { cloudAwareCompute } from '@/lib/compute-router'
 import { getWorktreeChangedFiles } from '@/lib/worktree'
 
-const compute = new LocalProvider()
+// Cloud-aware: per-path routing to E2B for cloud worktrees.
+const compute = cloudAwareCompute
 
 interface RouteParams {
   params: Promise<{ id: string }>
