@@ -242,6 +242,10 @@ interface SidebarWorktree {
   // without losing the click. Errors don't reach this field — failed
   // worktrees are dropped from the list and surfaced via a modal.
   state?: 'pending'
+  // Cloud Mirror — drives the small "☁ cloud" badge next to the
+  // worktree name in the sidebar when the worktree's execution surface
+  // is the E2B sandbox instead of the local daemon.
+  activeContext?: 'local' | 'cloud'
 }
 
 // Format an ISO timestamp as a compact relative age — "now", "5m", "2h",
@@ -604,6 +608,18 @@ function ChatsSidebar({
                       </div>
                     )}
 
+                    {/* Cloud Mirror — local/cloud badge. Hidden when the
+                        worktree is in default local mode AND nothing
+                        flipped it before, to keep the sidebar clean.
+                        Shows always once the user touches cloud mode. */}
+                    {w.activeContext === 'cloud' && (
+                      <span
+                        className="shrink-0 rounded-md border border-sky-500/30 bg-sky-500/10 px-1.5 py-0.5 font-mono text-[10px] text-sky-300"
+                        title="Running on cloud sandbox"
+                      >
+                        ☁ cloud
+                      </span>
+                    )}
                     {hasChanges && (
                       <span className="shrink-0 rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 font-mono text-[10px] tabular-nums">
                         <span className="text-emerald-400">+{stat.added}</span>
@@ -1286,6 +1302,11 @@ interface WorktreeInfo {
   // from this state entirely (no 'error' state — failed creates surface
   // via the central error modal, not a ghost in the sidebar).
   state?: 'pending'
+  // Cloud Mirror — which execution surface this worktree is bound to.
+  // 'local' (default) means the user's daemon handles chat + terminal +
+  // file ops; 'cloud' means an E2B sandbox does. Drives the sidebar
+  // badge and the navbar toggle.
+  activeContext?: 'local' | 'cloud'
 }
 
 export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true }: WorkPanelProps) {
@@ -1337,6 +1358,19 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
   // worktreeId pre-filter. Toggle lives in the top bar between the
   // origin/main badge and the scratchpad icon.
   const [showWorktreeTasks, setShowWorktreeTasks] = useState(false)
+  // Cloud Mirror — track in-flight switch so the toggle disables and
+  // shows a spinner instead of letting the user click multiple times
+  // while E2B provisions (which takes ~10-15s).
+  const [cloudSwitchInFlight, setCloudSwitchInFlight] = useState(false)
+  const [cloudSwitchError, setCloudSwitchError] = useState<string | null>(null)
+  // Auto-clear the error after a few seconds — switch failures are
+  // usually transient (cloudEnabled flag missing, mirror not warm yet)
+  // and a stale red badge nagging the user adds no value.
+  useEffect(() => {
+    if (!cloudSwitchError) return
+    const t = setTimeout(() => setCloudSwitchError(null), 6000)
+    return () => clearTimeout(t)
+  }, [cloudSwitchError])
   // Busy (currently processing) + unread are owned by the
   // `companionStore`. CompanionProvider feeds them from the single SSE
   // stream; hooks here just observe. That's how switching chats stays
@@ -2613,6 +2647,18 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
             const wt = worktrees.find((w) => w.id === worktreeId)
             if (!wt) return
             setActiveWorktreeId(worktreeId)
+            // Cloud Mirror — if this worktree was last left in cloud
+            // mode, ping the resume endpoint. The server checks if the
+            // sandbox is still alive (E2B GCs after idle timeout) and
+            // re-provisions if needed. Fire-and-forget — the next
+            // command POST will pick up the re-provisioned session.
+            if (wt.activeContext === 'cloud') {
+              fetch('/api/cloud/resume', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ worktreeId }),
+              }).catch(() => {})
+            }
             // Clear the manual "marked as unread" flag — entering counts as
             // having seen it. Individual chat unread states are untouched.
             setUnreadWorktreeIds((prev) => {
@@ -2703,6 +2749,88 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                       </div>
 
                       <div className="flex-1" />
+
+                      {/* Cloud Mirror — local↔cloud toggle for this
+                          worktree. Same visual family as the tasks
+                          button to its right. While provisioning the
+                          E2B sandbox, shows "switching..." and is
+                          disabled. The user_cloud_enabled gate is
+                          server-side (the endpoint 403s if not granted);
+                          the button always renders so any error shows
+                          inline rather than hiding behind a hidden
+                          control. */}
+                      {(() => {
+                        const activeWt = worktrees.find((x) => x.id === activeWorktreeId)
+                        const isCloud = activeWt?.activeContext === 'cloud'
+                        const toggleCloud = async () => {
+                          if (!activeWorktreeId || cloudSwitchInFlight) return
+                          console.log(`[ui/cloud] toggle worktree=${activeWorktreeId.slice(0, 8)} from=${isCloud ? 'cloud' : 'local'} to=${isCloud ? 'local' : 'cloud'}`)
+                          setCloudSwitchInFlight(true)
+                          setCloudSwitchError(null)
+                          try {
+                            const path = isCloud ? '/api/cloud/back-to-local' : '/api/cloud/switch'
+                            const res = await fetch(path, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ worktreeId: activeWorktreeId }),
+                            })
+                            if (!res.ok) {
+                              const j = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+                              console.warn(`[ui/cloud] toggle FAILED status=${res.status} error=${j.error}`)
+                              throw new Error(j.error ?? `HTTP ${res.status}`)
+                            }
+                            const body = await res.json().catch(() => ({}))
+                            console.log(`[ui/cloud] toggle OK`, body)
+                            // After switch, optimistically flip the flag in
+                            // local state — the server's source of truth is
+                            // the next reloadAll, which is triggered below.
+                            setWorktrees((prev) => prev.map((x) =>
+                              x.id === activeWorktreeId
+                                ? { ...x, activeContext: isCloud ? 'local' : 'cloud' }
+                                : x,
+                            ))
+                            // Reload to capture server-side state (sandbox
+                            // status, mirror status, etc) — the navbar
+                            // depends on activeContext to re-render.
+                            await reloadAll(true)
+                          } catch (err) {
+                            setCloudSwitchError(err instanceof Error ? err.message : String(err))
+                          } finally {
+                            setCloudSwitchInFlight(false)
+                          }
+                        }
+                        return (
+                          <>
+                            <button
+                              type="button"
+                              onClick={toggleCloud}
+                              disabled={cloudSwitchInFlight || !activeWorktreeId}
+                              title={
+                                cloudSwitchInFlight
+                                  ? 'Switching...'
+                                  : isCloud
+                                    ? 'Switch back to local'
+                                    : 'Continue in the cloud'
+                              }
+                              className={`flex items-center gap-1 rounded-md border px-2 py-0.5 font-mono text-[11px] transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                                isCloud
+                                  ? 'border-sky-500/40 bg-sky-500/15 text-sky-200 hover:bg-sky-500/20'
+                                  : 'border-[#3C3C3C] bg-[#2A2A2A] text-zinc-300 hover:border-zinc-500'
+                              }`}
+                            >
+                              {cloudSwitchInFlight ? '⏳ switching' : isCloud ? '☁ cloud' : '🖥 local'}
+                            </button>
+                            {cloudSwitchError && (
+                              <span
+                                className="rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 font-mono text-[10px] text-rose-300"
+                                title={cloudSwitchError}
+                              >
+                                {cloudSwitchError.length > 40 ? cloudSwitchError.slice(0, 40) + '…' : cloudSwitchError}
+                              </span>
+                            )}
+                          </>
+                        )
+                      })()}
 
                       {/* Tasks (worktree-scoped) — small text badge in
                           the same visual family as the origin/main pill
