@@ -7,7 +7,18 @@ function isPublic(pathname: string): boolean {
 }
 
 export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl
+  const { pathname, host } = request.nextUrl
+
+  // Canonicalise to the apex (no-www) host. Anyone landing on
+  // www.noztos.com gets a 308 to the same path on noztos.com so SEO,
+  // cookies, and GitHub OAuth callbacks all see a single canonical
+  // origin. Skip the redirect in local dev (host is `localhost:3000`
+  // or similar) so the loopback flow still works.
+  if (host.startsWith('www.')) {
+    const url = request.nextUrl.clone()
+    url.host = host.slice(4)
+    return NextResponse.redirect(url, 308)
+  }
 
   // Allow static assets, Next.js internals, and public routes
   if (
