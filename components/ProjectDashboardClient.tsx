@@ -7,6 +7,7 @@ import { WorkPanel } from './WorkPanel'
 import { MyTeamPanel } from './MyTeamPanel'
 import { TasksPanel } from './TasksPanel'
 import { SourceControl } from './SourceControl'
+import { CompanionUpdateBanner } from './CompanionUpdateBanner'
 import type { Tab } from './ProjectLayout'
 
 // Employee color map — must match MyTeamPanel
@@ -81,6 +82,14 @@ export function ProjectDashboardClient({ project, teams, tasks }: Props) {
       sidebarOpen={sidebarOpen}
       onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
     >
+      {/* Companion update prompt — hides itself when not applicable.
+          Lives outside the keep-alive tab set so it's visible regardless
+          of which tab the user is on. Position: between the layout top-
+          bar and the tab content. */}
+      <div className="px-4 pt-3">
+        <CompanionUpdateBanner />
+      </div>
+
       {/* Keep-alive tabs: all panels stay mounted from first render so
           switching between Overview/Work/Tasks/Team/Config is an instant
           CSS swap instead of a remount. Component state, scroll positions,

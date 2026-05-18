@@ -57,6 +57,11 @@ export interface ClaudeEvent {
   authInfo?: { email?: string; plan?: string; version?: string }
   machineName?: string
   projects?: Array<{ id: string; path: string; name: string }>
+  // Update-available fields piggyback on companion_status — server
+  // computes from daemonVersion vs latest NPM @noztos/companion.
+  daemonVersion?: string
+  latestVersion?: string | null
+  updateAvailable?: boolean
   // claude_event wrapper (from relay) — also reused for running_sessions
   // (sessionIds) and error envelopes (message).
   // `persistRows` are the ChatMessage-shaped rows the daemon stamped

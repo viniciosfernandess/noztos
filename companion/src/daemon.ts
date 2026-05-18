@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { loadConfig } from './config.js'
 import { detectClaudeAuth, detectClaudeInstallation, getClaudeVersion } from './auth-detect.js'
+import { getDaemonVersion } from './daemon-version.js'
 import { ClaudeBridge, getActiveConfig } from './claude-bridge.js'
 import { refreshPromptConfig, startPromptConfigPolling } from './prompt-config.js'
 import { refreshSkillConfig, startSkillConfigPolling } from './skill-config.js'
@@ -186,9 +187,15 @@ export class Daemon extends EventEmitter {
   private async register(): Promise<void> {
     const auth = detectClaudeAuth()
     const version = getClaudeVersion()
+    const daemonVersion = getDaemonVersion()
     const projects = listProjects()
     const res = await this.post('/api/companion/register', {
       authInfo: { ...auth, version },
+      // Daemon's own package version (e.g. "0.1.0"). Server uses it to
+      // compare against the latest published @noztos/companion on
+      // NPM and surface an "update available" badge to the browser
+      // without the daemon having to call NPM itself on the hot path.
+      daemonVersion,
       projects,
       machineName: hostname(),
       // The web side stores this and uses it to compute the worktrees
@@ -356,6 +363,15 @@ export class Daemon extends EventEmitter {
         break
       case 'append_claude_turn':
         this.handleAppendClaudeTurn(cmd)
+        break
+      case 'update_companion':
+        // Manual update trigger from the browser's update banner.
+        // Spawns `npm i -g @noztos/companion@latest` in the
+        // background and exits the daemon when it succeeds so the
+        // user's restart picks up the new code. Fire-and-forget here —
+        // result surfaces via the next companion_status broadcast
+        // when the new daemon comes back up.
+        this.handleUpdateCompanion()
         break
     }
   }
@@ -582,6 +598,68 @@ export class Daemon extends EventEmitter {
   //
   // Upserts by id are idempotent across all three, so duplicates are
   // harmless and we never lose rows if one lane fails.
+
+  // Manual update flow triggered by the browser banner. Runs
+  // `npm install -g @noztos/companion@latest` and exits the daemon
+  // on success so the user's terminal / launchd / supervisor restarts
+  // bornastar and the new code takes effect.
+  //
+  // Idle guard: refuses if a bridge is mid-prompt to avoid killing
+  // claude mid-response. The user must wait until idle (UI surfaces
+  // this state via the next companion_status with an error reason).
+  //
+  // For MVP we don't auto-restart — the user runs `bornastar start`
+  // again after install completes. Phase 3 auto-update will detach a
+  // supervisor script that handles the restart automatically.
+  private async handleUpdateCompanion(): Promise<void> {
+    console.log('[update] received update_companion command')
+
+    // Idle guard — same heuristic the running-sessions broadcast uses.
+    if (this.runningSessions.size > 0) {
+      console.warn(`[update] REFUSED — ${this.runningSessions.size} active session(s); ask user to wait`)
+      await this.send({
+        type: 'error',
+        payload: { message: 'Cannot update while a chat is active. Finish the current run and try again.' },
+      })
+      return
+    }
+
+    await this.send({
+      type: 'status',
+      payload: { message: 'Updating Bornastar companion via npm…' },
+    })
+
+    const { spawn } = await import('node:child_process')
+    const child = spawn('npm', ['install', '-g', '@noztos/companion@latest'], {
+      stdio: 'inherit',
+      shell: false,
+    })
+    child.on('error', async (err) => {
+      console.error('[update] spawn error:', err)
+      await this.send({
+        type: 'error',
+        payload: { message: `Update spawn failed: ${err.message}` },
+      })
+    })
+    child.on('close', async (code) => {
+      if (code !== 0) {
+        console.warn(`[update] npm install exited code=${code}`)
+        await this.send({
+          type: 'error',
+          payload: { message: `Update failed (exit ${code}). Try manually: npm i -g @noztos/companion@latest` },
+        })
+        return
+      }
+      console.log('[update] npm install OK — exiting daemon for restart')
+      await this.send({
+        type: 'status',
+        payload: { message: 'Update installed. Restart your `bornastar start` to pick up the new version.' },
+      })
+      // Small delay so the SSE message gets out before process.exit
+      // closes the connection.
+      setTimeout(() => process.exit(0), 1500)
+    })
+  }
 
   private generateEventId(): string {
     return `evt-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`

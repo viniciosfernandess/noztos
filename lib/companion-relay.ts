@@ -56,6 +56,11 @@ interface CompanionConnection {
   homeDir?: string
   authInfo?: { email?: string; plan?: string; version?: string }
   projects?: Array<{ id: string; path: string; name: string }>
+  // Companion daemon's own package version (e.g. "0.1.0"). Reported on
+  // each register/heartbeat and compared against NPM's latest @bornastar/
+  // companion to drive the "update available" banner. Optional because
+  // older daemon builds (pre-version-reporting) won't send it.
+  daemonVersion?: string
 }
 
 // A single relayed event as it flows browser-ward. We keep it `unknown`
@@ -119,7 +124,13 @@ class RelayChannel {
     return evts
   }
 
-  setCompanionConnected(info?: CompanionConnection['authInfo'], tokenId?: string, machineName?: string, homeDir?: string): void {
+  setCompanionConnected(
+    info?: CompanionConnection['authInfo'],
+    tokenId?: string,
+    machineName?: string,
+    homeDir?: string,
+    daemonVersion?: string,
+  ): void {
     this.companion = {
       connectedAt: Date.now(),
       lastHeartbeat: Date.now(),
@@ -127,6 +138,7 @@ class RelayChannel {
       machineName,
       homeDir,
       authInfo: info,
+      daemonVersion,
     }
   }
 

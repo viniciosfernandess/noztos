@@ -69,7 +69,7 @@ export interface CompanionCommand {
   //   • cleanup_project    — best-effort `rm -rf` on the project's worktrees
   //                          dir. Enqueued by DELETE /api/projects when the
   //                          daemon was offline at delete time.
-  type: 'prompt' | 'interrupt' | 'resume' | 'status' | 'clone' | 'create_project' | 'init_project' | 'setup_claude' | 'claude_status' | 'scan_repos' | 'query_running' | 'config_updated' | 'skills_updated' | 'pty_attach' | 'pty_input' | 'pty_resize' | 'pty_detach' | 'relabel_project' | 'unregister_project' | 'cleanup_project' | 'append_claude_turn'
+  type: 'prompt' | 'interrupt' | 'resume' | 'status' | 'clone' | 'create_project' | 'init_project' | 'setup_claude' | 'claude_status' | 'scan_repos' | 'query_running' | 'config_updated' | 'skills_updated' | 'pty_attach' | 'pty_input' | 'pty_resize' | 'pty_detach' | 'relabel_project' | 'unregister_project' | 'cleanup_project' | 'append_claude_turn' | 'update_companion'
   sessionId?: string
   projectId?: string
   // For relabel_project: id the daemon currently uses for this project (the

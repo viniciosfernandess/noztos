@@ -7,6 +7,7 @@ import { CompanionSetup } from '@/components/CompanionSetup'
 import { DashboardSidebar } from '@/components/DashboardSidebar'
 import { CompanionProvider } from '@/components/CompanionProvider'
 import { ProjectsCacheSeeder } from '@/components/ProjectsCacheSeeder'
+import { CompanionUpdateBanner } from '@/components/CompanionUpdateBanner'
 
 export default async function Home() {
   const cookieStore = await cookies()
@@ -55,7 +56,9 @@ export default async function Home() {
             <ProjectsCacheSeeder projects={projects.map((p) => ({ id: p.id, name: p.name }))} />
             <DashboardSidebar />
             <main className="flex flex-1 flex-col px-6 py-8 overflow-y-auto">
-              <div className="w-full max-w-4xl mx-auto flex-1">
+              <div className="w-full max-w-4xl mx-auto flex-1 space-y-4">
+                {/* Companion update prompt — hides itself when not applicable. */}
+                <CompanionUpdateBanner />
                 <ProjectList projects={projects} />
               </div>
             </main>

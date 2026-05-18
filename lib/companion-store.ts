@@ -81,6 +81,12 @@ export interface CompanionInfo {
   // the sidebar tooltip so a user juggling multiple machines can tell
   // which one is currently driving this tab.
   machineName?: string
+  // Companion package version reported by the daemon's package.json
+  // (e.g. "0.1.0"). Compared with `latestVersion` (NPM lookup) to
+  // drive the "update available" banner on Home + project pages.
+  daemonVersion?: string
+  latestVersion?: string | null
+  updateAvailable?: boolean
 }
 
 type Listener = () => void
@@ -1298,6 +1304,11 @@ class CompanionStore {
               version: event.authInfo?.version,
               projects: event.projects,
               machineName: event.machineName,
+              // Update fields — `updateAvailable=true` triggers the banner
+              // on Home + project pages (see UpdateBanner component).
+              daemonVersion: event.daemonVersion,
+              latestVersion: event.latestVersion,
+              updateAvailable: event.updateAvailable,
             }
           : null,
       )
