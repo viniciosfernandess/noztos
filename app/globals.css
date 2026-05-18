@@ -37,6 +37,22 @@
   background: transparent;
 }
 
+/* Mobile viewport fixes.
+   - Use 100dvh so on-screen keyboards don't push the layout up out
+     of view (100vh treats the keyboard as still-present-but-invisible).
+   - Lock html height so iOS Safari doesn't bounce the whole page on
+     overscroll past the chat boundaries.
+   - Safe-area-inset honours notches / home indicators so fixed
+     buttons stay clickable on iPhone home bars.
+   - Bump text inputs to 16px on touch devices — anything smaller and
+     iOS Safari zooms the page in on focus, jarring the user. The
+     per-component md: overrides restore compact sizing on desktop.
+*/
+@media (max-width: 767px) {
+  html, body { height: 100dvh; overscroll-behavior-y: contain; }
+  input, textarea, select { font-size: 16px !important; }
+}
+
 /* Fluid container for chat-area content. Apply this class to message
    wrappers / tool cards / workflow cards / etc and any expansive
    element inside (code, tables, images, long strings) will collapse

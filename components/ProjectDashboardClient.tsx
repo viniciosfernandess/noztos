@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ProjectLayout } from './ProjectLayout'
 import { WorkPanel } from './WorkPanel'
@@ -52,7 +52,17 @@ const AGENT_IDS = ['ceo', 'architect', 'designer', 'security', 'tester', 'review
 
 export function ProjectDashboardClient({ project, teams, tasks }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('work')
+  // Default closed on mobile (chat takes full width) and open on
+  // desktop. The initial render uses `true` (the server-side default)
+  // and the useEffect below corrects it on the client when we can
+  // measure viewport width. matchMedia avoids re-render churn on
+  // resize during desktop sessions.
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) {
+      setSidebarOpen(false)
+    }
+  }, [])
   const [localTeams, setLocalTeams] = useState<{ name: string; memberIds: string[]; hasBuilder: boolean; order: string[]; canRecreateTasks: Record<string, string> }[]>([])
 
   const hiredEmployees = AGENT_IDS.map((id) => ({
@@ -117,6 +127,7 @@ export function ProjectDashboardClient({ project, teams, tasks }: Props) {
           hiredEmployees={hiredEmployees}
           teams={teamInfos}
           sidebarOpen={sidebarOpen}
+          onToggleSidebar={() => setSidebarOpen((v) => !v)}
         />
       </div>
 

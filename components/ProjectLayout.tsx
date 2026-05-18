@@ -201,15 +201,19 @@ export function ProjectLayout({
         {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Right side: tabs */}
-        <nav className="flex items-center gap-2 px-5">
+        {/* Right side: tabs.
+            Labels collapse to icons-only on mobile (<md) so all 5 tabs
+            fit in a 375px viewport without horizontal overflow. The
+            label re-appears on md+ where there's room. */}
+        <nav className="flex items-center gap-1 px-2 md:gap-2 md:px-5">
           {TABS.map((tab) => {
             const isActive = activeTab === tab.id
             return (
               <button
                 key={tab.id}
                 onClick={() => onTabChange(tab.id)}
-                className={`relative flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-medium transition-all ${
+                aria-label={tab.label}
+                className={`relative flex items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium transition-all md:px-3.5 ${
                   isActive
                     ? 'bg-white/10 text-white'
                     : 'text-zinc-300 hover:bg-white/5 hover:text-white'
@@ -218,7 +222,7 @@ export function ProjectLayout({
                 <svg className={`h-3.5 w-3.5 ${isActive ? 'text-violet-300' : 'text-zinc-500'}`} fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d={tab.icon} />
                 </svg>
-                {tab.label}
+                <span className="hidden md:inline">{tab.label}</span>
                 {isActive && (
                   <span className="absolute bottom-0 left-2 right-2 h-0.5 rounded-full bg-gradient-to-r from-violet-500 to-indigo-500" />
                 )}

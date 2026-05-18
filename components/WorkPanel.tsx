@@ -472,7 +472,13 @@ function ChatsSidebar({
   }
 
   return (
-    <div className="flex h-full w-72 shrink-0 flex-col border-r border-white/10" style={{ backgroundColor: '#1F1F1F' }}>
+    // Mobile: slides in as a fixed overlay (z-40) so the chat below
+    // gets the full width by default. Desktop: stays inline as a flex
+    // child taking 288px. The `md:` prefixes flip behaviour at 768px.
+    <div
+      className="fixed inset-y-0 left-0 z-40 flex h-full w-72 flex-col border-r border-white/10 shadow-2xl shadow-black/40 md:static md:z-0 md:shrink-0 md:shadow-none"
+      style={{ backgroundColor: '#1F1F1F' }}
+    >
 
       {/* Scrollable list — starts directly with add buttons */}
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto pt-2">
@@ -1281,6 +1287,10 @@ interface WorkPanelProps {
   hiredEmployees: HiredEmployee[]
   teams: TeamInfo[]
   sidebarOpen?: boolean
+  // Toggle for the chats sidebar — only matters on mobile (the
+  // backdrop calls it to close the overlay). Desktop uses the
+  // ProjectLayout's sidebar button instead.
+  onToggleSidebar?: () => void
 }
 
 interface SessionInfo {
@@ -1309,7 +1319,7 @@ interface WorktreeInfo {
   activeContext?: 'local' | 'cloud'
 }
 
-export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true }: WorkPanelProps) {
+export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true, onToggleSidebar }: WorkPanelProps) {
   const [terminalOpen, setTerminalOpen] = useState(true)
   // Main-state refresh telemetry — timestamp of the last successful
   // refresh-main, plus an in-flight flag so the UI can disable the
@@ -2623,6 +2633,17 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
   return (
     <CompanionProvider>
     <div className="flex flex-1 flex-col overflow-hidden">
+      {/* Mobile backdrop — tap to close the sidebar. Hidden on md+ via
+          the `md:hidden` class; the inline sidebar there doesn't need
+          a backdrop because it's part of the layout. */}
+      {sidebarOpen && (
+        <button
+          type="button"
+          aria-label="Close sidebar"
+          onClick={() => onToggleSidebar?.()}
+          className="fixed inset-0 z-30 bg-black/40 backdrop-blur-[1px] md:hidden"
+        />
+      )}
       {/* Main area (sidebar + chat + file tree + minimap) */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left: Chats sidebar */}
@@ -2710,7 +2731,20 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                         chat area gets narrowed (multi-monitor / many sidebars
                         open) instead of clipping the right-side icons off the
                         edge. Wide layouts unaffected — it stays 1 line. */}
-                    <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-[#2B2B2B] px-4 py-2" style={{ backgroundColor: '#1F1F1F' }}>
+                    <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-[#2B2B2B] px-3 py-2 md:px-4" style={{ backgroundColor: '#1F1F1F' }}>
+                      {/* Mobile-only hamburger — opens the chats sidebar
+                          drawer. Hidden on md+ because the inline
+                          sidebar lives there anyway. */}
+                      <button
+                        type="button"
+                        onClick={() => onToggleSidebar?.()}
+                        className="-ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-zinc-400 hover:bg-white/5 hover:text-zinc-200 md:hidden"
+                        aria-label="Open sidebar"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.8} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                        </svg>
+                      </button>
                       {/* Branch icon */}
                       <svg
                         className="h-3.5 w-3.5 shrink-0 text-zinc-500"
@@ -3147,8 +3181,12 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
         )}
       </div>
 
-        {/* Right: Explorer / Changes / Terminal panel */}
-        <div className={`relative flex min-w-0 shrink-0 flex-col border-l border-[#2B2B2B] transition-all duration-200 ${rightPanelExpanded ? 'w-[50%]' : 'w-[30%]'}`} style={{ backgroundColor: '#1F1F1F' }}>
+        {/* Right: Explorer / Changes / Terminal panel.
+            Hidden on mobile (chat-only flow) so the screen has room
+            for the conversation. Files, terminal, and diffs are
+            primarily for desktop sessions — on a phone the user
+            delegates to claude and reads results. */}
+        <div className={`relative hidden min-w-0 shrink-0 flex-col border-l border-[#2B2B2B] transition-all duration-200 md:flex ${rightPanelExpanded ? 'md:w-[50%]' : 'md:w-[30%]'}`} style={{ backgroundColor: '#1F1F1F' }}>
           {/* Conflict resolver overlay — covers the whole right panel
               (tabs + body + bottom terminal) so the user is focused on
               resolving. Chat column stays live on the left. */}
@@ -7923,7 +7961,10 @@ function ChatPanel({
                 }}
                 placeholder={activeMode === 'team' ? `Message ${activeTeam?.name ?? 'team'}...` : activeMode === 'skill' ? `Message ${activeEmployee?.name ?? 'agent'}...` : activeMode === 'workflow' ? `Describe what to build for ${activeWorkflow?.name ?? 'this workflow'}...` : 'Message Claude...'}
                 rows={1}
-                className="w-full resize-none bg-transparent text-sm text-zinc-200 placeholder-zinc-500 outline-none"
+                // text-base = 16px keeps iOS Safari from zooming the
+                // viewport on focus; md:text-sm restores the compact
+                // 14px sizing for desktop where zoom isn't a concern.
+                className="w-full resize-none bg-transparent text-base text-zinc-200 placeholder-zinc-500 outline-none md:text-sm"
                 style={{ maxHeight: `${36 * 4}px` }}
               />
             </div>
@@ -8894,7 +8935,9 @@ function MiniMap({
   const taskIntent = runningTask ? TASK_INTENT[runningTask.accumulatedContext?.intent ?? ''] : null
 
   return (
-    <div className="flex w-72 shrink-0 flex-col border-l border-[#2B2B2B]" style={{ backgroundColor: '#181818' }}>
+    // Hidden on mobile — this is the workflow/running-task side
+    // column (status, pipeline, files touched). Desktop only.
+    <div className="hidden w-72 shrink-0 flex-col border-l border-[#2B2B2B] md:flex" style={{ backgroundColor: '#181818' }}>
       {/* ── Chat section (top) ── */}
       <div className={`flex flex-col ${hasRunningTask ? 'h-1/2 border-b border-[#2B2B2B]' : 'flex-1'}`}>
         <div className="border-b border-[#2B2B2B] px-3 py-2">
