@@ -58,16 +58,16 @@ export async function ensureSandboxRunning(projectId: string): Promise<string | 
     repo.sandboxId = resolved
   }
 
-  // Already resolved to a local path? Verify it still exists.
+  // Already resolved to a local path? Trust it — the actual existence
+  // check happens on the user's Mac via execOnCompanion (the companion
+  // round-trip surfaces "no such directory" naturally). Calling
+  // existsSync here is harmful in production: this Next.js process
+  // runs on Railway, where /Users/... paths from the daemon never
+  // exist, and the previous code would clobber a perfectly good
+  // sandboxId with null. Single-machine dev (Next.js on the same Mac)
+  // still works because the path is honored either way.
   if (repo.sandboxId && repo.sandboxId.startsWith('/')) {
-    if (existsSync(repo.sandboxId)) {
-      return repo.sandboxId
-    }
-    // Path disappeared — clear and re-resolve below
-    await prisma.repository.update({
-      where: { projectId },
-      data: { sandboxId: null, sandboxStatus: 'stopped' },
-    })
+    return repo.sandboxId
   }
 
   // Cloud sandbox ID from before? Ignore it in local mode — resolve fresh.
