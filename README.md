@@ -30,28 +30,18 @@ Then:
 
 ```bash
 npm install
-npx prisma migrate deploy
-cd companion && npm install && npm run build && sudo npm install -g . && cd ..
+npx prisma db push
 ```
 
 ## Run
 
-Two terminals, one time:
-
 ```bash
-# Terminal 1 — web UI
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000), sign up, copy the auth token from the setup card.
+That's it. Both the Next.js web UI and the companion daemon spawn in parallel — the daemon authenticates automatically via a shared secret in `./data/.companion-secret`.
 
-```bash
-# Terminal 2 — daemon
-noztos server http://localhost:3000
-noztos login <token>
-```
-
-`noztos login` installs an auto-start agent (macOS launchd) — after the first run the daemon comes back automatically on every login. You can close the terminal.
+Open [http://localhost:3000](http://localhost:3000), sign up, you land on the dashboard with the companion already connected.
 
 ## Requirements
 
