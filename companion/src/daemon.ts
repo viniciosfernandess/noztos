@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { hostname, homedir } from 'node:os'
-import { spawn } from 'node:child_process'
+import { spawn, exec as execCb } from 'node:child_process'
+import { promisify } from 'node:util'
 import { mkdirSync } from 'node:fs'
 import { promises as fsp } from 'node:fs'
 import { randomUUID } from 'node:crypto'
@@ -373,6 +374,62 @@ export class Daemon extends EventEmitter {
         // when the new daemon comes back up.
         this.handleUpdateCompanion()
         break
+      case 'exec':
+        // Server-issued shell command. We run it locally via /bin/bash
+        // and POST the result back as an `exec_response` frame keyed
+        // on reqId. companion-exec.ts on the server side resolves its
+        // pending promise — that's how routes like worktree creation
+        // run `git worktree add` on the user's Mac from Railway.
+        this.handleExec(cmd)
+        break
+    }
+  }
+
+  // ── exec ──────────────────────────────────────────────────────────
+  // Request/response shell exec from the server. Mirrors the contract
+  // documented in lib/companion-exec.ts. Errors (non-zero exit, signal,
+  // timeout) are reported via stderr + exitCode rather than thrown —
+  // the server side decides whether to retry / surface the failure.
+  private async handleExec(cmd: CompanionCommand): Promise<void> {
+    const { reqId, cwd, command } = cmd
+    if (!reqId || !command) {
+      console.warn(`[exec] skip: missing reqId or command`)
+      return
+    }
+    const tStart = Date.now()
+    const execPromise = promisify(execCb)
+    let stdout = ''
+    let stderr = ''
+    let exitCode = 0
+    try {
+      const result = await execPromise(command, {
+        cwd: cwd || homedir(),
+        timeout: 55_000, // 5 s below the server's 60 s default so the
+                        // daemon always wins the race and the server
+                        // gets a proper response (vs. a timeout)
+        maxBuffer: 50 * 1024 * 1024,
+        shell: '/bin/bash',
+      })
+      stdout = result.stdout?.toString() ?? ''
+      stderr = result.stderr?.toString() ?? ''
+    } catch (err) {
+      const e = err as { stdout?: string | Buffer; stderr?: string | Buffer; code?: number; message?: string }
+      stdout = (e.stdout?.toString?.() ?? '')
+      stderr = (e.stderr?.toString?.() ?? e.message ?? 'exec failed')
+      exitCode = typeof e.code === 'number' ? e.code : 1
+    }
+    const elapsed = Date.now() - tStart
+    console.log(`[exec] reqId=${reqId.slice(0, 8)} exit=${exitCode} ms=${elapsed} cmd="${command.slice(0, 60)}"`)
+    try {
+      await this.post('/api/companion/response', {
+        type: 'exec_response',
+        reqId,
+        stdout,
+        stderr,
+        exitCode,
+      })
+    } catch (postErr) {
+      console.warn(`[exec] failed to POST response reqId=${reqId.slice(0, 8)}:`, (postErr as Error).message)
     }
   }
 

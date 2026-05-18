@@ -14,6 +14,12 @@ const LABEL = 'com.noztos.companion'
 const PLIST_PATH = join(homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`)
 
 function plistContent(noztosBin: string): string {
+  // PATH must include ~/.local/bin because Anthropic's `claude` installer
+  // drops the binary there by default. Without it, launchd-spawned
+  // daemons crash-loop with "Claude Code not found" even when the user's
+  // shell finds claude fine.
+  const home = homedir()
+  const path = `${home}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -36,7 +42,7 @@ function plistContent(noztosBin: string): string {
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <string>${path}</string>
   </dict>
 </dict>
 </plist>

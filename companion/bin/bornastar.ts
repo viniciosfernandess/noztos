@@ -13,7 +13,7 @@ const program = new Command()
 program
   .name("noztos")
   .description('Noztos companion — bridges your local Claude Code to the Noztos web IDE')
-  .version('0.1.3')
+  .version('0.1.5')
 
 // ── noztos init ──────────────────────────────────────────────────
 // Registers the current directory as a Noztos project

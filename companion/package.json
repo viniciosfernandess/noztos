@@ -1,6 +1,6 @@
 {
   "name": "@noztos/companion",
-  "version": "0.1.3",
+  "version": "0.1.5",
   "description": "Noztos companion — bridges your local Claude Code to the Noztos web IDE",
   "bin": {
     "noztos": "./dist/bin/bornastar.js"

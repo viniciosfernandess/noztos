@@ -69,7 +69,16 @@ export interface CompanionCommand {
   //   • cleanup_project    — best-effort `rm -rf` on the project's worktrees
   //                          dir. Enqueued by DELETE /api/projects when the
   //                          daemon was offline at delete time.
-  type: 'prompt' | 'interrupt' | 'resume' | 'status' | 'clone' | 'create_project' | 'init_project' | 'setup_claude' | 'claude_status' | 'scan_repos' | 'query_running' | 'config_updated' | 'skills_updated' | 'pty_attach' | 'pty_input' | 'pty_resize' | 'pty_detach' | 'relabel_project' | 'unregister_project' | 'cleanup_project' | 'append_claude_turn' | 'update_companion'
+  type: 'prompt' | 'interrupt' | 'resume' | 'status' | 'clone' | 'create_project' | 'init_project' | 'setup_claude' | 'claude_status' | 'scan_repos' | 'query_running' | 'config_updated' | 'skills_updated' | 'pty_attach' | 'pty_input' | 'pty_resize' | 'pty_detach' | 'relabel_project' | 'unregister_project' | 'cleanup_project' | 'append_claude_turn' | 'update_companion' | 'exec'
+  // ── exec ────────────────────────────────────────────────
+  // Server issues a shell command to run on the user's machine.
+  // The daemon executes it via /bin/bash in `cwd` (shared with PTY
+  // commands below), captures stdout/stderr/exitCode, and POSTs an
+  // `exec_response` frame back to /api/companion/response with the
+  // same reqId so the server (companion-exec.ts) can resolve its
+  // pending promise.
+  reqId?: string
+  command?: string
   sessionId?: string
   projectId?: string
   // For relabel_project: id the daemon currently uses for this project (the

@@ -3,6 +3,7 @@ import { ensureSandboxRunning } from '@/lib/sandbox-manager'
 import { loadProjectGitContext } from '@/lib/git'
 import { cloudAwareCompute } from '@/lib/compute-router'
 import { getCompanionHomeDir } from '@/lib/companion-relay'
+import { execOnCompanion } from '@/lib/companion-exec'
 
 // ── Worktree Manager ──────────────────────────────────────────────────────
 //
@@ -242,29 +243,26 @@ export async function provisionWorktree(
   }
   const worktreesDir = `${homeDir}/.bornastar/worktrees/${projectId}`
 
+  // All on-disk operations for new worktree provisioning must run on
+  // the user's Mac via the companion daemon — child_process here would
+  // run on the Next.js host (Railway in prod) where the project path
+  // doesn't exist. execOnCompanion round-trips through the SSE relay.
+  const exec = (cwd: string, command: string) => execOnCompanion(userId, cwd, command)
+
   try {
-    await compute.exec(sandboxId, `mkdir -p ${worktreesDir}`)
+    await exec('/', `mkdir -p ${worktreesDir}`)
 
     // If the project has a GitHub remote, fetch + fast-forward main before
     // creating the worktree so it always starts from the latest upstream state.
     const ctx = await loadProjectGitContext(projectId)
     if (ctx?.githubOwner && ctx?.githubToken) {
       const remoteUrl = `https://${ctx.githubToken}@github.com/${ctx.githubOwner}/${ctx.githubRepo}.git`
-      await compute.exec(
-        sandboxId,
-        `cd ${sandboxId} && git fetch ${remoteUrl} main:refs/remotes/origin/main 2>/dev/null || true`,
-      )
-      await compute.exec(
-        sandboxId,
-        `cd ${sandboxId} && git merge origin/main --ff-only 2>/dev/null || true`,
-      )
+      await exec(sandboxId, `git fetch ${remoteUrl} main:refs/remotes/origin/main 2>/dev/null || true`)
+      await exec(sandboxId, `git merge origin/main --ff-only 2>/dev/null || true`)
     }
 
     // Get current HEAD on main as the baseline
-    const headRes = await compute.exec(
-      sandboxId,
-      `cd ${sandboxId} && git rev-parse HEAD 2>/dev/null || echo NONE`,
-    )
+    const headRes = await exec(sandboxId, `git rev-parse HEAD 2>/dev/null || echo NONE`)
     const baseCommit = headRes.stdout?.trim()
     if (!baseCommit || baseCommit === 'NONE') {
       console.warn(`[worktree] No git HEAD found at ${sandboxId}`)
@@ -280,8 +278,8 @@ export async function provisionWorktree(
     // Reuse if the directory already exists
     const worktreePath = `${worktreesDir}/${worktreeId}`
 
-    const existsRes = await compute.exec(
-      sandboxId,
+    const existsRes = await exec(
+      '/',
       `test -d ${worktreePath}/.git -o -f ${worktreePath}/.git && echo yes || echo no`,
     )
     if (existsRes.stdout?.trim() === 'yes') {
@@ -300,24 +298,15 @@ export async function provisionWorktree(
     // (the daemon's fs watcher, a concurrent git status, …). Retrying
     // 1× after a short delay reliably clears it. If the second pass
     // also fails the failure is logged with full stdout+stderr.
-    let createRes = await compute.exec(
-      sandboxId,
-      `cd ${sandboxId} && git worktree add ${worktreePath} -b ${branchName}`,
-    )
+    let createRes = await exec(sandboxId, `git worktree add ${worktreePath} -b ${branchName}`)
     if (createRes.exitCode === 255 || createRes.exitCode === 128) {
       console.warn(`[worktree] git worktree add transient (exit=${createRes.exitCode}) branch=${branchName}, retrying in 500ms`)
       await new Promise((r) => setTimeout(r, 500))
-      createRes = await compute.exec(
-        sandboxId,
-        `cd ${sandboxId} && git worktree add ${worktreePath} -b ${branchName}`,
-      )
+      createRes = await exec(sandboxId, `git worktree add ${worktreePath} -b ${branchName}`)
     }
     if (createRes.exitCode !== 0) {
       // Branch may already exist — try without -b
-      const fallbackRes = await compute.exec(
-        sandboxId,
-        `cd ${sandboxId} && git worktree add ${worktreePath} ${branchName}`,
-      )
+      const fallbackRes = await exec(sandboxId, `git worktree add ${worktreePath} ${branchName}`)
       if (fallbackRes.exitCode !== 0) {
         console.warn(
           `[worktree] git worktree add FAILED branch=${branchName} path=${worktreePath}\n`
@@ -342,10 +331,7 @@ export async function provisionWorktree(
     // if credentials diverge (rare).
     const ENV_FILES = ['.env', '.env.local', '.env.development', '.env.development.local']
     for (const f of ENV_FILES) {
-      await compute.exec(
-        sandboxId,
-        `[ -f ${sandboxId}/${f} ] && cp -n ${sandboxId}/${f} ${worktreePath}/${f} || true`,
-      )
+      await exec('/', `[ -f ${sandboxId}/${f} ] && cp -n ${sandboxId}/${f} ${worktreePath}/${f} || true`)
     }
 
     console.log(`[isolation] worktree created branch=${branchName} path=${worktreePath} base=${baseCommit.slice(0, 8)} port=${portBase}`)

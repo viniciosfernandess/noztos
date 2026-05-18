@@ -1,6 +1,7 @@
 import { after, NextRequest, NextResponse } from 'next/server'
 import { verifyAuth } from '@/lib/auth'
 import { getChannel } from '@/lib/companion-relay'
+import { resolveCompanionExec } from '@/lib/companion-exec'
 import { loadSessionContext, persistRows, type PersistRow } from '@/lib/chat-persist'
 
 // POST — Companion sends Claude Code stream-json events back to the
@@ -40,6 +41,22 @@ export async function POST(request: NextRequest) {
   console.log(`[response] received shape=${bodyShape} frames=${frames.length}`)
 
   for (const frame of frames) {
+    // Intercept exec_response frames — these are direct replies to
+    // server-issued shell commands (companion-exec.ts round-trip) and
+    // must NOT be relayed as SSE events to the browser. Everything
+    // else (claude_event, status updates, …) goes to the browser.
+    const f = frame as { type?: string; reqId?: string; stdout?: string; stderr?: string; exitCode?: number }
+    if (f?.type === 'exec_response' && typeof f.reqId === 'string') {
+      const matched = resolveCompanionExec(f.reqId, {
+        stdout: f.stdout ?? '',
+        stderr: f.stderr ?? '',
+        exitCode: typeof f.exitCode === 'number' ? f.exitCode : 0,
+      })
+      if (!matched) {
+        console.warn(`[response] orphan exec_response reqId=${f.reqId.slice(0, 8)} (timed out or unknown)`)
+      }
+      continue
+    }
     channel.pushEvent(frame, auth.userId)
   }
 

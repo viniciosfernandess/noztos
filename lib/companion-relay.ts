@@ -461,6 +461,18 @@ export function broadcastCommandToAllCompanions(cmd: unknown): number {
   return n
 }
 
+// Push a single command to one specific user's companion. Returns
+// false if there is no connected companion for that user — callers
+// decide whether to surface that to the user or fall back to a cloud
+// path. Used by companion-exec.ts for request/response round-trips
+// (server-issued shell commands that must run on the user's Mac).
+export function pushCommandToCompanion(userId: string, cmd: unknown): boolean {
+  const ch = channels.get(userId)
+  if (!ch?.isCompanionConnected()) return false
+  ch.pushCommand(cmd)
+  return true
+}
+
 export function getCompanionStatus(userId: string): {
   connected: boolean
   connectedAt?: number
