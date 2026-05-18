@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
 import { getSessionUserId } from '@/lib/session'
 import { prisma } from '@/lib/db'
 import { Header } from '@/components/Header'
@@ -34,8 +35,13 @@ export default async function Home() {
       prisma.companionToken.count({ where: { userId } }),
     ])
 
-    projects = user?.projects ?? []
-    userName = user?.name ?? ''
+    // Session cookie is HMAC-valid but the user row is gone (account
+    // deleted or wiped during testing). Treat as logged out — sending
+    // them to /login lets the next sign-in overwrite the stale cookie.
+    if (!user) redirect('/login')
+
+    projects = user.projects
+    userName = user.name ?? ''
     hasCompanionToken = tokenCount > 0
   }
 
