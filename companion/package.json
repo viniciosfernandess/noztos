@@ -1,6 +1,6 @@
 {
   "name": "@noztos/companion",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Bornastar companion — bridges your local Claude Code to the Bornastar web IDE",
   "bin": {
     "bornastar": "./dist/bin/bornastar.js"
@@ -13,7 +13,8 @@
   },
   "files": [
     "dist",
-    "install.sh"
+    "install.sh",
+    "scripts"
   ],
   "dependencies": {
     "better-sqlite3": "^11.7.0",
