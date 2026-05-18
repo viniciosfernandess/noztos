@@ -16,7 +16,7 @@ A local-first web IDE for [Claude Code](https://claude.ai/claude-code). Run mult
 ## Install
 
 ```bash
-git clone https://github.com/noztos/noztos.git
+git clone https://github.com/Noztos-ai/noztos.git
 cd noztos
 cp .env.example .env
 ```
