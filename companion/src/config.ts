@@ -5,7 +5,7 @@ import type { CompanionConfig, ProjectConfig } from './types.js'
 
 const CONFIG_DIR = join(homedir(), '.bornastar')
 const CONFIG_FILE = join(CONFIG_DIR, 'config.json')
-const DEFAULT_SERVER = 'https://bornastar.com'
+const DEFAULT_SERVER = 'https://noztos.com'
 
 function defaults(): CompanionConfig {
   return {

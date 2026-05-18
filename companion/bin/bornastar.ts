@@ -26,7 +26,7 @@ program
       console.log(`\n  ✅ Project registered: ${project.name}`)
       console.log(`     Path: ${project.path}`)
       if (project.gitRemote) console.log(`     Remote: ${project.gitRemote}`)
-      console.log(`\n  Open bornastar.com to start coding.\n`)
+      console.log(`\n  Open noztos.com to start coding.\n`)
     } catch (err) {
       console.error(`\n  ❌ ${(err as Error).message}\n`)
       process.exit(1)
@@ -37,7 +37,7 @@ program
 // Starts the background daemon that connects to the Bornastar server
 program
   .command('start')
-  .description('Start the Bornastar daemon (connects to bornastar.com)')
+  .description('Start the Bornastar daemon (connects to noztos.com)')
   .option('--foreground', 'Run in foreground (don\'t daemonize)')
   .action(async (opts: { foreground?: boolean }) => {
     const config = loadConfig()
@@ -70,7 +70,7 @@ program
 
     daemon.on('connected', () => {
       console.log('  ✅ Connected to Bornastar server')
-      console.log('     Open bornastar.com to start coding.\n')
+      console.log('     Open noztos.com to start coding.\n')
       if (!opts.foreground) {
         console.log('  Tip: Press Ctrl+C to stop the daemon.\n')
       }
@@ -135,7 +135,7 @@ program
 program
   .command('login')
   .description('Authenticate with your Bornastar account')
-  .argument('<token>', 'Auth token from bornastar.com/settings')
+  .argument('<token>', 'Auth token from noztos.com/settings')
   .action((token: string) => {
     setAuthToken(token)
     console.log('\n  ✅ Authenticated. Run `bornastar start` to connect.\n')

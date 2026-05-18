@@ -1,5 +1,5 @@
 {
-  "name": "@bornastar/companion",
+  "name": "@noztos/companion",
   "version": "0.1.0",
   "description": "Bornastar companion — bridges your local Claude Code to the Bornastar web IDE",
   "bin": {
