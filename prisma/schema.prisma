@@ -221,6 +221,11 @@ model Worktree {
   // timestamp-based) agrees on the unlinked state. Preserves the audit
   // trail — the row never leaves the DB.
   deletedAt    DateTime?
+  // Soft "trash" state (status='trashed') — distinct from deletedAt
+  // so users can recover within a grace window before permanent
+  // removal. Set when the user puts a worktree in the trash; cleared
+  // on restore; promoted to deletedAt on permanent delete.
+  trashedAt    DateTime?
   // Paths touched by Task iterations since the last commit on this
   // worktree. Drives the "T" badge in the Changes list, paired with
   // the "U" (uncommitted) badge. Each completed iteration merges its
@@ -333,6 +338,10 @@ model ChatSession {
   // preserved (important for training + compliance). Hard delete only
   // happens through explicit admin/retention tooling.
   deletedAt      DateTime?
+  // Trash bucket — set when the user puts a chat in the trash via
+  // the worktree's "trash" action. Distinct from deletedAt so a chat
+  // can be restored within the grace window before permanent removal.
+  trashedAt      DateTime?
 
   // ── Claude Code state ─────────────────────────────────────────────────
   // Latest Claude Code --resume id. Persisted so a browser refresh (or

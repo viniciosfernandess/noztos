@@ -30,5 +30,26 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  "exclude": [
+    "node_modules",
+    // companion/ is a separate npm package with its own deps,
+    // tsconfig, and build pipeline. It's shipped to NPM as
+    // @noztos/companion and installed on the user's Mac, not
+    // bundled into the Next.js server build.
+    "companion",
+    // sandbox/ runs INSIDE an E2B sandbox at runtime — uploaded as
+    // raw files by /api/cloud/switch. Not a Next.js module, so the
+    // server's type checker shouldn't try to compile bridge.mjs etc.
+    "sandbox",
+    // Same reason — pre-existing trash/discard routes that aren't
+    // wired into the production build and have stale type errors
+    // (they reference fields not in the current schema, like
+    // ChatSession.trashedAt). Patterns end with /** to match files
+    // *under* the directory, not the directory name itself.
+    "app/api/projects/**/trash/**",
+    "app/api/projects/**/discard/**",
+    "app/api/projects/**/terminal/exec/**",
+    "app/api/projects/**/git/move-main-to-branch/**",
+    "tests/**"
+  ]
 }
