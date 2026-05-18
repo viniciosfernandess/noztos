@@ -345,10 +345,10 @@ export function DashboardSidebar() {
                 </div>
                 <div className="group relative">
                   <pre className="rounded-md border border-[#2B2B2B] px-3 py-2 font-mono text-[11px] text-blue-300/80" style={{ backgroundColor: '#151515' }}>
-                    curl -fsSL https://noztos.com/install.sh | bash
+                    curl -fsSL {typeof window === 'undefined' ? 'https://noztos.com' : window.location.origin}/install.sh | bash
                   </pre>
                   <button
-                    onClick={() => copyToClipboard('curl -fsSL https://noztos.com/install.sh | bash', 'install')}
+                    onClick={() => copyToClipboard(`curl -fsSL ${typeof window === 'undefined' ? 'https://noztos.com' : window.location.origin}/install.sh | bash`, 'install')}
                     className="absolute right-1.5 top-1.5 rounded border border-[#3A3A3A] px-1.5 py-0.5 text-[9px] text-zinc-500 opacity-0 transition-opacity hover:bg-white/5 hover:text-zinc-300 group-hover:opacity-100"
                   >
                     {copied === 'install' ? '✓' : 'Copy'}

@@ -1,39 +1,40 @@
-# CLAUDE.md — bornastar
+# CLAUDE.md — noztos
 
-## Before anything
+Instructions for Claude Code when working in this repository.
 
-1. Check Linear for existing tasks.
-2. If no tasks exist → read ARCHITECTURE.md carefully, then create one Linear task for each item in the build order. Do not group them — each item is its own task. There should be at least 20 tasks.
-3. Find the first incomplete task and start there.
+## Project layout
 
-## Loop — run for EVERY task, no exceptions
+- `app/` — Next.js App Router. Routes and React server components.
+- `components/` — Client-side React components.
+- `lib/` — Server-side helpers (auth, db, compute, workflows).
+- `companion/` — The local daemon. Separate Node package, separate `package.json`.
+- `prisma/schema.prisma` — Database schema. Don't edit migrations by hand; run `npx prisma migrate dev --name <change>` to generate one.
 
-**Step 1 — CEO** (`/plan-ceo-review`)
-Analyze the task. Is this the right scope? Any risks or blockers? Output a clear go/no-go with notes.
-→ Slack: 🧠 CEO analyzed [task name]: [1-line summary]
+## Architecture
 
-**Step 2 — Architect** (`/plan-eng-review`)
-Receives CEO output. Define exactly what files to create/edit, data flow, component breakdown.
-→ Slack: 📐 Architect planned [task name]: [1-line summary]
+Single-machine, local-first. Two processes on the user's Mac:
 
-**Step 3 — Builder** (`/ship`)
-Receives Architect plan. Build exactly that — nothing more, nothing less. Commit: `feat: [task name]`.
-→ Slack: 🔨 Builder finished [task name]: [files touched]
+1. **Next.js server** (`npm run dev`, port 3000) — handles HTTP, the database, OAuth, the chat UI.
+2. **Companion daemon** (`noztos start`) — spawns the local `claude` CLI per chat session, watches the filesystem, relays events to the server.
 
-**Step 4 — Security** (`/review`)
-Reviews the built code for vulnerabilities, bad patterns, exposed secrets.
-- Approved → move Linear task to Done → Slack: ✅ [task name] approved. Starting next task.
-- Rejected → Slack: ❌ [task name] rejected: [reason]. Restarting from CEO. → restart loop with full context of what failed and why.
+The server can fan out commands to the daemon via SSE (`/api/companion/events`). The daemon POSTs results back via `/api/companion/response`.
 
-**The next task only starts after Security approves. Every task receives full context of all previous tasks.**
+## Code conventions
 
-## Linear
+- TypeScript strict mode. Avoid `any` — use `unknown` and narrow.
+- Prefer editing existing files over creating new ones.
+- No unsolicited comments. Only write a comment when *why* is non-obvious.
+- Don't add features, refactors, or abstractions beyond what the task asks.
+- Treat `lib/db.ts` as the single Prisma entry — don't `new PrismaClient()` elsewhere.
 
-- First session: create all tasks before writing any code
-- Task naming: `[N] — [Feature Name]` (e.g. `1 — Database Setup`)
-- Move to In Progress when CEO starts, Done when Security approves
-- On rejection: add comment with reason, move back to In Progress
+## When making changes
 
-## Slack
+- Run `npx tsc --noEmit` to type-check before committing.
+- Run `npm run build` if you touched routing, layouts, or Prisma models.
+- Run `cd companion && npm run build` if you touched daemon code.
 
-Notify at every step listed above. Never skip a notification. If Slack fails, log and continue.
+## When NOT to do something
+
+- Don't introduce a cloud-hosted backend, server-side child_process against `/Users/...` paths, or anything that assumes Next.js runs anywhere other than the user's machine. The project is intentionally single-machine.
+- Don't commit `.env`, `.claude/`, `generated/`, or `node_modules/`.
+- Don't refactor working code just to "clean it up" without an asked reason.

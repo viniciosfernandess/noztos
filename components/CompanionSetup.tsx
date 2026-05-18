@@ -8,6 +8,13 @@ export function CompanionSetup() {
   const [copied, setCopied] = useState<'install' | 'login' | null>(null)
   const [companionStatus, setCompanionStatus] = useState<'waiting' | 'connected'>('waiting')
 
+  // For self-hosted setups, the curl URL points at the current origin
+  // (e.g. http://localhost:3000) instead of noztos.com so the install
+  // script and the daemon's default server URL both match what the
+  // user is actually running.
+  const origin = typeof window === 'undefined' ? 'https://noztos.com' : window.location.origin
+  const installCmd = `curl -fsSL ${origin}/install.sh | bash`
+
   const generateToken = useCallback(async () => {
     setGenerating(true)
     try {
@@ -74,10 +81,10 @@ export function CompanionSetup() {
             </div>
             <div className="group relative">
               <pre className="rounded-md border border-[#2B2B2B] px-3 py-2 font-mono text-[11px] text-emerald-300/80" style={{ backgroundColor: '#151515' }}>
-                curl -fsSL https://noztos.com/install.sh | bash
+                {installCmd}
               </pre>
               <button
-                onClick={() => copyToClipboard('curl -fsSL https://noztos.com/install.sh | bash', 'install')}
+                onClick={() => copyToClipboard(installCmd, 'install')}
                 className="absolute right-1.5 top-1.5 rounded border border-[#3A3A3A] px-1.5 py-0.5 text-[9px] text-zinc-500 opacity-0 transition-opacity hover:bg-white/5 hover:text-zinc-300 group-hover:opacity-100"
               >
                 {copied === 'install' ? '✓' : 'Copy'}

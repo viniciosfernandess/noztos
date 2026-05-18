@@ -43,3 +43,9 @@ next-env.d.ts
 /app/generated/prisma
 companion/node_modules/
 companion/dist/
+
+# Claude Code local settings
+.claude/
+
+# Prisma generated client
+/generated
