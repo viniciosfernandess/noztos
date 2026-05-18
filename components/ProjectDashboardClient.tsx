@@ -150,7 +150,7 @@ export function ProjectDashboardClient({ project, teams, tasks }: Props) {
             {/* Danger zone */}
             <div className="rounded-xl border border-red-500/20 p-6">
               <h3 className="text-sm font-semibold text-red-400">Danger Zone</h3>
-              <p className="mt-1 text-xs text-zinc-500">Deleting this project will remove all data from Bornastar — tasks, chat history, files. Your GitHub repository will not be affected.</p>
+              <p className="mt-1 text-xs text-zinc-500">Deleting this project will remove all data from noztos — tasks, chat history, files. Your GitHub repository will not be affected.</p>
               <DeleteProjectButton projectId={project.id} projectName={project.name} />
             </div>
           </div>
@@ -238,7 +238,7 @@ function DeleteProjectButton({ projectId, projectName }: { projectId: string; pr
               <p className="text-[11px] text-zinc-500 mt-0.5">{projectName}</p>
             </div>
             <div className="p-6 space-y-3">
-              <p className="text-xs text-zinc-400">This will permanently remove the project from Bornastar. Your GitHub repository will not be affected.</p>
+              <p className="text-xs text-zinc-400">This will permanently remove the project from noztos. Your GitHub repository will not be affected.</p>
 
               {warnings && warnings.uncommittedChanges > 0 && (
                 <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] p-3">

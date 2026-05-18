@@ -43,7 +43,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   await ensureGitIdentity(ctx.sandboxId, cwd, user?.email ?? undefined, user?.name ?? undefined)
 
   try {
-    const sha = await commitAll(ctx.sandboxId, cwd, message, 'Bornastar Agent <noreply@bornastar.app>')
+    const sha = await commitAll(ctx.sandboxId, cwd, message, 'Noztos Agent <noreply@noztos.com>')
     // After a successful commit, clear the task-touched marker set on
     // this worktree so the "T" badges drop alongside the "U" badges in
     // the Changes list. Main-branch commits (worktreeId=null) have no

@@ -81,7 +81,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       })
       await ensureGitIdentity(ctx.sandboxId, cwd, user?.email ?? undefined, user?.name ?? undefined)
       try {
-        await commitAll(ctx.sandboxId, cwd, body.commitMessage?.trim() || body.title.trim(), 'Bornastar Agent <noreply@bornastar.app>')
+        await commitAll(ctx.sandboxId, cwd, body.commitMessage?.trim() || body.title.trim(), 'Noztos Agent <noreply@noztos.com>')
       } catch (e) {
         return NextResponse.json({ error: e instanceof Error ? e.message : 'commit failed' }, { status: 500 })
       }

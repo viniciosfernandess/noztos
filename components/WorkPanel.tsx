@@ -3147,7 +3147,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                   {/* Claude responds */}
                   <div className="t-fade-4 flex items-center gap-1">
                     <span className="text-zinc-400">say no more. calling</span>
-                    <span className="font-semibold text-white">bornastar</span>
+                    <span className="font-semibold text-white">noztos</span>
                   </div>
 
                   {/* Done */}

@@ -6,13 +6,14 @@ import { getClaudeInfo } from '../src/auth-detect.js'
 import { initProject, listProjects, cloneRepo, createProject, unregisterProject } from '../src/project-manager.js'
 import { loadConfig, setAuthToken, setServerUrl } from '../src/config.js'
 import { Daemon } from '../src/daemon.js'
+import { installAndStart as installLaunchd } from '../src/launchd.js'
 
 const program = new Command()
 
 program
   .name("noztos")
   .description('Noztos companion — bridges your local Claude Code to the Noztos web IDE')
-  .version('0.1.0')
+  .version('0.1.3')
 
 // ── noztos init ──────────────────────────────────────────────────
 // Registers the current directory as a Noztos project
@@ -134,11 +135,24 @@ program
 // ── noztos login ─────────────────────────────────────────────────
 program
   .command('login')
-  .description('Authenticate with your Noztos account')
-  .argument('<token>', 'Auth token from noztos.com/settings')
+  .description('Authenticate and start the background daemon')
+  .argument('<token>', 'Auth token from noztos.com')
   .action((token: string) => {
     setAuthToken(token)
-    console.log('\n  ✅ Authenticated. Run `noztos start` to connect.\n')
+    console.log('\n  ✅ Authenticated.')
+
+    const r = installLaunchd()
+    if (r.ok) {
+      console.log(`  ✅ Daemon ${r.action === 'installed' ? 'installed and started' : 'restarted'} in the background.`)
+      console.log('     Logs: /tmp/noztos-companion.log')
+      console.log('     Open noztos.com to start coding.\n')
+    } else if (r.reason === 'unsupported') {
+      console.log('  ℹ️  Auto-start unavailable on this platform.')
+      console.log('     Run `noztos start` to connect manually.\n')
+    } else {
+      console.log(`  ⚠️  Could not install auto-start (${r.error ?? 'unknown error'}).`)
+      console.log('     Run `noztos start` to connect manually.\n')
+    }
   })
 
 // ── bornastar projects ──────────────────────────────────────────────

@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     token,
     message: 'Token generated. Copy it now — it won\'t be shown again.',
-    usage: `bornastar login ${token}`,
+    usage: `noztos login ${token}`,
   })
 }
 

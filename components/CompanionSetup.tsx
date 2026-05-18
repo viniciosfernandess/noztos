@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react'
 export function CompanionSetup() {
   const [token, setToken] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
-  const [copied, setCopied] = useState<'install' | 'login' | 'start' | null>(null)
+  const [copied, setCopied] = useState<'install' | 'login' | null>(null)
   const [companionStatus, setCompanionStatus] = useState<'waiting' | 'connected'>('waiting')
 
   const generateToken = useCallback(async () => {
@@ -47,7 +47,7 @@ export function CompanionSetup() {
     return () => clearInterval(interval)
   }, [token])
 
-  function copyToClipboard(text: string, id: 'install' | 'login' | 'start') {
+  function copyToClipboard(text: string, id: 'install' | 'login') {
     navigator.clipboard?.writeText(text)
     setCopied(id)
     setTimeout(() => setCopied(null), 2000)
@@ -117,29 +117,11 @@ export function CompanionSetup() {
             )}
           </div>
 
-          {/* Step 3 */}
-          <div className="rounded-lg border border-[#2B2B2B] px-4 py-3" style={{ backgroundColor: '#1F1F1F' }}>
-            <div className="mb-2 flex items-center gap-2">
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500/10 text-[10px] font-bold text-blue-400">3</span>
-              <span className="text-[12px] font-medium text-zinc-300">Start the companion</span>
-            </div>
-            <div className="group relative">
-              <pre className="rounded-md border border-[#2B2B2B] px-3 py-2 font-mono text-[11px] text-blue-300/80" style={{ backgroundColor: '#151515' }}>
-                noztos start
-              </pre>
-              <button
-                onClick={() => copyToClipboard('noztos start', 'start')}
-                className="absolute right-1.5 top-1.5 rounded border border-[#3A3A3A] px-1.5 py-0.5 text-[9px] text-zinc-500 opacity-0 transition-opacity hover:bg-white/5 hover:text-zinc-300 group-hover:opacity-100"
-              >
-                {copied === 'start' ? '✓' : 'Copy'}
-              </button>
-            </div>
-          </div>
-
-          {/* Step 4 — Status */}
+          {/* Step 3 — Status. The login command auto-installs the
+              background daemon, so there's no manual start step. */}
           <div className="rounded-lg border border-[#2B2B2B] px-4 py-3" style={{ backgroundColor: '#1F1F1F' }}>
             <div className="flex items-center gap-2">
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-zinc-500/10 text-[10px] font-bold text-zinc-500">4</span>
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-zinc-500/10 text-[10px] font-bold text-zinc-500">3</span>
               {companionStatus === 'waiting' ? (
                 <div className="flex items-center gap-1.5">
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />

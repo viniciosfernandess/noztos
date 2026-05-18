@@ -176,7 +176,7 @@ export function ProjectList({ projects }: ProjectListProps) {
               <p className="text-[11px] text-zinc-500 mt-0.5">{deleteModal.name}</p>
             </div>
             <div className="p-6 space-y-3">
-              <p className="text-xs text-zinc-400">This will remove the project from Bornastar. Your GitHub repository will not be affected.</p>
+              <p className="text-xs text-zinc-400">This will remove the project from noztos. Your GitHub repository will not be affected.</p>
 
               {loadingWarnings && (
                 <div className="flex items-center gap-2 text-[11px] text-zinc-500">

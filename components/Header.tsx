@@ -12,7 +12,7 @@ export function Header({ userName }: HeaderProps) {
   return (
     <header className="flex w-full items-center justify-between border-b border-white/10 px-6 py-3" style={{ backgroundColor: '#1e1e28' }}>
       <h1 className="text-lg font-semibold tracking-tight text-zinc-100">
-        Bornastar
+        noztos
       </h1>
       <div className="flex items-center gap-3">
         {userName ? (
