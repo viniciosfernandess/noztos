@@ -75,23 +75,46 @@
   overflow-wrap: anywhere;
 }
 
+/* noztos is always dark — there's no light theme. Forcing this
+   here means iOS Safari (which defaults to light mode) doesn't paint
+   a white body before the per-page styled-jsx <style global> catches
+   up, and we don't have to repeat `background: #0a0a0a` in every page.
+   The login + landing pages reference these same `--bg`, `--fg`, etc
+   tokens via styled-jsx; declaring them in this server-rendered
+   stylesheet makes the first paint already dark even before
+   client-side hydration adds the per-page <style> blocks. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  color-scheme: dark;
+
+  /* Brand palette — used by app/login/page.tsx (and similar) via
+     `var(--bg)`, `var(--fg)`, etc. Single source of truth. */
+  --bg:       oklch(0.13 0.008 255);
+  --bg-2:     oklch(0.16 0.009 255);
+  --bg-3:     oklch(0.19 0.01  255);
+  --fg:       oklch(0.96 0.005 255);
+  --muted:    oklch(0.62 0.012 255);
+  --muted-2:  oklch(0.45 0.012 255);
+  --line:     oklch(0.26 0.012 255);
+  --line-2:   oklch(0.22 0.012 255);
+  --accent:   oklch(0.88 0.19 130);
+  --accent-2: oklch(0.70 0.18 130);
+  --danger:   oklch(0.72 0.18 25);
+  --display:  'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --mono:     'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+
+/* Fallback background for the brand-themed pages that bind body
+   directly to `var(--bg)`. Without this fallback, mobile Safari paints
+   white during the brief window between SSR and hydration. */
+html, body { background: var(--bg); color: var(--fg); }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {

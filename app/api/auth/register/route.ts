@@ -1,55 +1,61 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { hashPassword, validatePassword } from '@/lib/password'
-import { setSessionCookieArgs } from '@/lib/session'
+import { setSessionCookieArgs, requestIsSecure, publicOriginUrl } from '@/lib/session'
+
+// Mirror of /api/auth/login: support both fetch-JSON and native HTML
+// form posts so signup works even when React hasn't hydrated.
+async function readBody(request: NextRequest) {
+  const ct = request.headers.get('content-type') ?? ''
+  if (ct.includes('application/json')) {
+    const body = await request.json().catch(() => ({})) as {
+      email?: string; password?: string; name?: string; company?: string; role?: string
+    }
+    return { ...body, nativeForm: false }
+  }
+  const text = await request.text()
+  const p = new URLSearchParams(text)
+  return {
+    email: p.get('email') ?? undefined,
+    password: p.get('password') ?? undefined,
+    name: p.get('name') ?? undefined,
+    company: p.get('company') ?? undefined,
+    role: p.get('role') ?? undefined,
+    nativeForm: true,
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { email, password, name, company, role } = body as {
-      email?: string
-      password?: string
-      name?: string
-      company?: string
-      role?: string
-    }
+    const { email, password, name, company, role, nativeForm } = await readBody(request)
 
-    // Validate required fields
+    const errOut = (status: number, message: string, errorCode = 'invalid') =>
+      nativeForm
+        ? NextResponse.redirect(publicOriginUrl(request, `/login?mode=signup&error=${errorCode}`), 303)
+        : NextResponse.json({ error: message }, { status })
+
     if (!email || !password || !name) {
-      return NextResponse.json(
-        { error: 'Name, email, and password are required' },
-        { status: 400 }
-      )
+      return errOut(400, 'Name, email, and password are required', 'missing')
     }
 
-    // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(email)) {
-      return NextResponse.json(
-        { error: 'Invalid email format' },
-        { status: 400 }
-      )
+      return errOut(400, 'Invalid email format', 'email')
     }
 
-    // Validate password strength
     const passwordError = validatePassword(password)
     if (passwordError) {
-      return NextResponse.json({ error: passwordError }, { status: 400 })
+      return errOut(400, passwordError, 'password')
     }
 
-    // Check if user already exists
     const existing = await prisma.user.findUnique({
       where: { email: email.toLowerCase().trim() },
       select: { id: true },
     })
     if (existing) {
-      return NextResponse.json(
-        { error: 'An account with this email already exists' },
-        { status: 409 }
-      )
+      return errOut(409, 'An account with this email already exists', 'taken')
     }
 
-    // Create user
     const passwordHash = await hashPassword(password)
     const user = await prisma.user.create({
       data: {
@@ -62,13 +68,17 @@ export async function POST(request: NextRequest) {
       select: { id: true },
     })
 
-    // Set session cookie
+    const sessionArgs = setSessionCookieArgs(user.id, requestIsSecure(request))
+    if (nativeForm) {
+      const response = NextResponse.redirect(publicOriginUrl(request, '/'), 303)
+      response.cookies.set(sessionArgs)
+      return response
+    }
     const response = NextResponse.json({ success: true }, { status: 201 })
-    const sessionArgs = setSessionCookieArgs(user.id)
     response.cookies.set(sessionArgs)
-
     return response
-  } catch {
+  } catch (err) {
+    console.error('[register] failed:', err)
     return NextResponse.json(
       { error: 'Something went wrong. Please try again.' },
       { status: 500 }

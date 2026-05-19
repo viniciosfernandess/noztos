@@ -55,12 +55,21 @@ export function getSessionUserId(cookieValue: string | undefined): string | null
  * Returns the cookie arguments for setting a session cookie.
  * Pass the result directly to response.cookies.set().
  */
-export function setSessionCookieArgs(userId: string) {
+export function setSessionCookieArgs(userId: string, secure = false) {
   return {
     name: COOKIE_NAME,
     value: `${userId}|${sign(userId)}`,
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    // `secure` must match the request's protocol:
+    //   • HTTPS (cloudflared tunnel for phone access): secure=true so
+    //     Safari iOS / strict browsers don't drop the cookie under ITP.
+    //   • HTTP (Mac localhost dev): secure=false because some clients
+    //     (curl, Chrome anonymous, third-party browsers) refuse to
+    //     STORE Secure cookies received over plain HTTP — even with
+    //     the documented "localhost exception", behaviour is patchy.
+    // Caller (the route) passes the correct value by inspecting
+    // request.nextUrl.protocol or the X-Forwarded-Proto header.
+    secure,
     sameSite: 'lax' as const,
     path: '/',
     maxAge: COOKIE_MAX_AGE,
@@ -68,14 +77,44 @@ export function setSessionCookieArgs(userId: string) {
 }
 
 /**
+ * True when the request reached us over HTTPS — either directly OR
+ * through a reverse proxy (cloudflared, nginx, etc) that set the
+ * X-Forwarded-Proto header. Used to decide whether to flip the
+ * `Secure` flag on session cookies.
+ */
+export function requestIsSecure(request: { headers: Headers; nextUrl?: { protocol?: string } }): boolean {
+  const forwarded = request.headers.get('x-forwarded-proto')
+  if (forwarded === 'https') return true
+  if (forwarded === 'http') return false
+  return request.nextUrl?.protocol === 'https:'
+}
+
+/**
+ * Build a URL on the **external** origin the client used, honouring
+ * X-Forwarded-Host / X-Forwarded-Proto. `request.url` in Next.js
+ * reports the internal localhost address even when the user reached
+ * us through ngrok / cloudflared, so server-side redirects must NOT
+ * derive from it — the browser would otherwise be told to navigate
+ * to localhost (unreachable from a phone).
+ */
+export function publicOriginUrl(request: { headers: Headers; nextUrl: { protocol: string; host: string } }, path = '/'): URL {
+  const forwardedHost = request.headers.get('x-forwarded-host') || request.headers.get('host')
+  const forwardedProto = request.headers.get('x-forwarded-proto')
+  const host = forwardedHost ?? request.nextUrl.host
+  const proto = forwardedProto ?? request.nextUrl.protocol.replace(':', '')
+  return new URL(path, `${proto}://${host}`)
+}
+
+/**
  * Returns the cookie arguments for clearing the session cookie.
  */
-export function clearSessionCookieArgs() {
+export function clearSessionCookieArgs(secure = false) {
   return {
     name: COOKIE_NAME,
     value: '',
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    // Mirror setSessionCookieArgs — see comment there.
+    secure,
     sameSite: 'lax' as const,
     path: '/',
     maxAge: 0,

@@ -47,14 +47,9 @@ export function middleware(request: NextRequest) {
   // Full HMAC verification happens server-side in lib/session.ts.
   const sessionValue = request.cookies.get('session')?.value
   if (!sessionValue || !sessionValue.includes('|')) {
-    // Unauthenticated root visit → serve the marketing landing page
-    // (public/landing.html, a self-contained HTML/CSS/JS bundle from
-    // the cloud-design export). URL stays as `/` (rewrite, not redirect)
-    // so the canonical homepage matches the user's expectation.
-    // Any other authenticated path still redirects to /login.
-    if (pathname === '/') {
-      return NextResponse.rewrite(new URL('/landing.html', request.url))
-    }
+    // Self-hosted OSS: any unauthenticated visit goes to /login. The
+    // marketing landing page lives at noztos.com (a separate static
+    // deploy) — running locally, the user expects to log in.
     const loginUrl = new URL('/login', request.url)
     return NextResponse.redirect(loginUrl)
   }

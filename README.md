@@ -35,13 +35,24 @@ npx prisma db push
 
 ## Run
 
+Two ways, depending on what you're doing:
+
 ```bash
+# Using noztos as your daily tool (recommended)
+npm run go
+
+# Hacking on noztos itself (HMR, source maps, dev overlays)
 npm run dev
 ```
 
-That's it. Both the Next.js web UI and the companion daemon spawn in parallel — the daemon authenticates automatically via a shared secret in `./data/.companion-secret`.
+`npm run go` builds Next.js in production mode, then spawns both the
+web server and the companion daemon. The build takes ~60 s the first
+time and is incremental after that. Production bundles are an order
+of magnitude smaller than dev mode, which is what makes the phone
+access tunnel work — Next.js dev mode depends on a WebSocket for HMR
+that most tunnel providers either don't support or buffer poorly.
 
-Open [http://localhost:3000](http://localhost:3000), sign up, you land on the dashboard with the companion already connected.
+After it's running, open [http://localhost:3000](http://localhost:3000), sign up, you land on the dashboard with the companion already connected.
 
 ## Requirements
 
@@ -49,15 +60,21 @@ Open [http://localhost:3000](http://localhost:3000), sign up, you land on the da
 - [Claude Code](https://claude.ai/install) installed and signed in (`claude` in your PATH)
 - Postgres database
 
-## Mobile
+## Mobile / phone access
 
-Want to use it from your phone? Expose `localhost:3000` via a tunnel:
+Click the **Phone access** button in the navbar — `npm run go` mode
+spawns an ngrok tunnel and shows a QR code. Scan it from your phone,
+log in with the same account, and you're coding from anywhere.
+
+One-time setup on your machine:
 
 ```bash
-cloudflared tunnel --url localhost:3000
+brew install ngrok
+# sign up free at https://dashboard.ngrok.com
+ngrok config add-authtoken <YOUR_TOKEN>
 ```
 
-Or set up [Tailscale](https://tailscale.com) for a private VPN between your Mac and phone.
+Anyone with the URL sees your sign-in page. Your password protects access.
 
 ## Architecture
 

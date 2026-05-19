@@ -11,9 +11,16 @@
 const fs = require('fs')
 const path = require('path')
 
-const prebuildsRoot = path.join(__dirname, '..', 'node_modules', 'node-pty', 'prebuilds')
+// When companion/ is installed as part of the root npm workspace,
+// node-pty gets hoisted to <repo>/node_modules instead of
+// <repo>/companion/node_modules. Check both locations.
+const CANDIDATES = [
+  path.join(__dirname, '..', 'node_modules', 'node-pty', 'prebuilds'),
+  path.join(__dirname, '..', '..', 'node_modules', 'node-pty', 'prebuilds'),
+]
+const prebuildsRoot = CANDIDATES.find((p) => fs.existsSync(p))
 
-if (!fs.existsSync(prebuildsRoot)) {
+if (!prebuildsRoot) {
   // Fresh install hasn't placed node-pty yet (postinstall sometimes
   // races) — silent no-op. The smoke test in the daemon will surface
   // any remaining issue.

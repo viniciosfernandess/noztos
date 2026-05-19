@@ -1,6 +1,7 @@
 'use client'
 
 import { useSettingsModal } from './SettingsModal'
+import { PhoneAccessButton } from './PhoneAccessButton'
 
 interface HeaderProps {
   userName?: string
@@ -15,6 +16,7 @@ export function Header({ userName }: HeaderProps) {
         noztos
       </h1>
       <div className="flex items-center gap-3">
+        {userName ? <PhoneAccessButton /> : null}
         {userName ? (
           <>
             <span className="text-sm text-zinc-400">{userName}</span>

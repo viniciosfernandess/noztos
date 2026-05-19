@@ -25,6 +25,30 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let controller = new AbortController()
     let disposed = false
+
+    // Bootstrap the companion connection status via a regular HTTP call
+    // before / alongside the SSE. The SSE stream's first frame is the
+    // current companion_status, but some reverse proxies (ngrok free
+    // tier, Cloudflare quick tunnels) buffer the first ~bytes of the
+    // stream until enough content accumulates — which delays the UI
+    // showing "connected" for tens of seconds when the page is hit
+    // through the tunnel. Polling once on mount + every 10 s sidesteps
+    // this and is cheap (single-user, in-memory check, no DB).
+    async function pollStatus(): Promise<void> {
+      try {
+        const res = await fetch('/api/companion/status', { signal: controller.signal, cache: 'no-store' })
+        if (!res.ok) return
+        const j = await res.json()
+        companionStore.ingestClaudeEvent({
+          type: 'companion_status',
+          ...j,
+        } as Parameters<typeof companionStore.ingestClaudeEvent>[0])
+      } catch {
+        // Stream's reconnect logic surfaces real failures; this is best-effort.
+      }
+    }
+    void pollStatus()
+    const pollTimer = setInterval(() => void pollStatus(), 10_000)
     // Auto-reconnect with exponential backoff. The stream can close for
     // many reasons that aren't bugs — a server restart, a hot reload, a
     // proxy timeout, the daemon flipping offline, a transient network
@@ -252,6 +276,7 @@ export function CompanionProvider({ children }: { children: React.ReactNode }) {
       disposed = true
       unsubscribeEpoch()
       if (retryTimer) clearTimeout(retryTimer)
+      clearInterval(pollTimer)
       controller.abort()
     }
   }, [])

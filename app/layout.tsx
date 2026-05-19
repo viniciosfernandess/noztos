@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { cookies } from 'next/headers'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { getSessionUserId } from '@/lib/session'
@@ -21,6 +21,16 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'Noztos',
   description: 'Cloud-failover dev environment for Claude Code',
+}
+
+// Mobile viewport — without this Safari/Chrome on a phone render the
+// page at a default 980px wide and zoom out to fit, making everything
+// tiny and broken. `initialScale: 1` keeps the layout at native size;
+// `maximumScale: 1` + `userScalable: false` would lock pinch-zoom but
+// we leave both on so users with vision needs can still zoom in.
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
 }
 
 export default async function RootLayout({

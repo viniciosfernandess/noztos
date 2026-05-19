@@ -69,7 +69,15 @@ export interface CompanionCommand {
   //   • cleanup_project    — best-effort `rm -rf` on the project's worktrees
   //                          dir. Enqueued by DELETE /api/projects when the
   //                          daemon was offline at delete time.
-  type: 'prompt' | 'interrupt' | 'resume' | 'status' | 'clone' | 'create_project' | 'init_project' | 'setup_claude' | 'claude_status' | 'scan_repos' | 'query_running' | 'config_updated' | 'skills_updated' | 'pty_attach' | 'pty_input' | 'pty_resize' | 'pty_detach' | 'relabel_project' | 'unregister_project' | 'cleanup_project' | 'append_claude_turn' | 'update_companion'
+  type: 'prompt' | 'interrupt' | 'resume' | 'status' | 'clone' | 'create_project' | 'init_project' | 'setup_claude' | 'claude_status' | 'scan_repos' | 'query_running' | 'config_updated' | 'skills_updated' | 'pty_attach' | 'pty_input' | 'pty_resize' | 'pty_detach' | 'relabel_project' | 'unregister_project' | 'cleanup_project' | 'append_claude_turn' | 'update_companion' | 'tunnel_start' | 'tunnel_stop'
+  // ── tunnel_start / tunnel_stop ──────────────────────────
+  // Server forwards a user-issued request to start / stop a cloudflared
+  // quick tunnel that exposes localhost to the user's phone. `localUrl`
+  // is whatever the Next.js dev server is listening on (usually
+  // http://localhost:3000). The public *.trycloudflare.com URL comes
+  // out of cloudflared's own stdout — parsed and broadcast back via
+  // tunnel_status.
+  localUrl?: string
   sessionId?: string
   projectId?: string
   // For relabel_project: id the daemon currently uses for this project (the
@@ -151,6 +159,6 @@ export interface CompanionCommand {
 
 // Messages sent FROM companion TO the server
 export interface CompanionMessage {
-  type: 'auth_status' | 'project_list' | 'claude_event' | 'status' | 'error' | 'project_added' | 'running_sessions' | 'fs_change' | 'pty_data' | 'pty_exit'
+  type: 'auth_status' | 'project_list' | 'claude_event' | 'status' | 'error' | 'project_added' | 'running_sessions' | 'fs_change' | 'pty_data' | 'pty_exit' | 'tunnel_status'
   payload: unknown
 }

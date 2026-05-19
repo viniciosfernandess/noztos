@@ -50,8 +50,8 @@ export default function AuthPage() {
           const j = await res.json().catch(() => ({}))
           throw new Error(j.error ?? 'Sign in failed')
         }
-        router.push('/')
-        router.refresh()
+        window.location.href = '/'
+        return
       } else if (mode === 'signup') {
         const password = form.get('password') as string
         const confirm = form.get('confirmPassword') as string
@@ -77,8 +77,10 @@ export default function AuthPage() {
           const j = await res.json().catch(() => ({}))
           throw new Error(j.error ?? 'Registration failed')
         }
-        router.push('/')
-        router.refresh()
+        // Hard navigation — same WebKit-bug-219650 workaround as the
+        // signin branch above.
+        window.location.href = '/'
+        return
       } else {
         // forgot
         const email = form.get('email') as string
@@ -280,7 +282,21 @@ export default function AuthPage() {
           )}
 
           {!forgotSent && (
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          /* Native action + method so the form works even when React
+             hasn't hydrated (HMR WebSocket can't establish over a
+             Cloudflare quick tunnel — without hydration, onSubmit
+             never fires and the browser would otherwise default to
+             GET /login?email=…&password=… which leaks the password
+             into the URL bar and never authenticates). The JS
+             handleSubmit still runs first when hydrated; it calls
+             e.preventDefault() before the native submit happens. */
+          <form
+            onSubmit={handleSubmit}
+            action={mode === 'signup' ? '/api/auth/register' : mode === 'forgot' ? '/api/auth/forgot-password' : '/api/auth/login'}
+            method="POST"
+            encType="application/x-www-form-urlencoded"
+            style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
+          >
             {error && (
               <div style={{
                 padding: '10px 12px', borderRadius: 4,

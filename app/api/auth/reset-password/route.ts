@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createHash } from 'crypto'
 import { prisma } from '@/lib/db'
 import { hashPassword, validatePassword } from '@/lib/password'
-import { setSessionCookieArgs } from '@/lib/session'
+import { setSessionCookieArgs, requestIsSecure } from '@/lib/session'
 
 export async function POST(request: NextRequest) {
   let body: { token?: unknown; password?: unknown }
@@ -72,6 +72,6 @@ export async function POST(request: NextRequest) {
   // Sign the user in directly so they don't have to type the password
   // they just set. Convenience that matches what Apple / GitHub do.
   const response = NextResponse.json({ ok: true })
-  response.cookies.set(setSessionCookieArgs(row.userId))
+  response.cookies.set(setSessionCookieArgs(row.userId, requestIsSecure(request)))
   return response
 }

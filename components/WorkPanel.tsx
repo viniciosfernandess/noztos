@@ -468,11 +468,14 @@ function ChatsSidebar({
   }
 
   return (
-    // Mobile: slides in as a fixed overlay (z-40) so the chat below
-    // gets the full width by default. Desktop: stays inline as a flex
-    // child taking 288px. The `md:` prefixes flip behaviour at 768px.
+    // Static flex child, always 288px wide when open. The hamburger
+    // toggle in the top bar still hides it entirely via the parent's
+    // `sidebarOpen` flag — no fixed positioning or overlay backdrop
+    // needed since this is a desktop-first app (mobile users tunnel
+    // localhost via cloudflared and treat their phone as a wide
+    // viewport).
     <div
-      className="fixed inset-y-0 left-0 z-40 flex h-full w-72 flex-col border-r border-white/10 shadow-2xl shadow-black/40 md:static md:z-0 md:shrink-0 md:shadow-none"
+      className="flex h-full w-72 shrink-0 flex-col border-r border-white/10"
       style={{ backgroundColor: '#1F1F1F' }}
     >
 
@@ -2599,17 +2602,6 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
   return (
     <CompanionProvider>
     <div className="flex flex-1 flex-col overflow-hidden">
-      {/* Mobile backdrop — tap to close the sidebar. Hidden on md+ via
-          the `md:hidden` class; the inline sidebar there doesn't need
-          a backdrop because it's part of the layout. */}
-      {sidebarOpen && (
-        <button
-          type="button"
-          aria-label="Close sidebar"
-          onClick={() => onToggleSidebar?.()}
-          className="fixed inset-0 z-30 bg-black/40 backdrop-blur-[1px] md:hidden"
-        />
-      )}
       {/* Main area (sidebar + chat + file tree + minimap) */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left: Chats sidebar */}

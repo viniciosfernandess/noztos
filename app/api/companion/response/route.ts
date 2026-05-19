@@ -1,6 +1,7 @@
 import { after, NextRequest, NextResponse } from 'next/server'
 import { verifyAuth } from '@/lib/auth'
 import { getChannel } from '@/lib/companion-relay'
+import { setTunnelState, type TunnelState } from '@/lib/tunnel-state'
 import { loadSessionContext, persistRows, type PersistRow } from '@/lib/chat-persist'
 
 // POST — Companion sends Claude Code stream-json events back to the
@@ -40,6 +41,14 @@ export async function POST(request: NextRequest) {
   console.log(`[response] received shape=${bodyShape} frames=${frames.length}`)
 
   for (const frame of frames) {
+    // Mirror daemon's tunnel state into the server-side cache so
+    // GET /api/tunnel can respond synchronously. The frame still
+    // gets relayed to the browser (so SSE listeners update live)
+    // — we just record an extra copy here.
+    const f = frame as { type?: string; payload?: TunnelState }
+    if (f?.type === 'tunnel_status' && f.payload) {
+      setTunnelState(f.payload)
+    }
     channel.pushEvent(frame, auth.userId)
   }
 

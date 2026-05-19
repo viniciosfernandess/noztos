@@ -6,9 +6,11 @@
     "companion"
   ],
   "scripts": {
-    "dev:web": "next dev",
+    "dev:web": "NOZTOS_LOCAL_DEV=1 next dev",
     "dev:daemon": "NOZTOS_LOCAL_DEV=1 node companion/dist/bin/bornastar.js start",
     "dev": "npm run build:companion && concurrently -k -n web,daemon -c blue,green \"npm:dev:web\" \"npm:dev:daemon\"",
+    "go:web": "NOZTOS_LOCAL_DEV=1 next start",
+    "go": "npm run build:companion && next build && concurrently -k -n web,daemon -c green,blue \"npm:go:web\" \"npm:dev:daemon\"",
     "build:companion": "npm run build --workspace=companion",
     "build": "prisma generate && next build",
     "postinstall": "prisma generate",
@@ -40,6 +42,7 @@
     "@prisma/client": "^7.5.0",
     "@types/pg": "^8.20.0",
     "@types/prismjs": "^1.26.6",
+    "@types/qrcode": "^1.5.6",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@uiw/react-codemirror": "^4.25.9",
     "@xterm/addon-fit": "^0.11.0",
@@ -53,6 +56,7 @@
     "prism-themes": "^1.9.0",
     "prisma": "^7.5.0",
     "prismjs": "^1.30.0",
+    "qrcode": "^1.5.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-markdown": "^9.1.0",

@@ -16,6 +16,7 @@ import { SyncQueue, type QueuedEvent } from './sync-queue.js'
 import { SyncWorker } from './sync-worker.js'
 import { listProjects, relabelProjectId, unregisterProject, cleanupProjectWorktreesDir } from './project-manager.js'
 import { PtyManager } from './pty-manager.js'
+import { TunnelManager } from './tunnel-manager.js'
 import type { CompanionCommand, CompanionMessage, ClaudeStreamEvent } from './types.js'
 
 // A ChatMessage-shaped row ready to persist. Every row carries a
@@ -79,6 +80,10 @@ export class Daemon extends EventEmitter {
   // browser disconnects within the activity TTL (1h) or post-detach
   // TTL (10 min) with child-process extension, kill on shutdown.
   private ptyManager: PtyManager = new PtyManager()
+  // Cloudflared tunnel supervisor — spawns / kills the binary on
+  // request from /api/tunnel and broadcasts state changes via SSE so
+  // the navbar button reflects on/off in real time.
+  private tunnelManager: TunnelManager = new TunnelManager()
   // Persistent sync queue that mirrors every chat event to Supabase in
   // the background. Browser only renders — durability lives here.
   private syncQueue: SyncQueue = new SyncQueue()
@@ -110,6 +115,15 @@ export class Daemon extends EventEmitter {
       void this.send({
         type: 'pty_exit',
         payload: { contextKey, exitCode },
+      })
+    })
+    // Tunnel status fan-out — every state change pings the server
+    // which then broadcasts via SSE so the navbar button updates
+    // immediately. Same one-way pipe the PTY data uses.
+    this.tunnelManager.on('status', (status) => {
+      void this.send({
+        type: 'tunnel_status',
+        payload: status,
       })
     })
   }
@@ -370,6 +384,14 @@ export class Daemon extends EventEmitter {
         // result surfaces via the next companion_status broadcast
         // when the new daemon comes back up.
         this.handleUpdateCompanion()
+        break
+      case 'tunnel_start':
+        if (cmd.localUrl) {
+          this.tunnelManager.start(cmd.localUrl)
+        }
+        break
+      case 'tunnel_stop':
+        this.tunnelManager.stop()
         break
     }
   }
