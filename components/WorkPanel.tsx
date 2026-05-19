@@ -623,7 +623,7 @@ function ChatsSidebar({
                           e.stopPropagation()
                           setMenuOpenId(menuOpenId === w.id ? null : w.id)
                         }}
-                        className={`text-zinc-500 hover:text-zinc-200 ${menuOpenId === w.id ? 'block' : 'hidden group-hover:block'}`}
+                        className={`text-zinc-500 hover:text-zinc-200 ${menuOpenId === w.id ? 'block' : 'block md:hidden md:group-hover:block'}`}
                       >
                         <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
                           <circle cx="5" cy="12" r="1.8" />
@@ -828,7 +828,7 @@ function ChatRow({
       <div className="relative shrink-0">
         <button
           onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen) }}
-          className={`text-zinc-500 hover:text-zinc-200 ${menuOpen ? 'block' : 'hidden group-hover:block'}`}
+          className={`text-zinc-500 hover:text-zinc-200 ${menuOpen ? 'block' : 'block md:hidden md:group-hover:block'}`}
         >
           <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
             <circle cx="5" cy="12" r="1.8" />
@@ -2882,7 +2882,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                                     setWorktreeTabMenuId(s.id)
                                   }
                                 }}
-                                className="mr-1.5 hidden h-4 w-4 shrink-0 items-center justify-center rounded text-zinc-600 transition-colors hover:bg-white/10 hover:text-zinc-300 group-hover/tab:flex"
+                                className="mr-1.5 flex h-4 w-4 shrink-0 items-center justify-center rounded text-zinc-600 transition-colors hover:bg-white/10 hover:text-zinc-300 md:hidden md:group-hover/tab:flex"
                               >
                                 <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24">
                                   <circle cx="5" cy="12" r="1.5" />

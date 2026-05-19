@@ -135,14 +135,18 @@ const BUILTIN_WORKFLOWS: BuiltinWorkflow[] = [
 
 export function MyTeamPanel() {
   return (
-    <div className="flex flex-1 overflow-hidden">
-      {/* Left: Agents — 50% */}
-      <div className="flex w-1/2 flex-col border-r border-white/10 p-6" style={{ backgroundColor: '#1F1F1F' }}>
-        <div className="mb-6 flex items-center justify-between">
+    // Mobile: stack vertically with one page-level scroll (each
+    // section gets its natural height, the whole panel scrolls).
+    // Desktop: two equal columns, no outer scroll (each side scrolls
+    // internally if needed — current behaviour preserved).
+    <div className="flex flex-1 flex-col overflow-y-auto md:flex-row md:overflow-hidden">
+      {/* Left: Agents — full width on mobile, 50% on desktop */}
+      <div className="flex w-full flex-col p-4 md:w-1/2 md:overflow-y-auto md:border-r md:border-white/10 md:p-6" style={{ backgroundColor: '#1F1F1F' }}>
+        <div className="mb-4 flex items-center justify-between md:mb-6">
           <h2 className="text-lg font-semibold text-zinc-200">Agents</h2>
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
           <EmployeeCard employee={BUILDER_EMPLOYEE} isAutomatic />
           {AVAILABLE_EMPLOYEES.map((emp) => (
             <EmployeeCard key={emp.id} employee={emp} />
@@ -150,9 +154,9 @@ export function MyTeamPanel() {
         </div>
       </div>
 
-      {/* Right: Workflows — 50% (fixed, no user-customizable workflows in V1) */}
-      <div className="flex w-1/2 flex-col p-6" style={{ backgroundColor: '#1F1F1F' }}>
-        <div className="mb-6">
+      {/* Right: Workflows — full width on mobile, 50% on desktop */}
+      <div className="flex w-full flex-col p-4 md:w-1/2 md:overflow-y-auto md:p-6" style={{ backgroundColor: '#1F1F1F' }}>
+        <div className="mb-4 md:mb-6">
           <h2 className="text-lg font-semibold text-zinc-200">Workflows</h2>
           <p className="mt-1 text-xs text-zinc-500">
             Multi-agent orchestrations with built-in review loops, engineered to deliver precise results.
