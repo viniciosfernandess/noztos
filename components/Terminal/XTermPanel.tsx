@@ -169,11 +169,30 @@ export function XTermPanel({
     function handlePtyExit(e: Event) {
       const detail = (e as PtyExitEvent).detail
       if (detail.contextKey !== contextKey) return
-      // The global ptyActiveContexts flag is cleared in
-      // CompanionProvider's pty_exit handler (so it works even when
-      // this panel is unmounted). Here we only need to surface the
-      // visible "shell exited" line.
-      term.write(`\r\n\x1b[2m[shell exited with code ${detail.exitCode}]\x1b[0m\r\n`)
+      // Surface the goodbye line briefly so the user sees what
+      // happened (user typed `exit`, daemon restarted, zsh crashed,
+      // or the worktree went cold and got swept). Then auto-respawn
+      // since this panel is still mounted: that's exactly the local-
+      // terminal feel — a dead shell isn't a dead terminal, you just
+      // get a fresh one. Daemon's attach handles the no-handle case
+      // by spawning a new PTY (see companion/src/pty-manager.ts).
+      term.write(`\r\n\x1b[2m[shell exited with code ${detail.exitCode}, restarting…]\x1b[0m\r\n`)
+      firstDataReceived = false
+      const c = term.cols
+      const r = term.rows
+      markPtyAttached(contextKey)
+      console.log(`[term] auto-respawn ctx=${contextKey.slice(0, 8)} cols=${c}x${r} wt=${worktreeId.slice(0, 8)}`)
+      void fetch(`/api/projects/${projectId}/pty`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'attach',
+          contextKey,
+          worktreeId,
+          cols: c,
+          rows: r,
+        }),
+      }).catch(() => {})
     }
     window.addEventListener('bornastar-pty-data', handlePtyData as EventListener)
     window.addEventListener('bornastar-pty-exit', handlePtyExit as EventListener)

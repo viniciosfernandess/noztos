@@ -48,20 +48,18 @@ import { EventEmitter } from 'node:events'
 // when the daemon-side PTY has died (worktree fully cold).
 
 const RING_BUFFER_CAP_BYTES = 200_000
-// Activity-TTL: max gap between user inputs before we consider the
-// PTY abandoned. Mirrors the worktree-cache idle-eviction window so
-// the PTY and its associated browser-side cache slices age out
-// together. Reset on every input. Output does NOT reset — a runaway
-// log shouldn't keep a forgotten PTY alive forever (child detection
-// at TTL expiry covers the "real work in progress" case).
-const ACTIVITY_TTL_MS = 60 * 60 * 1000  // 1h
-// Post-detach TTL: shorter, applied when the panel explicitly says
-// goodbye. Within this window a remount snaps back to the same bash
-// session.
-const DETACH_TTL_MS = 10 * 60 * 1000  // 10 min
+// Post-detach TTL: only timer left on a PTY. Armed by detach() when
+// the browser panel unmounts (worktree switch / right-panel close /
+// page refresh). Aligned with the browser's IDLE_EVICTION_MS so a
+// PTY dies in the same moment its worktree cache slice is evicted —
+// one consistent "this worktree went cold" beat across the system.
+// A still-mounted panel never has this armed: keystroke idleness
+// does NOT kill the shell, matching local-terminal mental model.
+const DETACH_TTL_MS = 60 * 60 * 1000  // 1h
 // When TTL fires but a child process is running (npm test, vim, etc.),
-// extend by this much before checking again. Half the activity-TTL
-// keeps long builds alive without burning ps polls in tight loops.
+// extend by this much before checking again. Long enough to not burn
+// ps polls in tight loops; bounded so a truly stuck process can't sit
+// forever.
 const CHILD_EXTENSION_MS = 30 * 60 * 1000  // 30 min
 
 interface PtyHandle {
@@ -78,12 +76,10 @@ interface PtyHandle {
 
 export class PtyManager extends EventEmitter {
   private handles: Map<string, PtyHandle> = new Map()
-  private readonly activityTtlMs: number
   private readonly detachTtlMs: number
 
-  constructor(opts: { activityTtlMs?: number; detachTtlMs?: number } = {}) {
+  constructor(opts: { detachTtlMs?: number } = {}) {
     super()
-    this.activityTtlMs = opts.activityTtlMs ?? ACTIVITY_TTL_MS
     this.detachTtlMs = opts.detachTtlMs ?? DETACH_TTL_MS
   }
 
@@ -94,7 +90,8 @@ export class PtyManager extends EventEmitter {
   attach(contextKey: string, opts: { cwd: string; cols: number; rows: number; displayName?: string }): { snapshot: string; reattached: boolean } {
     const existing = this.handles.get(contextKey)
     if (existing) {
-      this.armActivityTtl(contextKey)
+      // Cancel any pending post-detach kill: the panel is back.
+      if (existing.ttlTimer) { clearTimeout(existing.ttlTimer); existing.ttlTimer = null }
       if (opts.cols !== existing.cols || opts.rows !== existing.rows) {
         try { existing.pty.resize(opts.cols, opts.rows) } catch {}
         existing.cols = opts.cols
@@ -155,9 +152,9 @@ export class PtyManager extends EventEmitter {
       this.emit('exit', contextKey, exitCode)
     })
 
-    // Arm the activity-TTL on a fresh spawn — even a brand new PTY
-    // that nobody ever interacts with shouldn't outlive ACTIVITY_TTL_MS.
-    this.armActivityTtl(contextKey)
+    // Fresh PTY starts with no kill timer armed. A timer only exists
+    // while the panel is detached (see detach() below) — keystroke
+    // idleness alone never kills the shell.
     console.log(`[pty] spawn ctx=${contextKey.slice(0, 8)} pid=${ptyProcess.pid} cwd=${opts.cwd} name="${displayName}"`)
     return { snapshot: '', reattached: false }
   }
@@ -166,9 +163,6 @@ export class PtyManager extends EventEmitter {
     const h = this.handles.get(contextKey)
     if (!h) return
     h.pty.write(data)
-    // User typed something — they're alive and using the terminal.
-    // Reset the activity-TTL back to its full window.
-    this.armActivityTtl(contextKey)
   }
 
   resize(contextKey: string, cols: number, rows: number): void {
@@ -215,16 +209,6 @@ export class PtyManager extends EventEmitter {
   }
 
   // ── private ──────────────────────────────────────────────────────
-
-  // (Re)set the long activity-TTL. Called on attach, reattach, and
-  // every input. Clears any prior timer (post-detach window OR
-  // child-running extension) so the freshest intent wins.
-  private armActivityTtl(contextKey: string): void {
-    const h = this.handles.get(contextKey)
-    if (!h) return
-    if (h.ttlTimer) clearTimeout(h.ttlTimer)
-    h.ttlTimer = setTimeout(() => this.handleTtlExpiry(contextKey), this.activityTtlMs)
-  }
 
   private async handleTtlExpiry(contextKey: string): Promise<void> {
     const h = this.handles.get(contextKey)
