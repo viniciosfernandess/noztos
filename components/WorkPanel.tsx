@@ -472,7 +472,7 @@ function ChatsSidebar({
     // Mobile (<md): same width but `fixed` overlay below the 44 px
     // navbar — slides over the workspace without resizing it.
     <div
-      className="fixed bottom-0 left-0 top-11 z-40 flex w-72 flex-col border-r border-white/10 shadow-2xl shadow-black/40 md:static md:bottom-auto md:left-auto md:top-auto md:z-0 md:h-full md:shrink-0 md:shadow-none"
+      className="fixed bottom-0 left-0 top-11 z-40 flex w-72 flex-col border-r border-white/10 shadow-2xl shadow-black/40 md:static md:bottom-auto md:left-auto md:top-auto md:z-auto md:h-full md:shrink-0 md:shadow-none"
       style={{ backgroundColor: '#1F1F1F' }}
     >
 
@@ -3085,7 +3085,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
             same content, just slides over the chat instead of pushing.
             Closed on mobile by default; the right-edge tab strip below
             opens it. */}
-        <div className={`flex-col border-l border-[#2B2B2B] ${rightPanelMobileOpen ? 'fixed bottom-0 right-0 top-11 z-40 flex w-[85%] max-w-md shadow-2xl shadow-black/40' : 'hidden'} md:relative md:bottom-auto md:right-auto md:top-auto md:z-0 md:flex md:max-w-none md:min-w-0 md:shrink-0 md:shadow-none md:transition-all md:duration-200 ${rightPanelExpanded ? 'md:w-[50%]' : 'md:w-[30%]'}`} style={{ backgroundColor: '#1F1F1F' }}>
+        <div className={`flex-col border-l border-[#2B2B2B] ${rightPanelMobileOpen ? 'fixed bottom-0 right-0 top-11 z-40 flex w-[85%] max-w-md shadow-2xl shadow-black/40' : 'hidden'} md:relative md:bottom-auto md:right-auto md:top-auto md:z-auto md:flex md:max-w-none md:min-w-0 md:shrink-0 md:shadow-none md:transition-all md:duration-200 ${rightPanelExpanded ? 'md:w-[50%]' : 'md:w-[30%]'}`} style={{ backgroundColor: '#1F1F1F' }}>
           {/* Conflict resolver overlay — covers the whole right panel
               (tabs + body + bottom terminal) so the user is focused on
               resolving. Chat column stays live on the left. */}
