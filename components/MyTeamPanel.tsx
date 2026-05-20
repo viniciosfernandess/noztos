@@ -155,7 +155,7 @@ export function MyTeamPanel() {
       </div>
 
       {/* Right: Workflows — full width on mobile, 50% on desktop */}
-      <div className="flex w-full flex-col p-4 md:w-1/2 md:overflow-y-auto md:p-6" style={{ backgroundColor: '#1F1F1F' }}>
+      <div data-tour="delegate-workflows" className="flex w-full flex-col p-4 md:w-1/2 md:overflow-y-auto md:p-6" style={{ backgroundColor: '#1F1F1F' }}>
         <div className="mb-4 md:mb-6">
           <h2 className="text-lg font-semibold text-zinc-200">Workflows</h2>
           <p className="mt-1 text-xs text-zinc-500">

@@ -6,6 +6,7 @@ import { prisma } from '@/lib/db'
 import { AuthModalProvider } from '@/components/AuthModal'
 import { SettingsModalProvider } from '@/components/SettingsModal'
 import { GitHubModalProvider } from '@/components/GitHubModal'
+import { OnboardingTourProvider } from '@/components/OnboardingTour'
 import './globals.css'
 
 const geistSans = Geist({
@@ -65,7 +66,9 @@ export default async function RootLayout({
         <SettingsModalProvider userName={userName} userEmail={userEmail}>
           <GitHubModalProvider isConnected={githubConnected}>
             <AuthModalProvider initialOpen={false}>
-              {children}
+              <OnboardingTourProvider>
+                {children}
+              </OnboardingTourProvider>
             </AuthModalProvider>
           </GitHubModalProvider>
         </SettingsModalProvider>

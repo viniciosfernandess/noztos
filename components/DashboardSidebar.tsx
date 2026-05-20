@@ -136,6 +136,7 @@ export function DashboardSidebar() {
       >
         {/* Claude Code */}
         <div
+          data-tour="claude-badge"
           className="relative flex flex-col items-center"
           onMouseEnter={() => enterTooltip('claude')}
           onMouseLeave={leaveTooltip}
@@ -175,6 +176,7 @@ export function DashboardSidebar() {
 
         {/* GitHub */}
         <div
+          data-tour="github-badge"
           className="relative flex flex-col items-center"
           onMouseEnter={() => enterTooltip('github')}
           onMouseLeave={leaveTooltip}
@@ -218,6 +220,7 @@ export function DashboardSidebar() {
 
         {/* Machine + Cloud */}
         <div
+          data-tour="machine-badge"
           className="relative flex flex-col items-center"
           onMouseEnter={() => enterTooltip('machine')}
           onMouseLeave={leaveTooltip}

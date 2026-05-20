@@ -126,7 +126,7 @@ export function ProjectList({ projects }: ProjectListProps) {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div data-tour="project-list" className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-zinc-200">Your Projects</h2>
         <CreateProjectButton />

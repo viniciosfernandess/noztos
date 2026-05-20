@@ -113,6 +113,7 @@ export function PhoneAccessButton() {
     <div className="relative">
       <button
         ref={buttonRef}
+        data-tour="phone-access"
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-2 rounded-md border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[12px] text-zinc-300 transition-colors hover:bg-white/[0.08]"
         title="Phone access"
