@@ -2,8 +2,8 @@
 
 // Unified auth page — Sign in OR Create account in one screen.
 //
-// Visual language matches public/landing.html so the user lands here
-// without a jarring shift: same fonts (Space Grotesk + JetBrains Mono),
+// Visual language matches the noztos marketing site so the user lands
+// here without a jarring shift: same fonts (Space Grotesk + JetBrains Mono),
 // same accent green, same scanlines + ambient grid, same status bar
 // vibe. Single tabbed control switches between two minimal forms; both
 // hit the existing /api/auth/login and /api/auth/register endpoints
@@ -134,7 +134,7 @@ export default function AuthPage() {
         ::selection { background: var(--accent); color: #000; }
       `}</style>
 
-      {/* Ambient grid + scanlines — same as the landing page */}
+      {/* Ambient grid + scanlines — same as the marketing site */}
       <div
         aria-hidden
         style={{
@@ -158,7 +158,7 @@ export default function AuthPage() {
         }}
       />
 
-      {/* Top nav — exact match to public/landing.html so the brand
+      {/* Top nav — exact match to the marketing site so the brand
           doesn't shift between routes. Same max-width row, same 14×28
           padding, same brand size + letter-spacing. */}
       <nav
