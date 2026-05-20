@@ -88,6 +88,18 @@ export function OnboardingTourProvider({ children }: { children: ReactNode }) {
 
   const startTour = useCallback(() => setStep(0), [])
 
+  // Keyboard navigation — Escape closes, Arrow/Enter advances
+  useEffect(() => {
+    if (!isOpen) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') { finish(); return }
+      if (e.key === 'ArrowRight' || e.key === 'Enter') { next(); return }
+      if (e.key === 'ArrowLeft') { prev() }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
   // Auto-start on first dashboard visit
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -216,6 +228,7 @@ export function OnboardingTourProvider({ children }: { children: ReactNode }) {
                     height={rect.height + SPOTLIGHT_PAD * 2}
                     rx="10"
                     fill="black"
+                    style={{ transition: 'x 0.35s ease, y 0.35s ease, width 0.35s ease, height 0.35s ease' }}
                   />
                 )}
               </mask>
@@ -240,6 +253,7 @@ export function OnboardingTourProvider({ children }: { children: ReactNode }) {
                 fill="none"
                 stroke="rgba(167,139,250,0.5)"
                 strokeWidth="1.5"
+                style={{ transition: 'x 0.35s ease, y 0.35s ease, width 0.35s ease, height 0.35s ease' }}
               />
             )}
           </svg>
