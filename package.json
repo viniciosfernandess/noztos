@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "npm run build:companion && bash scripts/stack.sh dev",
     "go": "npm run build:companion && next build && bash scripts/stack.sh go",
+    "update": "git pull && npm install && npx prisma db push",
     "build:companion": "npm run build --workspace=companion",
     "build": "prisma generate && next build",
     "postinstall": "prisma generate",

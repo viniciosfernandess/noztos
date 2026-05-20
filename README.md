@@ -92,6 +92,21 @@ sign-in page first, so your password is what protects access.
 
 ---
 
+## Updating
+
+`npm run go` runs whatever is on your disk — it doesn't pull. To move
+to the latest version:
+
+```bash
+npm run update   # git pull + npm install + prisma db push
+npm run go
+```
+
+`npm run update` is safe to run every time — `npm install` and
+`prisma db push` are no-ops when nothing changed.
+
+---
+
 ## How it works
 
 noztos is **two processes**, both running on your machine:
