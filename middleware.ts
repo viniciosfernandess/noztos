@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const PUBLIC_PATHS = ['/login', '/register', '/docs', '/reset-password', '/api/auth/', '/api/companion/', '/admin/login', '/api/admin/login']
+const PUBLIC_PATHS = ['/login', '/register', '/reset-password', '/api/auth/', '/api/companion/', '/admin/login', '/api/admin/login']
 
 function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname.startsWith(p))
