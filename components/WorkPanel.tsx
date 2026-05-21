@@ -40,6 +40,7 @@ import { TaskCreatedConfirmModal } from './tasks/TaskCreatedConfirmModal'
 import { TaskManageModal } from './tasks/TaskManageModal'
 import type { TaskListItem } from './tasks/types'
 import type { ChatReport } from '@/lib/report-types'
+import type { GstackSkill } from '@/lib/gstack-skills'
 
 // ── Thinking Indicator ────────────────────────────────────────────────────
 
@@ -273,6 +274,7 @@ function ChatsSidebar({
   worktreeStats,
   chatStats,
   companionOffline,
+  projectWarmingUp,
   onSelectMainChat,
   onSelectWorktree,
   onNewWorktree,
@@ -304,6 +306,7 @@ function ChatsSidebar({
   onToggleWorktreeUnread: (worktreeId: string, unread: boolean) => void
   onChanged: () => void
   companionOffline: boolean
+  projectWarmingUp: boolean
 }) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
@@ -489,9 +492,9 @@ function ChatsSidebar({
               <button
                 data-tour="new-workspace"
                 onClick={onNewWorktree}
-                disabled={companionOffline}
+                disabled={companionOffline || projectWarmingUp}
                 className="flex w-full items-center gap-2 pl-9 pr-4 py-1.5 text-left text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-zinc-500"
-                title={companionOffline ? 'Local offline. Reconnect to create workspaces.' : 'New workspace'}
+                title={companionOffline ? 'Local offline. Reconnect to create workspaces.' : projectWarmingUp ? 'Setting up the project…' : 'New workspace'}
               >
                 <svg className="h-3 w-3 shrink-0" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -1265,7 +1268,7 @@ interface Message {
   createdAt: string
 }
 
-type ChatMode = 'no_skill' | 'skill' | 'team' | 'workflow'
+type ChatMode = 'no_skill' | 'skill' | 'team' | 'workflow' | 'gstack'
 
 interface WorkPanelProps {
   projectId: string
@@ -1379,6 +1382,20 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
   const [activeSkillId, setActiveSkillId] = useState<string | null>(null)
   const [activeTeamId, setActiveTeamId] = useState<string | null>(null)
   const [activeWorkflowId, setActiveWorkflowId] = useState<string | null>(null)
+  // gstack skills the user has installed in ~/.claude/skills/ — discovered
+  // server-side, surfaced in the chat `/` selector. activeGstackSkillId
+  // holds the slash invocation (e.g. "ship") when a gstack skill is the
+  // active mode. The list is machine-global; fetched once per mount.
+  const [activeGstackSkillId, setActiveGstackSkillId] = useState<string | null>(null)
+  const [gstackSkills, setGstackSkills] = useState<GstackSkill[]>([])
+  useEffect(() => {
+    let cancelled = false
+    fetch(`/api/projects/${projectId}/gstack-skills`)
+      .then((r) => (r.ok ? r.json() : { skills: [] }))
+      .then((data) => { if (!cancelled) setGstackSkills(data.skills ?? []) })
+      .catch(() => { /* gstack not installed / unreachable — selector omits the group */ })
+    return () => { cancelled = true }
+  }, [projectId])
   // chatMessages state removed — the legacy Bornastar engine that wrote
   // into it is gone. Chat content lives in companion.messages inside the
   // ChatPanel. Kept as a comment marker so nobody re-adds the old poll.
@@ -1461,6 +1478,38 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
   // add` to run locally, which can't happen without the daemon. Same gate
   // as `CreateProjectButton.tsx` so language/behavior stays consistent.
   const companionOffline = useCompanionStatus() !== 'connected'
+
+  // Gate the "new workspace" button while a freshly-opened project is
+  // still registering with the daemon. Until the project is in the
+  // daemon's registry, worktree creation fails fast (provisionWorktree
+  // 500s) and the optimistic worktree gets rolled back ("appeared then
+  // vanished"). Match by path — the same resolution the chat uses to
+  // resolve companionProjectId. Purely a UI gate; the create flow is
+  // untouched.
+  const companionInfo = useCompanionInfo()
+  const [projectPath, setProjectPath] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    setProjectPath(null)
+    fetch(`/api/projects/${projectId}/terminal`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && d?.sandboxId) setProjectPath(d.sandboxId) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [projectId])
+  const projectRegistered = !!projectPath
+    && !!companionInfo?.projects?.some((p) => p.path === projectPath)
+  // Safety valve: re-enable after 10s so a never-registering project
+  // can't leave the button permanently dead — a click can then still
+  // reach the existing failure/retry modal instead of a dead end.
+  const [warmupGraceOver, setWarmupGraceOver] = useState(false)
+  useEffect(() => {
+    setWarmupGraceOver(false)
+    if (projectRegistered) return
+    const t = setTimeout(() => setWarmupGraceOver(true), 10_000)
+    return () => clearTimeout(t)
+  }, [projectId, projectRegistered])
+  const projectWarmingUp = !projectRegistered && !warmupGraceOver
 
   // ── Global fs-change refresher ───────────────────────────────────
   // The daemon's fs watcher emits a `bornastar-fs-change` event with the
@@ -2561,11 +2610,15 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
     setWorktrees((prev) => prev.map((w) => w.id === id ? { ...w, name } : w))
   }
 
+  // skill, team, workflow, and gstack are mutually exclusive. gstack
+  // never mixes with our skills/workflows — picking any one clears the
+  // others so only a single mode is ever active in a chat.
   function handleSelectEmployee(emp: HiredEmployee) {
     setActiveMode('skill')
     setActiveSkillId(emp.id)
     setActiveTeamId(null)
     setActiveWorkflowId(null)
+    setActiveGstackSkillId(null)
   }
 
   function handleSelectTeam(team: TeamInfo) {
@@ -2573,6 +2626,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
     setActiveTeamId(team.id)
     setActiveSkillId(null)
     setActiveWorkflowId(null)
+    setActiveGstackSkillId(null)
   }
 
   function handleSelectWorkflow(wfId: string) {
@@ -2580,6 +2634,15 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
     setActiveWorkflowId(wfId)
     setActiveSkillId(null)
     setActiveTeamId(null)
+    setActiveGstackSkillId(null)
+  }
+
+  function handleSelectGstackSkill(invocation: string) {
+    setActiveMode('gstack')
+    setActiveGstackSkillId(invocation)
+    setActiveSkillId(null)
+    setActiveTeamId(null)
+    setActiveWorkflowId(null)
   }
 
   function handleClearSelection() {
@@ -2587,6 +2650,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
     setActiveSkillId(null)
     setActiveTeamId(null)
     setActiveWorkflowId(null)
+    setActiveGstackSkillId(null)
   }
 
   // Count changed files for the Changes tab badge — scoped to the
@@ -2656,6 +2720,7 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
           onNewWorktree={handleNewWorktree}
           onAddChatToWorktree={handleAddChatToWorktree}
           companionOffline={companionOffline}
+          projectWarmingUp={projectWarmingUp}
           onRenameSession={handleRenameSession}
           onRenameWorktree={handleRenameWorktree}
           onToggleUnread={(id, unread) => {
@@ -2938,11 +3003,14 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
                   activeWorkflow={activeWorkflow}
                   activeEmployee={activeEmployee}
                   activeTeam={activeTeam}
+                  activeGstackSkillId={activeGstackSkillId}
+                  gstackSkills={gstackSkills}
                   hiredEmployees={hiredEmployees}
                   teams={teams}
                   onSelectEmployee={handleSelectEmployee}
                   onSelectTeam={handleSelectTeam}
                   onSelectWorkflow={handleSelectWorkflow}
+                  onSelectGstackSkill={handleSelectGstackSkill}
                   onClearSelection={handleClearSelection}
                   onSessionRenamed={(name: string) => {
                     handleRenameSession(activeSessionId!, name)
@@ -3045,8 +3113,8 @@ export function WorkPanel({ projectId, hiredEmployees, teams, sidebarOpen = true
             <div className="flex items-center gap-2">
               <button
                 onClick={handleNewWorktree}
-                disabled={companionOffline}
-                title={companionOffline ? 'Local offline. Reconnect to create workspaces.' : ''}
+                disabled={companionOffline || projectWarmingUp}
+                title={companionOffline ? 'Local offline. Reconnect to create workspaces.' : projectWarmingUp ? 'Setting up the project…' : ''}
                 className="rounded-full border border-white/20 px-4 py-1.5 text-[12px] font-medium text-zinc-200 transition-colors hover:border-white/40 hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:border-white/20 disabled:hover:bg-transparent"
               >
                 + New workspace
@@ -6250,11 +6318,14 @@ function ChatPanel({
   activeWorkflow,
   activeEmployee,
   activeTeam,
+  activeGstackSkillId,
+  gstackSkills,
   hiredEmployees,
   teams,
   onSelectEmployee,
   onSelectTeam,
   onSelectWorkflow,
+  onSelectGstackSkill,
   onClearSelection,
   onSessionRenamed,
   onMinimize,
@@ -6290,11 +6361,14 @@ function ChatPanel({
   activeWorkflow?: BuiltinWorkflowItem
   activeEmployee?: HiredEmployee
   activeTeam?: TeamInfo
+  activeGstackSkillId: string | null
+  gstackSkills: GstackSkill[]
   hiredEmployees: HiredEmployee[]
   teams: TeamInfo[]
   onSelectEmployee: (e: HiredEmployee) => void
   onSelectTeam: (t: TeamInfo) => void
   onSelectWorkflow: (wfId: string) => void
+  onSelectGstackSkill: (invocation: string) => void
   onClearSelection: () => void
   onSessionRenamed: (name: string) => void
 }) {
@@ -6302,7 +6376,7 @@ function ChatPanel({
   // switching to another chat, pick the text back up.
   const [input, setInput] = useState(() => companionStore.getDraft(sessionId))
   const [showSelector, setShowSelector] = useState(false)
-  const [selectorTab, setSelectorTab] = useState<'employees' | 'workflows'>('employees')
+  const [selectorTab, setSelectorTab] = useState<'employees' | 'workflows' | 'gstack'>('employees')
   const [attachments, setAttachments] = useState<{ file: File; preview: string; type: 'image' | 'pdf' | 'text' }[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const [contextPaths, setContextPaths] = useState<string[]>([])
@@ -7010,6 +7084,14 @@ function ChatPanel({
       content = `${allBlocks.join('\n\n')}\n\n${userText}`
     }
 
+    // gstack skill selected → prefix its slash invocation so the claude
+    // CLI runs the skill natively. gstack is chat-only and mutually
+    // exclusive with our skills/workflows; this prefix is the only
+    // change to the send path.
+    if (activeMode === 'gstack' && activeGstackSkillId) {
+      content = `/${activeGstackSkillId} ${content}`
+    }
+
     // Auto-rename the chat using the first user message. We compute the
     // title here, but defer firing it to the right branch below: the
     // normal sendPrompt path fires immediately, while the worktree-
@@ -7108,8 +7190,10 @@ function ChatPanel({
         return
       }
       workflowDispatch = { workflow: activeWorkflow, task }
-    } else {
+    } else if (activeMode !== 'gstack') {
       // Try each registered trigger; first match wins.
+      // Skipped in gstack mode — the content is already a gstack
+      // `/<name>` command and must never be re-read as a workflow.
       for (const wf of BUILTIN_WORKFLOWS) {
         const escaped = wf.trigger.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
         const slashMatch = content.match(new RegExp(`^\\s*${escaped}\\s+([\\s\\S]+)$`))
@@ -7634,6 +7718,16 @@ function ChatPanel({
                   >
                     Workflows
                   </button>
+                  {/* gstack tab — only shown when the user has gstack
+                      skills installed (~/.claude/skills/gstack/). */}
+                  {gstackSkills.length > 0 && (
+                    <button
+                      onClick={() => setSelectorTab('gstack')}
+                      className={`rounded-md px-2 py-0.5 text-[10px] font-medium transition-colors ${selectorTab === 'gstack' ? 'bg-white/10 text-zinc-100' : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-300'}`}
+                    >
+                      gstack
+                    </button>
+                  )}
                 </div>
 
                 {selectorTab === 'employees' && (() => {
@@ -7687,6 +7781,48 @@ function ChatPanel({
                             className={`rounded-md bg-gradient-to-br ${wf.color} px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm transition-transform hover:scale-105`}
                           >
                             {wf.name}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )
+                })()}
+
+                {/* gstack skills — listed as their `/<name>` invocation.
+                    Selecting one sets gstack mode (mutually exclusive
+                    with our skills/workflows); sendMessage then prefixes
+                    the slash command so the claude CLI runs it. */}
+                {selectorTab === 'gstack' && (() => {
+                  const filtered = gstackSkills.filter((s) =>
+                    !slashFilter ||
+                    s.invocation.toLowerCase().includes(slashFilter) ||
+                    s.name.toLowerCase().includes(slashFilter)
+                  )
+                  return (
+                    <div className="flex flex-wrap gap-1.5">
+                      {filtered.length === 0 ? (
+                        <p className="text-[11px] text-zinc-500">No match.</p>
+                      ) : (
+                        filtered.map((skill) => (
+                          <button
+                            key={skill.invocation}
+                            onClick={() => {
+                              onSelectGstackSkill(skill.invocation)
+                              setShowSelector(false)
+                              setInput('')
+                              setSlashFilter('')
+                              requestAnimationFrame(() => {
+                                // Skip on mobile — see the chat-switch effect above for
+                                // the rationale (programmatic focus pops the iOS soft keyboard
+                                // when triggered inside a user-tap tick).
+                                if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) return
+                                chatTextareaRef.current?.focus({ preventScroll: true })
+                              })
+                            }}
+                            title={skill.description || undefined}
+                            className="rounded-md border border-white/15 bg-white/[0.06] px-2.5 py-1 text-[11px] font-semibold text-zinc-200 transition-colors hover:bg-white/10"
+                          >
+                            /{skill.invocation}
                           </button>
                         ))
                       )}
@@ -7781,6 +7917,18 @@ function ChatPanel({
                   <div className="flex items-center gap-1">
                     <span className={`rounded bg-gradient-to-br ${activeWorkflow.color} px-2 py-0.5 text-[10px] font-semibold text-white`}>
                       {activeWorkflow.name}
+                    </span>
+                    <button type="button" onClick={onClearSelection} className="text-zinc-400 hover:text-zinc-600">
+                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
+                {activeMode === 'gstack' && activeGstackSkillId && (
+                  <div className="flex items-center gap-1">
+                    <span className="rounded border border-white/15 bg-white/[0.06] px-2 py-0.5 text-[10px] font-semibold text-zinc-200">
+                      /{activeGstackSkillId}
                     </span>
                     <button type="button" onClick={onClearSelection} className="text-zinc-400 hover:text-zinc-600">
                       <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
