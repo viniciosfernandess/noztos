@@ -96,6 +96,13 @@ class RelayChannel {
   // Companion connection state
   companion: CompanionConnection | null = null
 
+  // Latest known set of running chat sessions. `running_sessions` is an
+  // idempotent full-state snapshot (not a delta) and is never buffered,
+  // so we retain just the last one here — that lets a client connecting
+  // mid-turn be told what's already running, the same way the SSE
+  // connect handler already replays companion_status.
+  lastRunningSessions: string[] = []
+
   pushCommand(cmd: unknown): void {
     if (this.commandQueue.length >= MAX_QUEUE_SIZE) this.commandQueue.shift()
     this.commandQueue.push(cmd)
@@ -106,6 +113,14 @@ class RelayChannel {
     if (this.eventQueue.length >= MAX_QUEUE_SIZE) this.eventQueue.shift()
     this.eventQueue.push(event)
     this.eventEmitter.emit('event', event)
+
+    // Retain the latest running-sessions snapshot so a client that
+    // connects mid-turn can be brought up to date on connect (the
+    // event itself is never buffered — see the /stream connect handler).
+    const env = event as { type?: string; payload?: { sessionIds?: unknown } }
+    if (env?.type === 'running_sessions' && Array.isArray(env.payload?.sessionIds)) {
+      this.lastRunningSessions = env.payload.sessionIds as string[]
+    }
 
     // Mirror into the per-session ring buffer so later consumers (chat
     // hydration, mobile catch-up) can replay without DB hits.

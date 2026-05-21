@@ -43,6 +43,17 @@ export async function GET(request: NextRequest) {
         send(evt)
       }
 
+      // Running-sessions snapshot — sent AFTER the drain so it always
+      // wins over any stale running_sessions still sitting in the queue.
+      // running_sessions is a one-shot delta the daemon emits only when
+      // the set changes, and it is never buffered; without this replay a
+      // client connecting mid-turn never learns which chats are already
+      // running, leaving its Stop button + live-log panel looking idle.
+      send({
+        type: 'running_sessions',
+        payload: { sessionIds: channel.lastRunningSessions },
+      })
+
       // Listen for new events from companion
       function onEvent(evt: unknown) {
         send(evt)
