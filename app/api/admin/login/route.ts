@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyAdminCredentials, setAdminCookieArgs } from '@/lib/admin-session'
+import { clientIp, isLoginLocked, recordLoginFailure } from '@/lib/login-throttle'
 
 export async function POST(request: NextRequest) {
   let body: { username?: unknown; password?: unknown }
@@ -22,8 +23,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'username and password required' }, { status: 400 })
   }
 
+  // Brute-force gate. Namespace the account axis so admin attempts don't
+  // share a bucket with same-named user logins.
+  const ip = clientIp(request)
+  const account = `admin:${body.username}`
+  if (isLoginLocked(ip, account)) {
+    return NextResponse.json(
+      { error: 'Too many failed attempts. Try again later.' },
+      { status: 429 },
+    )
+  }
+
   const ok = verifyAdminCredentials(body.username, body.password)
   if (!ok) {
+    recordLoginFailure(ip, account)
     await new Promise((r) => setTimeout(r, 280))
     return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
   }

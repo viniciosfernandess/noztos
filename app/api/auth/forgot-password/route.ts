@@ -19,6 +19,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createHash, randomBytes } from 'crypto'
 import { prisma } from '@/lib/db'
 import { sendPasswordResetEmail } from '@/lib/email'
+import { clientIp, takeForgotPasswordToken } from '@/lib/login-throttle'
 
 const TOKEN_TTL_MS = 60 * 60 * 1000 // 1h
 
@@ -32,6 +33,17 @@ export async function POST(request: NextRequest) {
   if (typeof body.email !== 'string' || !body.email.includes('@')) {
     return NextResponse.json({ error: 'Email required' }, { status: 400 })
   }
+
+  // Per-IP rate cap so the public tunnel can't be used to enumerate
+  // accounts or weaponise Resend for spam. Generic 429 (no enumeration
+  // leak — same as the anti-enumeration 200 path otherwise).
+  if (!takeForgotPasswordToken(clientIp(request))) {
+    return NextResponse.json(
+      { error: 'Too many requests. Try again later.' },
+      { status: 429 },
+    )
+  }
+
   const email = body.email.toLowerCase().trim()
 
   const user = await prisma.user.findUnique({
