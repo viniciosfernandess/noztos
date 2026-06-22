@@ -1,5 +1,6 @@
 import { spawn, ChildProcess, execSync } from 'node:child_process'
 import { EventEmitter } from 'node:events'
+import { randomBytes } from 'node:crypto'
 
 // ── Tunnel manager ──────────────────────────────────────────────────
 //
@@ -32,10 +33,18 @@ import { EventEmitter } from 'node:events'
 //   • stop() — SIGTERM, SIGKILL after 3 s.
 //   • getStatus() — current state for the GET /api/tunnel route.
 
+// Credentials enforced by ngrok at the tunnel edge (HTTP Basic auth).
+// Generated fresh per start() and surfaced to the owner so they can hand
+// them to the phone — the URL alone no longer reaches the login page.
+export interface TunnelBasicAuth {
+  username: string
+  password: string
+}
+
 export type TunnelState =
   | { state: 'stopped' }
   | { state: 'starting' }
-  | { state: 'running'; url: string; startedAt: number }
+  | { state: 'running'; url: string; startedAt: number; basicAuth?: TunnelBasicAuth }
   | { state: 'missing-binary'; installHint: string }
   | { state: 'missing-authtoken'; setupHint: string }
   | { state: 'error'; message: string }
@@ -53,6 +62,15 @@ export class TunnelManager extends EventEmitter {
   private proc: ChildProcess | null = null
   private status: TunnelState = { state: 'stopped' }
   private healthyTimer: ReturnType<typeof setTimeout> | null = null
+  private basicAuth: TunnelBasicAuth | null = null
+
+  // Generate edge-auth credentials for one tunnel session. Fixed
+  // username + high-entropy password so the owner has something short to
+  // type as the user and a strong secret as the password. ngrok requires
+  // the password be >= 8 chars; base64url(18 bytes) is 24.
+  private newBasicAuth(): TunnelBasicAuth {
+    return { username: 'phone', password: randomBytes(18).toString('base64url') }
+  }
 
   getStatus(): TunnelState {
     return this.status
@@ -91,12 +109,23 @@ export class TunnelManager extends EventEmitter {
     this.status = { state: 'starting' }
     this.emit('status', this.status)
 
+    // Gate the tunnel edge with HTTP Basic auth. Without this the random
+    // *.ngrok URL is the only secret and anyone who has/guesses it reaches
+    // the login page (behind which sits host RCE). ngrok enforces these
+    // creds before any request hits localhost:3000.
+    this.basicAuth = this.newBasicAuth()
+
+    // --basic-auth user:pass: ngrok challenges every request at the edge
     // --log stdout: route logs to stdout (default is rotating file)
     // --log-format json: parseable JSON lines instead of free-form text
     // --log-level info: includes the "started tunnel" line we look for
     const child = spawn(
       'ngrok',
-      ['http', port, '--log', 'stdout', '--log-format', 'json', '--log-level', 'info'],
+      [
+        'http', port,
+        '--basic-auth', `${this.basicAuth.username}:${this.basicAuth.password}`,
+        '--log', 'stdout', '--log-format', 'json', '--log-level', 'info',
+      ],
       { stdio: ['ignore', 'pipe', 'pipe'] },
     )
     this.proc = child
@@ -182,11 +211,17 @@ export class TunnelManager extends EventEmitter {
       clearTimeout(this.healthyTimer)
       this.healthyTimer = null
     }
-    this.status = { state: 'running', url, startedAt: Date.now() }
+    this.status = {
+      state: 'running',
+      url,
+      startedAt: Date.now(),
+      basicAuth: this.basicAuth ?? undefined,
+    }
     this.emit('status', this.status)
   }
 
   stop(): TunnelState {
+    this.basicAuth = null
     if (!this.proc) {
       this.status = { state: 'stopped' }
       this.emit('status', this.status)

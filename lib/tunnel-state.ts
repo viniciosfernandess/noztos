@@ -15,10 +15,17 @@
 // the next status emission (or starting from 'stopped' if the user
 // hasn't toggled since).
 
+// Edge-auth creds ngrok enforces on the public URL. Mirrored from the
+// daemon so the navbar can show the owner what to type on their phone.
+export interface TunnelBasicAuth {
+  username: string
+  password: string
+}
+
 export type TunnelState =
   | { state: 'stopped' }
   | { state: 'starting' }
-  | { state: 'running'; url: string; startedAt: number }
+  | { state: 'running'; url: string; startedAt: number; basicAuth?: TunnelBasicAuth }
   | { state: 'missing-binary'; installHint: string }
   | { state: 'missing-authtoken'; setupHint: string }
   | { state: 'error'; message: string }

@@ -19,7 +19,7 @@ import QRCode from 'qrcode'
 type TunnelStatus =
   | { state: 'stopped' }
   | { state: 'starting' }
-  | { state: 'running'; url: string; startedAt: number }
+  | { state: 'running'; url: string; startedAt: number; basicAuth?: { username: string; password: string } }
   | { state: 'missing-binary'; installHint: string }
   | { state: 'missing-authtoken'; setupHint: string }
   | { state: 'error'; message: string }
@@ -34,6 +34,7 @@ export function PhoneAccessButton() {
   const [busy, setBusy] = useState(false)
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [authCopied, setAuthCopied] = useState(false)
   const popoverRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
 
@@ -97,6 +98,12 @@ export function PhoneAccessButton() {
     navigator.clipboard?.writeText(url).catch(() => {})
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
+  }
+
+  function copyAuth(creds: string) {
+    navigator.clipboard?.writeText(creds).catch(() => {})
+    setAuthCopied(true)
+    setTimeout(() => setAuthCopied(false), 1500)
   }
 
   const state = data?.status.state ?? 'stopped'
@@ -217,6 +224,7 @@ export function PhoneAccessButton() {
 
           {data?.status.state === 'running' && (() => {
             const liveUrl = data.status.url
+            const auth = data.status.basicAuth
             return (
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -252,8 +260,29 @@ export function PhoneAccessButton() {
                   </div>
                 </div>
 
+                {auth && (
+                  <div className="space-y-1">
+                    <p className="text-[10px] uppercase tracking-wider text-zinc-500">
+                      Tunnel login (asked before the sign-in page)
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 truncate rounded border border-[#2B2B2B] bg-[#151515] px-2 py-1 font-mono text-[11px] text-emerald-200">
+                        {auth.username} / {auth.password}
+                      </code>
+                      <button
+                        onClick={() => copyAuth(`${auth.username}:${auth.password}`)}
+                        className="rounded border border-[#3A3A3A] bg-[#2A2A2A] px-2 py-1 text-[10px] text-zinc-300 transition-colors hover:bg-[#333]"
+                      >
+                        {authCopied ? '✓' : 'Copy'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <p className="text-[10px] leading-relaxed text-zinc-500">
-                  Anyone with this URL sees your sign-in page. Your account password protects access.
+                  {auth
+                    ? 'ngrok challenges for this login at the edge before the URL even reaches noztos. Your account password is a second gate.'
+                    : 'Anyone with this URL sees your sign-in page. Your account password protects access.'}
                 </p>
               </div>
             )
